@@ -2,13 +2,12 @@ package com.dartintel.api.ingestion;
 
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.retry.annotation.Retry;
-import io.netty.channel.ChannelOption;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.client.reactive.ReactorClientHttpConnector;
+import org.springframework.http.client.reactive.JdkClientHttpConnector;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
-import reactor.netty.http.client.HttpClient;
 
+import java.net.http.HttpClient;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -22,20 +21,27 @@ public class DartClient {
     private final WebClient webClient;
     private final String apiKey;
     private final int pageCount;
+    private final Duration readTimeout;
     private final Duration blockTimeout;
 
     public DartClient(WebClient.Builder builder, DartProperties props) {
         DartProperties.Api.Timeout timeout = props.api().timeout();
-        HttpClient httpClient = HttpClient.create()
-                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, timeout.connectMs())
-                .responseTimeout(Duration.ofMillis(timeout.readMs()));
+
+        // Use the JDK HttpClient connector instead of Reactor Netty: opendart.fss.or.kr
+        // rejects Netty's default ClientHello with TLS handshake_failure, while the
+        // JDK HttpClient negotiates the same TLS 1.2 / AES128-GCM-SHA256 cleanly.
+        HttpClient jdkHttpClient = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
+                .connectTimeout(Duration.ofMillis(timeout.connectMs()))
+                .build();
 
         this.webClient = builder.clone()
                 .baseUrl(props.api().baseUrl())
-                .clientConnector(new ReactorClientHttpConnector(httpClient))
+                .clientConnector(new JdkClientHttpConnector(jdkHttpClient))
                 .build();
         this.apiKey = props.api().key();
         this.pageCount = props.polling().pageCount();
+        this.readTimeout = Duration.ofMillis(timeout.readMs());
         this.blockTimeout = Duration.ofMillis(timeout.connectMs() + timeout.readMs() + 5000L);
     }
 
@@ -51,6 +57,7 @@ public class DartClient {
                         .build())
                 .retrieve()
                 .bodyToMono(DartListResponse.class)
+                .timeout(readTimeout)
                 .block(blockTimeout);
     }
 }
