@@ -7,6 +7,22 @@ plugins {
 group = "com.dartintel"
 version = "0.0.1-SNAPSHOT"
 
+// Override Spring Boot 3.4 BOM's Testcontainers (1.20.4) so the bundled
+// docker-java client can negotiate API 1.44+ that Docker Engine 29 requires.
+extra["testcontainers.version"] = "1.21.3"
+
+// Testcontainers 1.21.x still ships docker-java 3.4.2 whose default API
+// version is rejected by Docker Engine 29. Force all docker-java artifacts
+// to the latest 3.5.1 so the client speaks a version the daemon accepts.
+configurations.all {
+    resolutionStrategy.eachDependency {
+        if (requested.group == "com.github.docker-java") {
+            useVersion("3.5.1")
+            because("Docker Engine 29 requires API >= 1.44; docker-java 3.4.x defaults too low")
+        }
+    }
+}
+
 java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(21)
@@ -59,6 +75,17 @@ dependencies {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+    // docker-java defaults to API v1.32, which Docker Engine 29+ rejects
+    // (it requires v1.44+). Push the override through every property key
+    // docker-java is known to consult so the URL gets a /v1.44/ prefix.
+    environment("DOCKER_API_VERSION", "1.44")
+    systemProperty("DOCKER_API_VERSION", "1.44")
+    systemProperty("api.version", "1.44")
+    systemProperty("docker.api.version", "1.44")
+    // Docker Desktop's auto-detected socket lives in a sandboxed path that
+    // cannot be bind-mounted into Ryuk; redirect the in-container socket
+    // mount to the symlinked /var/run/docker.sock that the daemon accepts.
+    environment("TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE", "/var/run/docker.sock")
 }
 
 tasks.named<org.springframework.boot.gradle.tasks.bundling.BootJar>("bootJar") {
