@@ -1,0 +1,32 @@
+spring:
+  application:
+    name: korea-filings-api
+  datasource:
+    url: jdbc:postgresql://localhost:5432/dartintel
+    username: dartintel
+    password: ${POSTGRES_PASSWORD:changeme_in_env}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate.jdbc.time_zone: UTC
+  flyway:
+    enabled: true
+    baseline-on-migrate: false
+    locations: classpath:db/migration
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info
+  endpoint:
+    health:
+      show-details: when_authorized
+
+logging:
+  level:
+    com.dartintel: DEBUG
+    org.flywaydb: INFO
+    org.hibernate.SQL: DEBUG
