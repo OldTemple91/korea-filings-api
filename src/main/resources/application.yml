@@ -25,6 +25,35 @@ management:
     health:
       show-details: when_authorized
 
+dart:
+  api:
+    base-url: https://opendart.fss.or.kr/api
+    key: ${DART_API_KEY:}
+    timeout:
+      connect-ms: 5000
+      read-ms: 10000
+  polling:
+    enabled: true
+    interval-ms: 30000
+    initial-cursor-days-back: 1
+    page-count: 100
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      dart:
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+  retry:
+    instances:
+      dart:
+        max-attempts: 2
+        wait-duration: 1s
+
 logging:
   level:
     com.dartintel: DEBUG
