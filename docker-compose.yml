@@ -1,0 +1,70 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: dartintel-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: dartintel
+      POSTGRES_USER: dartintel
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme_in_env}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dartintel"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: dartintel-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Uncomment for production deployment only. Local dev runs the app from IDE.
+  # app:
+  #   build: .
+  #   container_name: dartintel-app
+  #   restart: unless-stopped
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #   environment:
+  #     SPRING_PROFILES_ACTIVE: prod
+  #     SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/dartintel
+  #     SPRING_DATASOURCE_USERNAME: dartintel
+  #     SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+  #     SPRING_DATA_REDIS_HOST: redis
+  #     DART_API_KEY: ${DART_API_KEY}
+  #     GEMINI_API_KEY: ${GEMINI_API_KEY}
+  #     OPENAI_API_KEY: ${OPENAI_API_KEY}
+  #     X402_WALLET_PRIVATE_KEY: ${X402_WALLET_PRIVATE_KEY}
+  #     X402_FACILITATOR_URL: ${X402_FACILITATOR_URL}
+  #   ports:
+  #     - "8080:8080"
+
+  # Uncomment for production deployment on home server
+  # cloudflared:
+  #   image: cloudflare/cloudflared:latest
+  #   container_name: dartintel-tunnel
+  #   restart: unless-stopped
+  #   command: tunnel run
+  #   environment:
+  #     TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
+
+volumes:
+  postgres_data:
+  redis_data:

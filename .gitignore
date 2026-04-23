@@ -1,0 +1,32 @@
+# IDE
+.idea/
+*.iml
+.vscode/
+.settings/
+.project
+.classpath
+
+# Build
+build/
+out/
+bin/
+target/
+.gradle/
+
+# Secrets — NEVER commit
+.env
+.env.local
+.env.prod
+*.pem
+*.key
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude Code session files
+.claude/
