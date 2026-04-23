@@ -86,6 +86,13 @@ tasks.withType<Test> {
     // cannot be bind-mounted into Ryuk; redirect the in-container socket
     // mount to the symlinked /var/run/docker.sock that the daemon accepts.
     environment("TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE", "/var/run/docker.sock")
+
+    // Forward optional vendor credentials from the host shell to live
+    // integration tests gated by @EnabledIfEnvironmentVariable. Tests stay
+    // skipped when the variable is absent.
+    listOf("GEMINI_API_KEY", "OPENAI_API_KEY", "DART_API_KEY").forEach { name ->
+        System.getenv(name)?.also { environment(name, it) }
+    }
 }
 
 tasks.named<org.springframework.boot.gradle.tasks.bundling.BootJar>("bootJar") {
