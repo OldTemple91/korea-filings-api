@@ -1,6 +1,7 @@
 package com.dartintel.api.summarization.llm;
 
 import com.dartintel.api.summarization.DisclosureContext;
+import com.dartintel.api.summarization.SummaryEnvelope;
 import com.dartintel.api.summarization.SummaryResult;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -13,6 +14,8 @@ import org.springframework.http.client.reactive.JdkClientHttpConnector;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.net.http.HttpClient;
 import java.time.Duration;
 import java.util.List;
@@ -23,6 +26,11 @@ import java.util.Map;
 public class GeminiFlashLiteClient implements LlmClient {
 
     static final String MODEL = "gemini-2.5-flash-lite";
+
+    // Gemini 2.5 Flash-Lite published price (USD per 1M tokens)
+    private static final BigDecimal INPUT_PRICE_PER_1M = new BigDecimal("0.10");
+    private static final BigDecimal OUTPUT_PRICE_PER_1M = new BigDecimal("0.40");
+    private static final BigDecimal MILLION = new BigDecimal("1000000");
 
     private static final String SYSTEM_PROMPT = """
             You are a financial analyst summarising Korean corporate disclosures filed
@@ -71,9 +79,10 @@ public class GeminiFlashLiteClient implements LlmClient {
     @CircuitBreaker(name = "gemini")
     @Retry(name = "gemini")
     @Override
-    public SummaryResult summarize(DisclosureContext context) {
+    public SummaryEnvelope summarize(DisclosureContext context) {
         Map<String, Object> body = buildRequestBody(context);
 
+        long startNanos = System.nanoTime();
         GeminiResponse response = webClient.post()
                 .uri(uri -> uri
                         .path("/v1beta/models/" + MODEL + ":generateContent")
@@ -85,18 +94,34 @@ public class GeminiFlashLiteClient implements LlmClient {
                 .bodyToMono(GeminiResponse.class)
                 .timeout(readTimeout)
                 .block(blockTimeout);
+        long latencyMs = (System.nanoTime() - startNanos) / 1_000_000L;
 
         if (response == null || response.candidates() == null || response.candidates().isEmpty()) {
             throw new IllegalStateException("Gemini returned no candidates for " + context.rcptNo());
         }
 
         String json = response.candidates().get(0).content().parts().get(0).text();
+        SummaryResult result;
         try {
-            return objectMapper.readValue(json, SummaryResult.class);
+            result = objectMapper.readValue(json, SummaryResult.class);
         } catch (JsonProcessingException e) {
             log.error("Failed to parse Gemini JSON for {}: {}", context.rcptNo(), json);
             throw new IllegalStateException("Gemini produced invalid JSON for " + context.rcptNo(), e);
         }
+
+        GeminiResponse.UsageMetadata usage = response.usageMetadata();
+        int inputTokens = usage != null ? usage.promptTokenCount() : 0;
+        int outputTokens = usage != null ? usage.candidatesTokenCount() : 0;
+        return new SummaryEnvelope(
+                result, MODEL, inputTokens, outputTokens,
+                computeCost(inputTokens, outputTokens), latencyMs
+        );
+    }
+
+    static BigDecimal computeCost(int inputTokens, int outputTokens) {
+        BigDecimal input = INPUT_PRICE_PER_1M.multiply(BigDecimal.valueOf(inputTokens));
+        BigDecimal output = OUTPUT_PRICE_PER_1M.multiply(BigDecimal.valueOf(outputTokens));
+        return input.add(output).divide(MILLION, 8, RoundingMode.HALF_UP);
     }
 
     private static Map<String, Object> buildRequestBody(DisclosureContext c) {

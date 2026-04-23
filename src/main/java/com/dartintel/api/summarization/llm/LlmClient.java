@@ -1,9 +1,9 @@
 package com.dartintel.api.summarization.llm;
 
 import com.dartintel.api.summarization.DisclosureContext;
-import com.dartintel.api.summarization.SummaryResult;
+import com.dartintel.api.summarization.SummaryEnvelope;
 
 public interface LlmClient {
 
-    SummaryResult summarize(DisclosureContext context);
+    SummaryEnvelope summarize(DisclosureContext context);
 }

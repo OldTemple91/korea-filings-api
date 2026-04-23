@@ -1,7 +1,7 @@
 package com.dartintel.api.summarization.llm;
 
 import com.dartintel.api.summarization.DisclosureContext;
-import com.dartintel.api.summarization.SummaryResult;
+import com.dartintel.api.summarization.SummaryEnvelope;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -35,22 +35,32 @@ class GeminiFlashLiteClientLiveIT {
                 "유"
         );
 
-        SummaryResult result = client.summarize(ctx);
+        SummaryEnvelope envelope = client.summarize(ctx);
 
         System.out.println("=== Live Gemini summary ===");
-        System.out.println("summaryEn       : " + result.summaryEn());
-        System.out.println("importanceScore : " + result.importanceScore());
-        System.out.println("eventType       : " + result.eventType());
-        System.out.println("sectorTags      : " + result.sectorTags());
-        System.out.println("tickerTags      : " + result.tickerTags());
-        System.out.println("actionableFor   : " + result.actionableFor());
+        System.out.println("summaryEn       : " + envelope.result().summaryEn());
+        System.out.println("importanceScore : " + envelope.result().importanceScore());
+        System.out.println("eventType       : " + envelope.result().eventType());
+        System.out.println("sectorTags      : " + envelope.result().sectorTags());
+        System.out.println("tickerTags      : " + envelope.result().tickerTags());
+        System.out.println("actionableFor   : " + envelope.result().actionableFor());
+        System.out.println("model           : " + envelope.model());
+        System.out.println("inputTokens     : " + envelope.inputTokens());
+        System.out.println("outputTokens    : " + envelope.outputTokens());
+        System.out.println("costUsd         : $" + envelope.costUsd());
+        System.out.println("latencyMs       : " + envelope.latencyMs() + " ms");
 
-        assertThat(result.summaryEn()).isNotBlank();
-        assertThat(result.summaryEn().length()).isLessThanOrEqualTo(400);
-        assertThat(result.importanceScore()).isBetween(1, 10);
-        assertThat(result.eventType()).isNotBlank();
-        assertThat(result.sectorTags()).isNotNull();
-        assertThat(result.tickerTags()).isNotNull();
-        assertThat(result.actionableFor()).isNotNull();
+        assertThat(envelope.result().summaryEn()).isNotBlank();
+        assertThat(envelope.result().summaryEn().length()).isLessThanOrEqualTo(400);
+        assertThat(envelope.result().importanceScore()).isBetween(1, 10);
+        assertThat(envelope.result().eventType()).isNotBlank();
+        assertThat(envelope.result().sectorTags()).isNotNull();
+        assertThat(envelope.result().tickerTags()).isNotNull();
+        assertThat(envelope.result().actionableFor()).isNotNull();
+        assertThat(envelope.model()).isEqualTo("gemini-2.5-flash-lite");
+        assertThat(envelope.inputTokens()).isPositive();
+        assertThat(envelope.outputTokens()).isPositive();
+        assertThat(envelope.costUsd()).isNotNull();
+        assertThat(envelope.latencyMs()).isPositive();
     }
 }

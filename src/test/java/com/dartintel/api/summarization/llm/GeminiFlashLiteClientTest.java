@@ -1,7 +1,7 @@
 package com.dartintel.api.summarization.llm;
 
 import com.dartintel.api.summarization.DisclosureContext;
-import com.dartintel.api.summarization.SummaryResult;
+import com.dartintel.api.summarization.SummaryEnvelope;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
@@ -12,6 +12,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.reactive.function.client.WebClient;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
@@ -87,14 +88,20 @@ class GeminiFlashLiteClientTest {
                 "주요사항보고서(유상증자결정)", LocalDate.of(2026, 4, 23), "유"
         );
 
-        SummaryResult result = client.summarize(ctx);
+        SummaryEnvelope envelope = client.summarize(ctx);
 
-        assertThat(result.summaryEn()).contains("rights offering");
-        assertThat(result.importanceScore()).isEqualTo(7);
-        assertThat(result.eventType()).isEqualTo("RIGHTS_OFFERING");
-        assertThat(result.sectorTags()).containsExactly("Information Technology");
-        assertThat(result.tickerTags()).containsExactly("005930");
-        assertThat(result.actionableFor()).containsExactly("traders", "long_term_investors");
+        assertThat(envelope.result().summaryEn()).contains("rights offering");
+        assertThat(envelope.result().importanceScore()).isEqualTo(7);
+        assertThat(envelope.result().eventType()).isEqualTo("RIGHTS_OFFERING");
+        assertThat(envelope.result().sectorTags()).containsExactly("Information Technology");
+        assertThat(envelope.result().tickerTags()).containsExactly("005930");
+        assertThat(envelope.result().actionableFor()).containsExactly("traders", "long_term_investors");
+        assertThat(envelope.model()).isEqualTo("gemini-2.5-flash-lite");
+        assertThat(envelope.inputTokens()).isEqualTo(142);
+        assertThat(envelope.outputTokens()).isEqualTo(89);
+        // 142*0.10 + 89*0.40 = 49.8 USD per 1M tokens -> 0.0000498 USD per call
+        assertThat(envelope.costUsd()).isEqualByComparingTo(new BigDecimal("0.00004980"));
+        assertThat(envelope.latencyMs()).isGreaterThanOrEqualTo(0);
     }
 
     @Test
