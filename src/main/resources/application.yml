@@ -38,6 +38,13 @@ dart:
     initial-cursor-days-back: 1
     page-count: 100
 
+gemini:
+  base-url: https://generativelanguage.googleapis.com
+  key: ${GEMINI_API_KEY:}
+  timeout:
+    connect-ms: 5000
+    read-ms: 30000
+
 resilience4j:
   circuitbreaker:
     instances:
@@ -48,11 +55,21 @@ resilience4j:
         wait-duration-in-open-state: 30s
         permitted-number-of-calls-in-half-open-state: 3
         automatic-transition-from-open-to-half-open-enabled: true
+      gemini:
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 60s
+        permitted-number-of-calls-in-half-open-state: 2
+        automatic-transition-from-open-to-half-open-enabled: true
   retry:
     instances:
       dart:
         max-attempts: 2
         wait-duration: 1s
+      gemini:
+        max-attempts: 2
+        wait-duration: 2s
 
 logging:
   level:
