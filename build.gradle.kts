@@ -98,3 +98,17 @@ tasks.withType<Test> {
 tasks.named<org.springframework.boot.gradle.tasks.bundling.BootJar>("bootJar") {
     archiveFileName.set("dartintel-api.jar")
 }
+
+// Populate /actuator/info with build metadata — version, group, build time.
+// The Spring Boot Gradle plugin supplies the task; we just enable it.
+springBoot {
+    buildInfo {
+        properties {
+            additional.set(
+                mapOf(
+                    "description" to "Korean DART corporate filings AI summary API",
+                )
+            )
+        }
+    }
+}

@@ -24,6 +24,17 @@ management:
   endpoint:
     health:
       show-details: when_authorized
+      # Separate liveness (is the JVM up?) from readiness (are all
+      # downstreams — Postgres, Redis, Flyway — wired through?).
+      # Cloudflare Tunnel / Docker healthcheck hit /actuator/health/liveness.
+      probes:
+        enabled: true
+  info:
+    build:
+      enabled: true
+    git:
+      enabled: true
+      mode: full
 
 dart:
   api:
