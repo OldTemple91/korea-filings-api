@@ -17,8 +17,15 @@ target/
 .env
 .env.local
 .env.prod
+.env.testclient
 *.pem
 *.key
+
+# Python (test client)
+testclient/venv/
+testclient/.venv/
+testclient/__pycache__/
+testclient/*.pyc
 
 # Logs
 *.log
