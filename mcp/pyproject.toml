@@ -1,0 +1,47 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "koreafilings-mcp"
+version = "0.1.0"
+description = "MCP server exposing koreafilings.com's x402-paid DART summary API as a tool for Claude Desktop, Cursor, Continue, and other MCP clients."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "korea-filings-api" }]
+keywords = ["mcp", "dart", "korea", "x402", "claude", "agent"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Office/Business :: Financial",
+]
+dependencies = [
+    "mcp>=1.2.0",
+    "koreafilings>=0.1.0",
+]
+
+[project.urls]
+Homepage = "https://koreafilings.com"
+Source = "https://github.com/OldTemple91/korea-filings-api"
+Issues = "https://github.com/OldTemple91/korea-filings-api/issues"
+
+[project.scripts]
+koreafilings-mcp = "koreafilings_mcp.server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/koreafilings_mcp"]
+
+[tool.hatch.build.targets.sdist]
+include = ["/src", "/README.md", "/pyproject.toml"]
+
+# When installing from the monorepo before koreafilings 0.1.0 is on
+# PyPI, resolve the SDK from the sibling sdk/python directory.
+[tool.uv.sources]
+koreafilings = { path = "../sdk/python", editable = true }
