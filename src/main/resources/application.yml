@@ -70,6 +70,21 @@ resilience4j:
       gemini:
         max-attempts: 2
         wait-duration: 2s
+        # A rate-limit miss or an open breaker should NOT burn retries —
+        # the retry scheduler re-enqueues those rcpt_nos on a different pass.
+        ignore-exceptions:
+          - io.github.resilience4j.ratelimiter.RequestNotPermitted
+          - io.github.resilience4j.circuitbreaker.CallNotPermittedException
+  ratelimiter:
+    instances:
+      gemini:
+        # Gemini 2.5 Flash-Lite free tier: 15 RPM. Paid tier (tier 1): 4000 RPM.
+        # Override via config when moving to paid quotas.
+        limit-for-period: 15
+        limit-refresh-period: 60s
+        # Background consumer has no user waiting; block up to the full
+        # refresh window for a permit rather than failing fast.
+        timeout-duration: 60s
 
 logging:
   level:

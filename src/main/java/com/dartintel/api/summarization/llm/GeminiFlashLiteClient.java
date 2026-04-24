@@ -7,6 +7,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import io.github.resilience4j.ratelimiter.annotation.RateLimiter;
 import io.github.resilience4j.retry.annotation.Retry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
@@ -81,6 +82,7 @@ public class GeminiFlashLiteClient implements LlmClient {
         return MODEL;
     }
 
+    @RateLimiter(name = "gemini")
     @CircuitBreaker(name = "gemini")
     @Retry(name = "gemini")
     @Override
