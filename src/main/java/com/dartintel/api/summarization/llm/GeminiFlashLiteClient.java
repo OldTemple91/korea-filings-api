@@ -76,6 +76,11 @@ public class GeminiFlashLiteClient implements LlmClient {
         this.objectMapper = objectMapper;
     }
 
+    @Override
+    public String modelId() {
+        return MODEL;
+    }
+
     @CircuitBreaker(name = "gemini")
     @Retry(name = "gemini")
     @Override
