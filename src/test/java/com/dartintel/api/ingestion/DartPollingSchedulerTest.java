@@ -1,5 +1,6 @@
 package com.dartintel.api.ingestion;
 
+import com.dartintel.api.summarization.job.SummaryJobQueue;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -37,6 +38,9 @@ class DartPollingSchedulerTest {
     @Mock
     ValueOperations<String, String> valueOps;
 
+    @Mock
+    SummaryJobQueue summaryJobQueue;
+
     DartPollingScheduler scheduler;
 
     @BeforeEach
@@ -45,7 +49,8 @@ class DartPollingSchedulerTest {
                 new DartProperties.Api("http://x", "k", new DartProperties.Api.Timeout(1000, 1000)),
                 new DartProperties.Polling(true, 30000, 1, 100)
         );
-        scheduler = new DartPollingScheduler(dartClient, disclosureRepository, redisTemplate, props);
+        scheduler = new DartPollingScheduler(
+                dartClient, disclosureRepository, redisTemplate, props, summaryJobQueue);
         when(redisTemplate.opsForValue()).thenReturn(valueOps);
     }
 
@@ -71,6 +76,7 @@ class DartPollingSchedulerTest {
                         && d.getRceptDt().equals(LocalDate.of(2026, 4, 23))
                         && d.getRm().equals("유")
                         && d.getCorpNameEng() == null));
+        verify(summaryJobQueue).push("20260423000123");
         verify(valueOps).set(DartPollingScheduler.CURSOR_KEY, "20260423");
     }
 
@@ -90,6 +96,7 @@ class DartPollingSchedulerTest {
         scheduler.poll();
 
         verify(disclosureRepository, never()).save(any());
+        verify(summaryJobQueue, never()).push(anyString());
         verify(valueOps, never()).set(eq(DartPollingScheduler.CURSOR_KEY), anyString());
     }
 

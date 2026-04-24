@@ -106,4 +106,30 @@ class DisclosureSummaryRepositoryIT {
     void existsByRcptNoReflectsPersistedState() {
         assertThat(summaryRepository.existsByRcptNo("20260423999999")).isFalse();
     }
+
+    @Test
+    void findRcptNosMissingSummaryReturnsOnlyOrphanedDisclosures() {
+        Disclosure withSummary = new Disclosure(
+                "20260423002001", "00126380", "삼성전자", null,
+                "기업설명회(IR)개최(안내공시)", "삼성전자",
+                LocalDate.of(2026, 4, 23), null
+        );
+        Disclosure orphan = new Disclosure(
+                "20260423002002", "00126380", "삼성전자", null,
+                "주식소각결정", "삼성전자",
+                LocalDate.of(2026, 4, 23), null
+        );
+        disclosureRepository.saveAllAndFlush(List.of(withSummary, orphan));
+        summaryRepository.saveAndFlush(new DisclosureSummary(
+                "20260423002001", "summary", 3, "IR_EVENT",
+                List.of(), List.of(), List.of(),
+                "gemini-2.5-flash-lite", 10, 10, new BigDecimal("0.00000500")
+        ));
+
+        List<String> orphans = disclosureRepository
+                .findRcptNosMissingSummary(org.springframework.data.domain.PageRequest.of(0, 10));
+
+        assertThat(orphans).contains("20260423002002");
+        assertThat(orphans).doesNotContain("20260423002001");
+    }
 }

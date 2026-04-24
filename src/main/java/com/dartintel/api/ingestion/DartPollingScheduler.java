@@ -1,5 +1,6 @@
 package com.dartintel.api.ingestion;
 
+import com.dartintel.api.summarization.job.SummaryJobQueue;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -27,6 +28,7 @@ public class DartPollingScheduler {
     private final DisclosureRepository disclosureRepository;
     private final StringRedisTemplate redisTemplate;
     private final DartProperties props;
+    private final SummaryJobQueue summaryJobQueue;
 
     @Scheduled(fixedDelayString = "${dart.polling.interval-ms:30000}")
     @Transactional
@@ -71,6 +73,15 @@ public class DartPollingScheduler {
                     filingDate,
                     filing.rm()
             ));
+            // Hand the newly persisted filing off to the summarisation pipeline.
+            // Redis outages here are tolerated: the filing is already in the DB
+            // and a later backfill run will pick it up.
+            try {
+                summaryJobQueue.push(filing.rcptNo());
+            } catch (Exception queueError) {
+                log.warn("Enqueue to summary_job_queue failed for rcpt_no={}: {}",
+                        filing.rcptNo(), queueError.getMessage());
+            }
             newCount++;
             if (filingDate.isAfter(maxDate)) {
                 maxDate = filingDate;
