@@ -50,8 +50,9 @@ dependencies {
     // Resilience
     implementation("io.github.resilience4j:resilience4j-spring-boot3:2.2.0")
 
-    // OpenAPI / Swagger UI
-    implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0")
+    // OpenAPI / Swagger UI — 2.7+ targets Spring Boot 3.4 / Spring 6.2
+    // (2.6.x errors with NoSuchMethodError on ControllerAdviceBean).
+    implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.7.0")
 
     // Observability (Prometheus metrics from Actuator)
     implementation("io.micrometer:micrometer-registry-prometheus")

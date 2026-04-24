@@ -3,6 +3,12 @@ package com.dartintel.api.api;
 import com.dartintel.api.api.dto.PricingResponse;
 import com.dartintel.api.payment.X402Paywall;
 import com.dartintel.api.payment.X402Properties;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.security.SecurityRequirements;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -23,6 +29,7 @@ import java.util.Map;
  */
 @RestController
 @RequestMapping("/v1")
+@Tag(name = "Public", description = "Free, unpaid endpoints for service discovery and pricing.")
 public class PublicController {
 
     private final X402Properties x402Properties;
@@ -39,6 +46,23 @@ public class PublicController {
     }
 
     @GetMapping("/pricing")
+    @SecurityRequirements // override global X-PAYMENT requirement — this endpoint is free.
+    @Operation(
+            summary = "Current pricing and x402 wallet configuration",
+            description = """
+                    Machine-readable descriptor of every paid endpoint and
+                    its USDC price. Also carries the x402 recipient wallet,
+                    CAIP-2 network id, and USDC contract address so clients
+                    can verify they are paying the right destination on the
+                    right chain before signing.
+
+                    Safe to call as often as desired — no payment, no rate
+                    limiting beyond the standard anti-abuse layer.
+                    """,
+            responses = @ApiResponse(
+                    responseCode = "200",
+                    content = @Content(schema = @Schema(implementation = PricingResponse.class)))
+    )
     public ResponseEntity<PricingResponse> pricing() {
         List<PricingResponse.PaidEndpoint> paid = handlerMapping.getHandlerMethods().entrySet()
                 .stream()
