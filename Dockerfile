@@ -16,18 +16,18 @@ COPY src src
 RUN ./gradlew --no-daemon bootJar
 
 # Explode the jar into layers so the final image's file-system layout
-# matches Spring Boot 3's layered-jar conventions (dependencies change
-# rarely, application classes change often → better layer caching).
-RUN java -Djarmode=tools -jar build/libs/dartintel-api.jar extract --layers --launcher \
-    || java -Djarmode=layertools -jar build/libs/dartintel-api.jar extract
+# matches Spring Boot's layered-jar conventions. layertools produces
+# dependencies/, spring-boot-loader/, snapshot-dependencies/, application/
+# in the current working directory.
+RUN java -Djarmode=layertools -jar build/libs/dartintel-api.jar extract
 
 # ────────────────── Stage 2: minimal runtime image ──────────────────
 FROM eclipse-temurin:21-jre
 
 # Create an unprivileged user. Running the JVM as root is an easy escalation
 # path if the container is ever compromised.
-RUN groupadd --system --gid 1000 app \
- && useradd  --system --uid 1000 --gid app --home-dir /app --shell /sbin/nologin app
+RUN groupadd --system --gid 10001 app \
+ && useradd  --system --uid 10001 --gid app --home-dir /app --shell /sbin/nologin app
 
 WORKDIR /app
 
