@@ -42,6 +42,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -190,6 +191,7 @@ class DisclosuresControllerIT {
         mockMvc.perform(get("/v1/disclosures/20260423000001/summary")
                         .header("X-PAYMENT", validPaymentPayloadBase64("sig-b")))
                 .andExpect(status().isOk())
+                .andExpect(header().exists("X-PAYMENT-RESPONSE"))
                 .andExpect(jsonPath("$.rcptNo").value("20260423000001"))
                 .andExpect(jsonPath("$.summaryEn").value(containsString("rights offering")))
                 .andExpect(jsonPath("$.importanceScore").value(9))

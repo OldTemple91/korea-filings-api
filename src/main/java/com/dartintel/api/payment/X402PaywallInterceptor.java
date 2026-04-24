@@ -1,8 +1,6 @@
 package com.dartintel.api.payment;
 
 import com.dartintel.api.payment.dto.EvmExactPayload;
-import com.dartintel.api.payment.dto.FacilitatorSettleRequest;
-import com.dartintel.api.payment.dto.FacilitatorSettleResponse;
 import com.dartintel.api.payment.dto.FacilitatorVerifyRequest;
 import com.dartintel.api.payment.dto.FacilitatorVerifyResponse;
 import com.dartintel.api.payment.dto.PaymentPayload;
@@ -31,18 +29,15 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Gates any controller method annotated with {@link X402Paywall}. The
- * preHandle phase performs the x402 verification + replay-protection
- * sequence and writes a 402 body with payment requirements when it
- * rejects a request. The afterCompletion phase settles against the
- * facilitator if the controller produced a 2xx response, releasing the
- * Redis replay guard otherwise so the client can retry without
- * double-paying.
- *
- * The X-PAYMENT-RESPONSE header that the spec recommends lands in Day 2
- * via a ResponseBodyAdvice, since HandlerInterceptor cannot set
- * response headers after the body has started streaming for
- * @ResponseBody handlers.
+ * Gates any controller method annotated with {@link X402Paywall}.
+ * preHandle enforces the full x402 pre-flight (payment presence, Redis
+ * replay guard, facilitator verify) and writes a 402 body whenever it
+ * rejects. Settlement + PaymentLog persistence live in
+ * {@link X402SettlementAdvice}, which needs to fire BEFORE the
+ * response body is written so it can attach X-PAYMENT-RESPONSE.
+ * afterCompletion only runs one side-effect: release the Redis
+ * signature when the controller produced a non-2xx so the client can
+ * retry without double-paying.
  */
 @Component
 @RequiredArgsConstructor
@@ -51,12 +46,11 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
 
     static final String X_PAYMENT_HEADER = "X-PAYMENT";
     static final String REQUEST_ATTR_VERIFIED = "x402.verifiedPayment";
-    private static final int X402_VERSION = 2;
-    private static final BigDecimal USDC_ATOMIC = new BigDecimal(1_000_000);
+    static final int X402_VERSION = 2;
+    static final BigDecimal USDC_ATOMIC = new BigDecimal(1_000_000);
 
     private final PaymentStore paymentStore;
     private final FacilitatorClient facilitatorClient;
-    private final PaymentLogRepository paymentLogRepository;
     private final X402Properties props;
     private final ObjectMapper objectMapper;
 
@@ -135,26 +129,9 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
         if (status < 200 || status >= 300) {
             paymentStore.release(verified.signatureHash());
             log.info("x402 release: status={} sigHash={}", status, shortHash(verified.signatureHash()));
-            return;
         }
-
-        FacilitatorSettleResponse settle;
-        try {
-            settle = facilitatorClient.settle(new FacilitatorSettleRequest(
-                    X402_VERSION, verified.payload(), verified.requirement()));
-        } catch (Exception e) {
-            log.error("x402 settle exception for endpoint={}: {}", verified.endpoint(), e.getMessage(), e);
-            return;
-        }
-
-        if (settle.success()) {
-            persistPaymentLog(verified, settle);
-            log.info("x402 settled: endpoint={} payer={} amount={} tx={}",
-                    verified.endpoint(), verified.payer(),
-                    verified.requirement().amount(), settle.transaction());
-        } else {
-            log.error("x402 settle rejected: reason={} endpoint={}", settle.errorReason(), verified.endpoint());
-        }
+        // 2xx settlement is handled by X402SettlementAdvice so X-PAYMENT-RESPONSE
+        // can reach the client before the body is committed.
     }
 
     private PaymentRequirement buildRequirement(String priceUsdc) {
@@ -186,21 +163,6 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
         objectMapper.writeValue(response.getWriter(), body);
-    }
-
-    private void persistPaymentLog(VerifiedPayment verified, FacilitatorSettleResponse settle) {
-        String rcptNo = extractRcptNo(verified.endpoint());
-        BigDecimal amountHuman = new BigDecimal(verified.requirement().amount())
-                .divide(USDC_ATOMIC, 6, RoundingMode.HALF_UP);
-        paymentLogRepository.save(new PaymentLog(
-                rcptNo,
-                verified.endpoint(),
-                amountHuman,
-                verified.payer(),
-                verified.requirement().network(),
-                settle.transaction(),
-                verified.signatureHash()
-        ));
     }
 
     /**
@@ -236,15 +198,6 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
 
     private static String shortHash(String hash) {
         return hash.length() >= 8 ? hash.substring(0, 8) + "…" : hash;
-    }
-
-    private record VerifiedPayment(
-            String signatureHash,
-            PaymentPayload payload,
-            PaymentRequirement requirement,
-            String payer,
-            String endpoint
-    ) {
     }
 
     /** Suppress unused import warning for EvmExactPayload (referenced via PaymentPayload). */
