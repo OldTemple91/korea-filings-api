@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Korea Filings — AI summaries of Korean corporate disclosures</title>
+<meta name="description" content="Machine-ready English summaries of Korean DART filings for AI agents, quant funds, and research platforms. Paid per call in USDC via x402.">
+<meta property="og:title" content="Korea Filings">
+<meta property="og:description" content="AI-summarized Korean corporate disclosures. Paid per call in USDC.">
+<meta property="og:url" content="https://koreafilings.com">
+<meta name="twitter:card" content="summary">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%97%86%3C/text%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --bg-soft: #141414;
+    --line: #262626;
+    --text: #ededed;
+    --text-dim: #a0a0a0;
+    --accent: #ff6b35;
+    --code-bg: #1a1a1a;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #fafafa;
+      --bg-soft: #f0f0f0;
+      --line: #e0e0e0;
+      --text: #111;
+      --text-dim: #555;
+      --code-bg: #f4f4f4;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .container { max-width: 760px; margin: 0 auto; padding: 48px 24px; }
+  header .logo { font-family: var(--mono); font-size: 14px; color: var(--text-dim); letter-spacing: .1em; }
+  header .logo::before { content: "◆ "; color: var(--accent); }
+  h1 { font-size: 40px; line-height: 1.15; margin: 56px 0 16px; letter-spacing: -.02em; font-weight: 600; }
+  h2 { font-size: 20px; margin: 56px 0 16px; font-weight: 600; letter-spacing: -.01em; }
+  p { color: var(--text-dim); margin: 12px 0; }
+  p.lead { color: var(--text); font-size: 18px; max-width: 620px; }
+  code, pre {
+    font-family: var(--mono);
+    font-size: 13px;
+    background: var(--code-bg);
+    color: var(--text);
+  }
+  code { padding: 2px 6px; border-radius: 4px; }
+  pre {
+    padding: 20px;
+    border-radius: 8px;
+    overflow-x: auto;
+    border: 1px solid var(--line);
+    line-height: 1.5;
+  }
+  pre code { padding: 0; background: transparent; }
+  ul { padding-left: 24px; color: var(--text-dim); }
+  li { margin: 6px 0; }
+  li strong { color: var(--text); font-weight: 500; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0;
+    font-size: 14px;
+  }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  th { color: var(--text-dim); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+  td.mono { font-family: var(--mono); font-size: 13px; }
+  td.price { font-family: var(--mono); color: var(--accent); text-align: right; font-variant-numeric: tabular-nums; }
+  .flow { background: var(--bg-soft); border: 1px solid var(--line); border-radius: 8px; padding: 20px; font-family: var(--mono); font-size: 13px; line-height: 1.7; color: var(--text-dim); margin: 20px 0; }
+  .flow .arrow { color: var(--accent); }
+  .flow .label { color: var(--text); }
+  .pill {
+    display: inline-block;
+    padding: 4px 10px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-right: 6px;
+  }
+  footer {
+    margin-top: 96px;
+    padding-top: 32px;
+    border-top: 1px solid var(--line);
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+  footer a { color: var(--text-dim); }
+  footer a:hover { color: var(--accent); }
+  .tx-hash { word-break: break-all; font-family: var(--mono); font-size: 11px; color: var(--text-dim); }
+  hr { border: none; border-top: 1px solid var(--line); margin: 48px 0; }
+  @media (max-width: 600px) {
+    h1 { font-size: 30px; }
+    .container { padding: 32px 20px; }
+    pre { font-size: 12px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+<header>
+  <div class="logo">KOREA FILINGS</div>
+  <h1>AI summaries of Korean corporate disclosures, paid per call.</h1>
+  <p class="lead">
+    Machine-ready English summaries of Korean DART filings for autonomous AI agents, quant funds, and research platforms covering Asian equities. No API key. No subscription. Payment is authentication.
+  </p>
+  <div style="margin-top:24px;">
+    <span class="pill">x402 v2</span>
+    <span class="pill">USDC on Base</span>
+    <span class="pill">300–500 filings/day</span>
+  </div>
+</header>
+
+<hr>
+
+<h2>Why this exists</h2>
+<p>
+  Korea's Financial Supervisory Service publishes 300–500 corporate disclosures every day across KOSPI and KOSDAQ. The feed is free. It is also in Korean, structured as PDFs pinned to XML metadata, and full of domain vocabulary — 유상증자, 전환사채, 지주사 전환 — that general-purpose LLMs translate badly.
+</p>
+<p>
+  For an AI agent or a quantitative desk, raw DART is unusable without a Korean NLP pipeline, a translation layer, and an importance-scoring model. Korea Filings does that work once per filing, caches the result forever, and sells it per call.
+</p>
+
+<h2>How it works</h2>
+
+<div class="flow">
+Your agent → <span class="label">GET /v1/disclosures/{rcptNo}/summary</span><br>
+           ← <span class="arrow">402 Payment Required</span><br>
+           ← &nbsp;&nbsp;&nbsp;{ scheme, network, amount, payTo, asset, ... }<br>
+<br>
+Sign the payment authorisation with your wallet (EIP-3009)<br>
+<br>
+Your agent → <span class="label">GET /v1/disclosures/{rcptNo}/summary</span><br>
+           &nbsp;&nbsp;&nbsp;&nbsp;<span class="arrow">X-PAYMENT: &lt;base64 signed payload&gt;</span><br>
+           ← <span class="arrow">200 OK</span> + X-PAYMENT-RESPONSE<br>
+           ← &nbsp;&nbsp;&nbsp;{ summaryEn, importanceScore, eventType, sectorTags, tickerTags, ... }
+</div>
+
+<p>
+  The <a href="https://x402.org">x402 protocol</a> routes the payment through Coinbase's facilitator, which validates your signature on-chain and settles USDC in a single transaction. The server never holds your private key. You never hold an API key. Every call is audited on-chain.
+</p>
+
+<h2>What you get</h2>
+<p>One call returns a structured JSON object:</p>
+<pre><code>{
+  "rcptNo": "20260424900874",
+  "summaryEn": "Global SM's stock trading will be temporarily
+                suspended on April 24, 2026, due to a change in
+                electronic registration related to a stock
+                consolidation or split. ...",
+  "importanceScore": 10,
+  "eventType": "OTHER",
+  "sectorTags": ["Capital Goods"],
+  "tickerTags": ["095440"],
+  "actionableFor": ["traders", "long_term_investors"],
+  "generatedAt": "2026-04-24T08:47:51Z"
+}</code></pre>
+
+<ul>
+  <li><strong>summaryEn</strong> — paraphrased English, never a verbatim translation, capped at 400 characters.</li>
+  <li><strong>importanceScore</strong> — 1 for routine housekeeping, 10 for market-moving events.</li>
+  <li><strong>eventType</strong> — canonical <code>UPPER_SNAKE_CASE</code> labels (<code>RIGHTS_OFFERING</code>, <code>MERGER</code>, <code>DIVIDEND_DECISION</code>, etc).</li>
+  <li><strong>sectorTags</strong>, <strong>tickerTags</strong> — GICS-style sectors and 6-digit Korean stock codes.</li>
+  <li><strong>actionableFor</strong> — which audience should care (<code>traders</code>, <code>long_term_investors</code>, <code>governance_analysts</code>).</li>
+</ul>
+
+<h2>Pricing</h2>
+<p>Per call, in USDC on Base. No minimums, no monthly fee, no volume tiers.</p>
+<table>
+  <thead>
+    <tr><th>Endpoint</th><th>Method</th><th style="text-align:right;">Price (USDC)</th></tr>
+  </thead>
+  <tbody id="pricing-rows">
+    <tr>
+      <td class="mono">/v1/disclosures/{rcptNo}/summary</td>
+      <td class="mono">GET</td>
+      <td class="price">0.005</td>
+    </tr>
+  </tbody>
+</table>
+<p style="font-size:13px;">
+  Canonical source: <a href="https://api.koreafilings.com/v1/pricing"><code>api.koreafilings.com/v1/pricing</code></a> — machine-readable JSON with the current recipient wallet, network, and USDC contract.
+</p>
+
+<h2>Try it</h2>
+
+<p>Inspect the 402 without paying:</p>
+<pre><code>curl https://api.koreafilings.com/v1/disclosures/20260424900874/summary</code></pre>
+
+<p>Or with a Python x402 client:</p>
+<pre><code>from x402 import Client
+
+client = Client(private_key="0x...")  # test wallet, Base Sepolia
+resp = client.get("https://api.koreafilings.com/v1/disclosures/20260424900874/summary")
+print(resp.json()["summaryEn"])</code></pre>
+
+<h2>First production settlement</h2>
+<p>A live 0.005 USDC settlement from this deployment:</p>
+<p class="tx-hash">
+  <a href="https://sepolia.basescan.org/tx/0x1dbf9885194261e1ad64be8205897ef9c5335ad254921b337c343c23d34b0a72">
+    0x1dbf9885194261e1ad64be8205897ef9c5335ad254921b337c343c23d34b0a72
+  </a>
+</p>
+<p style="font-size:13px;">
+  Base Sepolia testnet — mainnet switchover at launch.
+</p>
+
+<h2>Status</h2>
+<p>
+  Building in the open. Base Sepolia testnet live today, Base mainnet at launch. SDKs (Python, TypeScript) and an MCP server are next. Follow along — or ping any time with questions.
+</p>
+
+<footer>
+  <p>
+    <a href="https://api.koreafilings.com/v1/pricing">Pricing API</a>
+    &nbsp;·&nbsp;
+    <a href="https://api.koreafilings.com/actuator/health">Status</a>
+    &nbsp;·&nbsp;
+    <a href="https://github.com/OldTemple91/korea-filings-api">Source</a>
+  </p>
+  <p style="font-size:12px; margin-top:24px;">
+    Korea Filings is an independent project. Data comes from DART (Financial Supervisory Service, Republic of Korea) which is public domain. Summaries are AI-generated paraphrases, not verbatim translations, not legal or investment advice. Use at your own risk.
+  </p>
+</footer>
+
+</div>
+
+<script>
+  // Progressive enhancement: fetch live pricing and render the actual endpoint list
+  // using safe DOM APIs only (no innerHTML), so untrusted API payloads cannot inject
+  // markup. Falls back silently to the static row above on any failure.
+  (async () => {
+    try {
+      const r = await fetch('https://api.koreafilings.com/v1/pricing');
+      if (!r.ok) return;
+      const data = await r.json();
+      const endpoints = Array.isArray(data && data.endpoints) ? data.endpoints : [];
+      if (endpoints.length === 0) return;
+
+      const tbody = document.getElementById('pricing-rows');
+      if (!tbody) return;
+
+      const frag = document.createDocumentFragment();
+      for (const e of endpoints) {
+        const tr = document.createElement('tr');
+
+        const tdPath = document.createElement('td');
+        tdPath.className = 'mono';
+        tdPath.textContent = String(e.path || '');
+
+        const tdMethod = document.createElement('td');
+        tdMethod.className = 'mono';
+        tdMethod.textContent = String(e.method || 'GET');
+
+        const tdPrice = document.createElement('td');
+        tdPrice.className = 'price';
+        const n = parseFloat(e.priceUsdc);
+        tdPrice.textContent = Number.isFinite(n) ? n.toFixed(3) : '—';
+
+        tr.appendChild(tdPath);
+        tr.appendChild(tdMethod);
+        tr.appendChild(tdPrice);
+        frag.appendChild(tr);
+      }
+      while (tbody.firstChild) tbody.removeChild(tbody.firstChild);
+      tbody.appendChild(frag);
+    } catch (_) { /* keep static fallback */ }
+  })();
+</script>
+
+</body>
+</html>
