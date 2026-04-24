@@ -20,7 +20,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health, info
+        include: health, info, ratelimiters, circuitbreakers, retries
   endpoint:
     health:
       show-details: when_authorized
@@ -78,9 +78,11 @@ resilience4j:
   ratelimiter:
     instances:
       gemini:
-        # Gemini 2.5 Flash-Lite free tier: 15 RPM. Paid tier (tier 1): 4000 RPM.
-        # Override via config when moving to paid quotas.
-        limit-for-period: 15
+        # Gemini 2.5 Flash-Lite free tier: 15 RPM, but Google's sliding
+        # window aggregates across sessions/keys, so we set a conservative
+        # 10 to leave headroom for manual tests and live ITs.
+        # Paid tier 1 operators can raise to 4000 via config override.
+        limit-for-period: 10
         limit-refresh-period: 60s
         # Background consumer has no user waiting; block up to the full
         # refresh window for a permit rather than failing fast.
