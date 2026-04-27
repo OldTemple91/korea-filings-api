@@ -34,7 +34,7 @@ live, what's next, and the minimum setup to keep moving.
 ## Infrastructure
 
 - **production VM** — VPS ARM, 2 vCPU / 4GB / 40GB, ***.
-  Public IP `178.104.207.3`. Ubuntu 24.04. SSH as root with key. App
+  Public IP `<PROD_VM>`. Ubuntu 24.04. SSH as root with key. App
   runs under `docker compose --profile prod` at `/root/korea-filings-api/`.
 - **Cloudflare** — DNS, Tunnel (connector running on VM, outbound-only,
   no inbound ports), Workers hosting `koreafilings.com`. Zone on
@@ -133,14 +133,14 @@ koreafilings-mcp  # stdio MCP server
 rsync -az --delete --exclude='.git' --exclude='build/' --exclude='.venv' \
   --exclude='mcp/.venv' --exclude='sdk/python/.venv' \
   --exclude='testclient/.env.testclient' \
-  <LOCAL_REPO>/ root@178.104.207.3:/root/korea-filings-api/
-ssh root@178.104.207.3 'cd /root/korea-filings-api && docker compose --profile prod build app && docker compose --profile prod up -d app'
+  <LOCAL_REPO>/ root@<PROD_VM>:/root/korea-filings-api/
+ssh root@<PROD_VM> 'cd /root/korea-filings-api && docker compose --profile prod build app && docker compose --profile prod up -d app'
 
 # Verify paid endpoint
 curl -I https://api.koreafilings.com/v1/disclosures/20260424900874/summary   # should 402
 
 # Check production payment_log
-ssh root@178.104.207.3 "cd /root/korea-filings-api && docker compose exec -T postgres \
+ssh root@<PROD_VM> "cd /root/korea-filings-api && docker compose exec -T postgres \
   psql -U dartintel -d dartintel -c 'SELECT id, rcpt_no_accessed, amount_usdc, facilitator_tx_id, settled_at FROM payment_log ORDER BY settled_at DESC LIMIT 10;'"
 
 # PyPI re-upload (after `~/.pypirc` is set up)
