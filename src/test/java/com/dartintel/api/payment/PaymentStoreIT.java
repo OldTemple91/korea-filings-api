@@ -43,7 +43,8 @@ class PaymentStoreIT {
         X402Properties props = new X402Properties(
                 "http://x", "eip155:84532", "0x", "0x", 300,
                 new X402Properties.Timeout(1000, 1000),
-                new X402Properties.Replay(3600)
+                new X402Properties.Replay(3600),
+                new X402Properties.Cdp("", "")
         );
         store = new PaymentStore(redisTemplate, props);
     }

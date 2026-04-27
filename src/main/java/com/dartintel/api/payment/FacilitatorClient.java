@@ -7,9 +7,12 @@ import com.dartintel.api.payment.dto.FacilitatorVerifyResponse;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.retry.annotation.Retry;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.reactive.JdkClientHttpConnector;
 import org.springframework.stereotype.Component;
+import org.springframework.web.reactive.function.client.ClientRequest;
+import org.springframework.web.reactive.function.client.ExchangeFilterFunction;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import java.net.http.HttpClient;
@@ -23,7 +26,7 @@ public class FacilitatorClient {
     private final Duration readTimeout;
     private final Duration blockTimeout;
 
-    public FacilitatorClient(WebClient.Builder builder, X402Properties props) {
+    public FacilitatorClient(WebClient.Builder builder, X402Properties props, CdpJwtSigner cdpSigner) {
         HttpClient jdkHttpClient = HttpClient.newBuilder()
                 .version(HttpClient.Version.HTTP_1_1)
                 .connectTimeout(Duration.ofMillis(props.timeout().connectMs()))
@@ -31,6 +34,10 @@ public class FacilitatorClient {
         this.webClient = builder.clone()
                 .baseUrl(props.facilitatorUrl())
                 .clientConnector(new JdkClientHttpConnector(jdkHttpClient))
+                // Attach a fresh CDP JWT to every request when the merchant
+                // is configured for mainnet. The filter is a no-op on the
+                // public testnet facilitator (signer.sign returns null).
+                .filter(cdpAuthFilter(cdpSigner))
                 .build();
         this.readTimeout = Duration.ofMillis(props.timeout().readMs());
         this.blockTimeout = Duration.ofMillis(
@@ -61,5 +68,21 @@ public class FacilitatorClient {
                 .bodyToMono(FacilitatorSettleResponse.class)
                 .timeout(readTimeout)
                 .block(blockTimeout);
+    }
+
+    private static ExchangeFilterFunction cdpAuthFilter(CdpJwtSigner signer) {
+        return (request, next) -> {
+            String token = signer.sign(
+                    request.method().name(),
+                    request.url().toString()
+            );
+            if (token == null) {
+                return next.exchange(request);
+            }
+            ClientRequest signed = ClientRequest.from(request)
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                    .build();
+            return next.exchange(signed);
+        };
     }
 }

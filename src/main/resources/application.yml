@@ -73,6 +73,12 @@ x402:
   replay:
     # payment_sig:{hash} TTL per ARCHITECTURE.md spec.
     ttl-seconds: 3600
+  cdp:
+    # Required only for the Coinbase CDP mainnet facilitator. Both fields
+    # left blank for testnet — the public x402.org facilitator is
+    # unauthenticated. Populate via env vars when switching to mainnet.
+    key-id: ${X402_CDP_KEY_ID:}
+    private-key: ${X402_CDP_PRIVATE_KEY:}
 
 resilience4j:
   circuitbreaker:

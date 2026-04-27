@@ -54,6 +54,13 @@ dependencies {
     // (2.6.x errors with NoSuchMethodError on ControllerAdviceBean).
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.7.0")
 
+    // JJWT — needed only for the Coinbase CDP facilitator JWT (Ed25519).
+    // The public x402.org testnet facilitator does not require auth; this
+    // dependency is dormant until the mainnet env vars are populated.
+    implementation("io.jsonwebtoken:jjwt-api:0.12.6")
+    runtimeOnly("io.jsonwebtoken:jjwt-impl:0.12.6")
+    runtimeOnly("io.jsonwebtoken:jjwt-jackson:0.12.6")
+
     // Observability (Prometheus metrics from Actuator)
     implementation("io.micrometer:micrometer-registry-prometheus")
 

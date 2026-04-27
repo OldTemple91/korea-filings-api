@@ -46,30 +46,45 @@ live, what's next, and the minimum setup to keep moving.
 
 ## What Week 6 still has
 
-1. **Base mainnet switch** (next up).
-   - Flip `.env`: uncomment the mainnet block, comment out the testnet
-     block. Three vars change (`X402_FACILITATOR_URL`,
-     `X402_NETWORK=eip155:8453`, `X402_ASSET=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`).
-   - Get a Coinbase CDP API key from https://portal.cdp.coinbase.com/access/api
-     — mainnet facilitator requires Bearer auth (testnet `www.x402.org`
-     did not).
-   - Add a WebClient filter in `FacilitatorClient` that injects the CDP
-     key as `Authorization: Bearer <key>` on every call.
-   - Fund the recipient wallet `0x8467Be164C75824246CFd0fCa8E7F7009fB8f720`
-     with a small amount of real Base ETH (gas is paid by facilitator but
-     some interactions may still need native).
-   - Fund a payer wallet with real USDC on Base mainnet (~$2 is enough
-     to run a handful of test calls).
-   - Run a single live test via the `koreafilings` SDK with `network="base"`.
-   - Update the landing page hero to say *"Live on Base mainnet"* if it
-     currently claims Sepolia.
+1. **Base mainnet switch — code shipped, switch deferred.**
+   - All Java + config plumbing is in: `CdpJwtSigner` (Ed25519 JWT per
+     request, jjwt 0.12), `X402Properties.Cdp`, `FacilitatorClient` filter
+     that attaches `Authorization: Bearer <jwt>` only when the CDP fields
+     are populated. 3 unit tests cover the signer.
+   - Flipping `.env` to mainnet booted cleanly in production
+     (CDP signer initialised, pricing endpoint reflected mainnet
+     contract + chain id), but **no live on-chain mainnet settlement
+     was executed** — Coinbase Korea does not surface USDC for
+     small-amount card purchase, and the user opted not to KYC through
+     a secondary exchange (Bybit/MEXC) just for a smoke test.
+   - **Decision: launch on testnet**, keep the mainnet code dormant.
+     The switch is one env var (`X402_FACILITATOR_URL`,
+     `X402_NETWORK=eip155:8453`,
+     `X402_ASSET=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`,
+     plus `X402_CDP_KEY_ID` + `X402_CDP_PRIVATE_KEY`) and a container
+     restart. Time-to-mainnet from a verified-customer trigger is ~2 min.
+   - **Trigger to flip mainnet**: a real customer signals they want to
+     pay in real USDC, OR the operator runs a verified live test (Bybit
+     KYC + $5 USDC on Base mainnet to wallet
+     `0x254A42D7c617B38c7B43186e892d3af4bf9D6c44`, then SDK live test
+     with `network="base"`).
+   - **Risk acknowledged**: an untested mainnet flip means the first
+     real customer could hit a CDP JWT format quirk we never
+     exercised. Mitigations if needed at flip time: (a) run a live
+     test ourselves first, (b) add Slack/email alerts on facilitator
+     errors, (c) keep the rollback script ready (one rsync of `.env`
+     plus restart).
 
 2. **Directory registrations** — x402scan, Agent.market, MCP registries
    (glama.ai, smithery.ai, mcp.so). Each takes 5–15 min; need name,
    description, GitHub link, demo video or JSON schema.
 
 3. **HN Show HN post** — draft in a new `docs/launch/HN_DRAFT.md`.
-   Ideal timing: Tuesday/Wednesday 13:00–15:00 UTC.
+   Ideal timing: Tuesday/Wednesday 13:00–15:00 UTC. The pitch is
+   "x402 testnet live, paste a 14-digit DART number and pay 0.005
+   testnet USDC for an English summary" — testnet keeps the friction
+   to zero for the HN crowd, who can grab faucet USDC and try it in
+   under a minute.
 
 ## Continuing on a different machine — minimum setup
 

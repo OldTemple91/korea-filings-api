@@ -51,9 +51,10 @@ class FacilitatorClientTest {
                 "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
                 300,
                 new X402Properties.Timeout(2000, 5000),
-                new X402Properties.Replay(3600)
+                new X402Properties.Replay(3600),
+                new X402Properties.Cdp("", "")
         );
-        client = new FacilitatorClient(WebClient.builder(), props);
+        client = new FacilitatorClient(WebClient.builder(), props, new CdpJwtSigner(props));
     }
 
     @AfterEach
