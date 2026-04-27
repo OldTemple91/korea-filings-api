@@ -167,7 +167,8 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
                 new ResourceInfo(resourceUrl,
                         description == null || description.isBlank() ? null : description,
                         MediaType.APPLICATION_JSON_VALUE),
-                List.of(requirement)
+                List.of(requirement),
+                Map.of("bazaar", buildBazaarExtension(resourceUrl))
         );
         response.setStatus(HttpStatus.PAYMENT_REQUIRED.value());
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
@@ -180,6 +181,74 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
         response.setHeader(PAYMENT_REQUIRED_HEADER,
                 Base64.getEncoder().encodeToString(serialised));
         response.getOutputStream().write(serialised);
+    }
+
+    /**
+     * Build the {@code bazaar} extension payload that x402scan and other
+     * indexers require in strict mode. The extension declares the
+     * endpoint's invocation shape (HTTP method, parameters) and a sample
+     * output so AI agents can call the endpoint without prior schema
+     * negotiation.
+     *
+     * <p>Our paid summary endpoint takes a path parameter (rcptNo) and
+     * no query string or body. Path parameters are not first-class in
+     * the bazaar spec — the canonical way to communicate them is to
+     * publish a concrete sample URL in the resources list (the
+     * {@code /.well-known/x402} document already does this) so an agent
+     * can probe a real 402 with a real path. The {@code queryParams}
+     * field stays empty.
+     */
+    private Map<String, Object> buildBazaarExtension(String resourceUrl) {
+        Map<String, Object> input = Map.of(
+                "type", "http",
+                "method", "GET",
+                "queryParams", Map.of()
+        );
+        Map<String, Object> output = Map.of(
+                "type", "json",
+                "example", Map.of(
+                        "rcptNo", "20260424900874",
+                        "summaryEn", "AI-generated English summary of the disclosure.",
+                        "importanceScore", 7,
+                        "eventType", "OTHER",
+                        "sectorTags", List.of("Capital Goods"),
+                        "tickerTags", List.of("095440"),
+                        "actionableFor", List.of("traders"),
+                        "generatedAt", "2026-04-24T09:00:00Z"
+                )
+        );
+        Map<String, Object> info = Map.of(
+                "input", input,
+                "output", output
+        );
+        Map<String, Object> schema = Map.of(
+                "$schema", "https://json-schema.org/draft/2020-12/schema",
+                "type", "object",
+                "properties", Map.of(
+                        "input", Map.of(
+                                "type", "object",
+                                "properties", Map.of(
+                                        "type", Map.of("type", "string", "const", "http"),
+                                        "method", Map.of("type", "string", "enum", List.of("GET", "HEAD", "DELETE")),
+                                        "queryParams", Map.of("type", "object")
+                                ),
+                                "required", List.of("type", "method")
+                        ),
+                        "output", Map.of(
+                                "type", "object",
+                                "properties", Map.of(
+                                        "type", Map.of("type", "string"),
+                                        "example", Map.of("type", "object")
+                                ),
+                                "required", List.of("type")
+                        )
+                ),
+                "required", List.of("input")
+        );
+        return Map.of(
+                "info", info,
+                "schema", schema
+        );
     }
 
     /**
