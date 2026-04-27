@@ -204,7 +204,7 @@ Your agent → <span class="label">GET /v1/disclosures/{rcptNo}/summary</span><b
 <p>Or with a Python x402 client:</p>
 <pre><code>from x402 import Client
 
-client = Client(private_key="0x...")  # test wallet, Base Sepolia
+client = Client(private_key="0x...", network="base")  # Base mainnet, real USDC
 resp = client.get("https://api.koreafilings.com/v1/disclosures/20260424900874/summary")
 print(resp.json()["summaryEn"])</code></pre>
 
@@ -216,12 +216,12 @@ print(resp.json()["summaryEn"])</code></pre>
   </a>
 </p>
 <p style="font-size:13px;">
-  Base Sepolia testnet. Mainnet code is wired and unit-tested — the switch is one env var and waits on first-customer verification.
+  Above is the original first settlement on Base Sepolia, kept as a permanent demo of the EIP-3009 + facilitator flow. Live calls now route to Base mainnet via the Coinbase CDP facilitator.
 </p>
 
 <h2>Status</h2>
 <p>
-  Building in the open. Live on Base Sepolia today so anyone can try it for free with faucet USDC. Mainnet flips on once we have a verified live settlement from a real customer. <a href="https://pypi.org/project/koreafilings/">Python SDK</a> and <a href="https://pypi.org/project/koreafilings-mcp/">MCP server</a> on PyPI; TypeScript SDK is next. Ping any time with questions.
+  Live on <strong>Base mainnet</strong> as of this commit — payments settle in real USDC via the Coinbase CDP facilitator. <a href="https://pypi.org/project/koreafilings/">Python SDK</a> and <a href="https://pypi.org/project/koreafilings-mcp/">MCP server</a> on PyPI; TypeScript SDK is next. Ping any time with questions.
 </p>
 
 <footer>

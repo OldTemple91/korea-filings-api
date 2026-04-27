@@ -8,13 +8,18 @@ live, what's next, and the minimum setup to keep moving.
 - **Weeks 1–5 complete.** Ingestion, summarisation, x402 paywall, public
   deployment, landing page, Python SDK, MCP server, OpenAPI docs — all
   live in production at `api.koreafilings.com`.
-- **4 on-chain x402 settlements** executed against Base Sepolia (manual
-  curl + SDK live test + SDK debug + MCP tool). All recorded in
-  `payment_log`.
+- **10 on-chain x402 settlements** executed against Base Sepolia
+  (curl + SDK + MCP regression suite). All recorded in `payment_log`.
+- **Mainnet flipped on 2026-04-27**: facilitator switched to Coinbase
+  CDP (Ed25519 JWT auth), network to eip155:8453, asset to Base
+  mainnet USDC. Production was untested on mainnet at flip time —
+  first real customer payment is the canary. Rollback: revert the
+  three env vars and `docker compose up -d` (~30s).
 - **PyPI packages published** — `koreafilings` 0.1.0 + `koreafilings-mcp`
   0.1.0. Names permanently reserved.
-- **Next (Week 6-2): Base mainnet switch.** Testnet → real USDC.
-- After mainnet: directory registrations → HN Show HN.
+- **PyPI packages published** — `koreafilings` 0.1.0 + `koreafilings-mcp` 0.1.0.
+- **Directory registrations** — x402scan + Glama + mcp.so done; Smithery deferred.
+- **Next**: HN Show HN post on the next available Tue/Wed at 22:00 KST.
 
 ## What's live
 
