@@ -45,6 +45,16 @@ import java.util.Map;
 public class X402PaywallInterceptor implements HandlerInterceptor {
 
     static final String X_PAYMENT_HEADER = "X-PAYMENT";
+    /**
+     * x402 v2 transport spec
+     * (specs/transports-v2/http.md) moves the payment requirements off
+     * the body into a base64-encoded {@code PAYMENT-REQUIRED} response
+     * header. We continue to emit the JSON body so v1 clients (our own
+     * Python SDK, the public x402.org facilitator) keep working, but
+     * v2 indexers like x402scan only inspect the header — without it
+     * they reject the resource as "No valid x402 response found".
+     */
+    static final String PAYMENT_REQUIRED_HEADER = "PAYMENT-REQUIRED";
     static final String REQUEST_ATTR_VERIFIED = "x402.verifiedPayment";
     static final int X402_VERSION = 2;
     static final BigDecimal USDC_ATOMIC = new BigDecimal(1_000_000);
@@ -162,7 +172,14 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
         response.setStatus(HttpStatus.PAYMENT_REQUIRED.value());
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        objectMapper.writeValue(response.getWriter(), body);
+        // Dual-emit: v2 transport spec puts the payment requirements in
+        // a base64-encoded header, while v1 clients keep reading the
+        // JSON body. Both contain the same PaymentRequired object so
+        // clients on either side of the transport upgrade succeed.
+        byte[] serialised = objectMapper.writeValueAsBytes(body);
+        response.setHeader(PAYMENT_REQUIRED_HEADER,
+                Base64.getEncoder().encodeToString(serialised));
+        response.getOutputStream().write(serialised);
     }
 
     /**

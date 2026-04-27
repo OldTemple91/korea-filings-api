@@ -38,7 +38,7 @@ public class WebConfig implements WebMvcConfigurer {
                 .allowedOriginPatterns("*")
                 .allowedMethods("GET", "POST", "OPTIONS")
                 .allowedHeaders("*")
-                .exposedHeaders("X-PAYMENT-RESPONSE")
+                .exposedHeaders("X-PAYMENT-RESPONSE", "PAYMENT-REQUIRED", "PAYMENT-RESPONSE")
                 .allowCredentials(false)
                 .maxAge(3600);
         registry.addMapping("/actuator/**")
