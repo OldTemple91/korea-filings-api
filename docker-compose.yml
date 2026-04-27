@@ -63,6 +63,7 @@ services:
       X402_ASSET: ${X402_ASSET}
       X402_CDP_KEY_ID: ${X402_CDP_KEY_ID:-}
       X402_CDP_PRIVATE_KEY: ${X402_CDP_PRIVATE_KEY:-}
+      SUMMARY_BACKFILL_ENABLED: ${SUMMARY_BACKFILL_ENABLED:-false}
     ports:
       - "8080:8080"
     healthcheck:
