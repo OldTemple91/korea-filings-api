@@ -1,3 +1,11 @@
+server:
+  # Cloudflare Tunnel terminates TLS upstream and forwards us plain HTTP
+  # with X-Forwarded-Proto: https. Without this, every URL Spring builds
+  # (resource.url in the 402 body, /actuator/info self-link) reports the
+  # internal http:// scheme — confusing for clients and x402 indexers
+  # that probe the resource.
+  forward-headers-strategy: framework
+
 spring:
   application:
     name: korea-filings-api
