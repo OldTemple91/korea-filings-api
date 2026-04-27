@@ -1,35 +1,243 @@
-# DART Intelligence API
+# Korea Filings
 
-AI-ready English summaries of Korean corporate disclosures (DART filings), delivered via HTTP, paid per call in USDC via the [x402 protocol](https://x402.org).
+[![PyPI](https://img.shields.io/pypi/v/koreafilings.svg?label=koreafilings)](https://pypi.org/project/koreafilings/)
+[![PyPI MCP](https://img.shields.io/pypi/v/koreafilings-mcp.svg?label=koreafilings-mcp)](https://pypi.org/project/koreafilings-mcp/)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![x402](https://img.shields.io/badge/payments-x402-orange.svg)](https://www.x402.org/)
 
-Built for AI agents, quant funds, and investment research platforms that need programmatic access to Korean market events without reading Korean PDFs.
+Machine-ready English summaries of Korean corporate disclosures
+(DART · 전자공시), paid per call in USDC over the
+[x402](https://www.x402.org/) protocol on Base. Built for AI agents,
+quant funds, and research platforms that need programmatic access to
+Korean market events without reading Korean PDFs.
 
-## Status
+**Live**: <https://koreafilings.com> · API at
+<https://api.koreafilings.com> · interactive docs at
+[`/swagger-ui`](https://api.koreafilings.com/swagger-ui/index.html).
 
-🚧 Pre-development. Starting from this skeleton.
+## What it does
 
-## Quick Start (Development)
+Raw DART data is free, but it's in Korean and structured for human
+filings clerks, not LLMs. Korea Filings turns every disclosure into a
+structured, cached, English-summarised JSON payload an agent can
+consume in one call:
+
+```json
+{
+  "rcptNo": "20260424900874",
+  "summaryEn": "Global SM's stock trading was temporarily suspended on April 24, 2026, due to a change in electronic registration related to a stock consolidation or split.",
+  "importanceScore": 10,
+  "eventType": "SINGLE_STOCK_TRADING_SUSPENSION",
+  "sectorTags": ["Capital Goods"],
+  "tickerTags": ["095440"],
+  "actionableFor": ["traders", "long_term_investors"],
+  "generatedAt": "2026-04-24T08:47:51Z"
+}
+```
+
+The cache is the moat — the first agent to request a disclosure pays
+for the LLM run; every subsequent agent for the same `rcpt_no` hits a
+near-zero-cost DB lookup and still pays the same fixed fee. Margins
+compound as adoption grows.
+
+## How to use it
+
+Pick whichever surface fits your stack. All three speak the same x402
+flow under the hood; the wallet that signs the `X-PAYMENT` header *is*
+the identity. No API keys. No signup.
+
+### Python SDK
 
 ```bash
+pip install koreafilings
+```
+
+```python
+from koreafilings import Client
+
+with Client(private_key="0x...", network="base-sepolia") as client:
+    summary = client.get_summary("20260424900874")
+
+    print(f"[{summary.importance_score}/10] {summary.event_type}")
+    print(summary.summary_en)
+    print("paid:", client.last_settlement.tx_hash)
+```
+
+### MCP server (Claude Desktop, Cursor, Continue, …)
+
+```bash
+uv tool install koreafilings-mcp
+```
+
+In your MCP client's config:
+
+```json
+{
+  "mcpServers": {
+    "koreafilings": {
+      "command": "uv",
+      "args": ["tool", "run", "koreafilings-mcp"],
+      "env": {
+        "KOREAFILINGS_PRIVATE_KEY": "0x...",
+        "KOREAFILINGS_NETWORK": "base-sepolia"
+      }
+    }
+  }
+}
+```
+
+Two tools become available:
+
+- `get_pricing` — free; returns the live wallet, network, USDC
+  contract, and per-endpoint price.
+- `get_disclosure_summary(rcpt_no)` — paid; returns the structured
+  summary plus the on-chain settlement transaction hash.
+
+### curl / direct HTTP
+
+```bash
+# 1) Probe the endpoint without payment to discover the requirements.
+curl -i https://api.koreafilings.com/v1/disclosures/20260424900874/summary
+#   HTTP/2 402
+#   payment-required: <base64 PaymentRequired payload>
+#   { "x402Version": 2, "accepts": [{ "scheme": "exact", ... }], ... }
+
+# 2) Sign an EIP-3009 TransferWithAuthorization for one of the entries
+#    in `accepts`, base64-encode the signed PaymentPayload, and resend
+#    with the X-PAYMENT header. See testclient/payer.py for a 90-line
+#    reference implementation.
+curl -H "X-PAYMENT: $SIGNED" \
+     https://api.koreafilings.com/v1/disclosures/20260424900874/summary
+#   HTTP/2 200
+#   x-payment-response: <base64 SettlementResponse with tx hash>
+#   { "rcptNo": "...", "summaryEn": "...", ... }
+```
+
+## Pricing
+
+| Endpoint | Method | Price (USDC) |
+|---|---|---|
+| `/v1/disclosures/{rcptNo}/summary` | GET | 0.005 |
+
+The full machine-readable pricing descriptor (current wallet, network,
+USDC contract, all paid endpoints) lives at
+[`/v1/pricing`](https://api.koreafilings.com/v1/pricing).
+
+Currently on Base Sepolia testnet — testnet USDC is free from the
+[Circle faucet](https://faucet.circle.com/), so anyone can try the
+service end-to-end without spending real money. The mainnet code path
+(Coinbase CDP facilitator with Ed25519 JWT auth) is wired and unit
+tested; the switch is a single environment variable when the first
+paying customer signals interest.
+
+## Architecture
+
+Three logical subsystems share one Spring Boot application:
+
+1. **Ingestion** — schedules a 30-second poll against the DART Open
+   API, deduplicates by `rcpt_no`, persists raw metadata to Postgres,
+   enqueues a summarisation job.
+2. **Summarisation** — consumes summarisation jobs, classifies
+   complexity, routes to Gemini 2.5 Flash-Lite (with Resilience4j
+   rate-limiting + circuit-breaking + retries), persists English
+   summary + ticker / sector tags + audit row to `llm_audit`.
+3. **Paid API** — Spring MVC controller behind an `X402PaywallInterceptor`.
+   Every request: check `X-PAYMENT`, verify the signature with the
+   facilitator, check Redis for replay, settle on a 200 response, and
+   attach `X-PAYMENT-RESPONSE` carrying the on-chain tx hash via a
+   `ResponseBodyAdvice`. The interceptor short-circuits for handler
+   methods without `@X402Paywall`, so `/v1/pricing`, `/.well-known/x402`,
+   and the OpenAPI document stay unauthenticated.
+
+The 402 challenge follows the
+[x402 v2 transport spec](https://github.com/coinbase/x402/blob/main/specs/transports-v2/http.md):
+the `PAYMENT-REQUIRED` header carries the base64-encoded
+`PaymentRequired` payload (with the [`bazaar`](https://github.com/coinbase/x402/blob/main/specs/extensions/bazaar.md)
+extension declaring an input/output schema for AI-agent
+discoverability), while the body keeps a v1-compatible JSON copy so
+older clients keep working.
+
+Stack: Java 21, Spring Boot 3.4, PostgreSQL 16, Redis 7, Docker
+Compose, Cloudflare Tunnel, Cloudflare Workers, Linux VPS. See
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for deeper notes.
+
+## Repository layout
+
+```
+.
+├── src/                  # Spring Boot application source
+├── sdk/python/           # `koreafilings` Python SDK (PyPI)
+├── mcp/                  # `koreafilings-mcp` MCP server (PyPI)
+├── landing/              # Marketing landing page (Cloudflare Workers)
+├── testclient/           # Reference Python x402 client (testnet payer)
+├── docs/
+│   ├── ARCHITECTURE.md   # System design
+│   ├── PRD.md            # Product requirements
+│   ├── ROADMAP.md        # Six-week launch plan
+│   └── STATUS.md         # Operator handoff notes
+├── Dockerfile            # Multi-stage prod build (eclipse-temurin:21)
+├── docker-compose.yml    # postgres + redis + app + cloudflared
+└── build.gradle.kts      # Gradle (Kotlin DSL)
+```
+
+## Local development
+
+```bash
+git clone https://github.com/OldTemple91/korea-filings-api.git
+cd korea-filings-api
+
 cp .env.example .env
-# Fill in DART_API_KEY, GEMINI_API_KEY at minimum
+# Fill in:
+#   POSTGRES_PASSWORD     (any strong password)
+#   DART_API_KEY          (free, register at https://opendart.fss.or.kr/)
+#   GEMINI_API_KEY        (free tier, https://aistudio.google.com/apikey)
+#   X402_RECIPIENT_ADDRESS (your receiving wallet — only the address)
 
 docker compose up -d postgres redis
 ./gradlew bootRun
 ```
 
-## Documentation
+To exercise a real x402 payment against a local instance, copy
+`testclient/.env.testclient.example` to `testclient/.env.testclient`,
+fill in a Base Sepolia wallet's private key (a fresh wallet funded
+from the [Circle faucet](https://faucet.circle.com/) is the safe
+pattern), and run `python testclient/payer.py`.
 
-- [`CLAUDE.md`](CLAUDE.md) — project context for Claude Code and future contributors
-- [`docs/PRD.md`](docs/PRD.md) — product requirements
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — system design
-- [`docs/ROADMAP.md`](docs/ROADMAP.md) — six-week plan to launch
-- [`docs/INITIAL_PROMPT.md`](docs/INITIAL_PROMPT.md) — first-session prompt for Claude Code
+## Status
 
-## Stack
+Live on Base Sepolia, MVP feature set:
 
-Java 21, Spring Boot 3.x, PostgreSQL 16, Redis 7, Docker Compose, Cloudflare Tunnel. Primary LLM: Gemini 2.5 Flash-Lite. Payment rail: USDC on Base via x402.
+- DART real-time ingestion (30-second poll)
+- Gemini 2.5 Flash-Lite summarisation with importance scoring + sector / ticker tagging
+- x402 v2 paywall with `bazaar` extension for agent-discoverable invocation
+- Discovery via `/.well-known/x402`
+- OpenAPI 3 spec at [`/v3/api-docs`](https://api.koreafilings.com/v3/api-docs) + interactive Swagger UI
+- Python SDK and MCP server published to PyPI
+- Indexed by [x402scan](https://www.x402scan.com)
+- Production deploy on VPS provider via Cloudflare Tunnel
+
+Coming next:
+
+- Base mainnet flip (CDP facilitator code already wired and unit-tested)
+- Additional paid endpoints: `/disclosures/latest`, `/by-ticker/{ticker}`,
+  `POST /filter`, SSE `/stream`, `/impact`
+- TypeScript SDK
+- Korean-language landing page
+
+See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the full plan.
+
+## Contributing
+
+Issues and PRs are welcome — particularly:
+
+- Ports of the Python SDK to other languages (TypeScript, Go, Rust)
+- Additional analytics endpoints (price reaction, comparable filings, …)
+- Integrations with non-x402 agent frameworks
+- Translation of the landing page into other languages
+
+For substantial changes, please open an issue first describing the
+direction so we can sanity-check fit before you build.
 
 ## License
 
-TBD.
+[MIT](LICENSE).
