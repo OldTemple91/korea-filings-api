@@ -110,9 +110,9 @@ The SDK signs locally; the key never leaves the caller's process. The server nev
 
 Resilience4j RateLimiter (10 RPM, conservative below the 15 RPM free-tier ceiling) gates outbound calls; CircuitBreaker on the gemini provider trips after sustained failures; the SummaryRetry scheduler re-enqueues failed jobs on a separate cadence. None of this affects paying readers because cache hits short-circuit the whole pipeline; only the first caller for a given rcpt_no can possibly hit a 429-driven slow path.
 
-**Q: Will mainnet pricing be the same?**
+**Q: Pricing roadmap?**
 
-Yes — 0.005 USDC per summary stays flat across testnet and mainnet. The LLM cost is the same regardless of which chain settles the payment. Eventually I'll add tiered or volume pricing if that helps high-frequency agents, but flat per-call is the v1.
+0.005 USDC per summary stays flat for v1. The marginal cost on a cache hit is near-zero, so per-call flat pricing made more sense than tokens or subscriptions. If high-frequency agents need volume tiers, that lands in v1.1.
 
 **Q: Korean text in console?**
 
