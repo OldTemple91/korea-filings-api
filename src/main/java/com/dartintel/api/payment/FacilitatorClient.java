@@ -14,6 +14,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.ClientRequest;
 import org.springframework.web.reactive.function.client.ExchangeFilterFunction;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
+import reactor.core.publisher.Mono;
 
 import java.net.http.HttpClient;
 import java.time.Duration;
@@ -52,6 +54,7 @@ public class FacilitatorClient {
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(request)
                 .retrieve()
+                .onStatus(s -> s.isError(), this::logAndPropagate)
                 .bodyToMono(FacilitatorVerifyResponse.class)
                 .timeout(readTimeout)
                 .block(blockTimeout);
@@ -65,9 +68,31 @@ public class FacilitatorClient {
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(request)
                 .retrieve()
+                .onStatus(s -> s.isError(), this::logAndPropagate)
                 .bodyToMono(FacilitatorSettleResponse.class)
                 .timeout(readTimeout)
                 .block(blockTimeout);
+    }
+
+    /**
+     * Surface the facilitator's error body in our logs before letting
+     * the exception bubble up. Without this, a 4xx from CDP only shows
+     * the status code — the JSON body that explains why is invisible,
+     * which makes debugging mainnet integration painful.
+     */
+    private Mono<Throwable> logAndPropagate(org.springframework.web.reactive.function.client.ClientResponse resp) {
+        return resp.bodyToMono(String.class)
+                .defaultIfEmpty("")
+                .map(body -> {
+                    log.error("Facilitator {} response body: {}", resp.statusCode(), body);
+                    return WebClientResponseException.create(
+                            resp.statusCode().value(),
+                            resp.statusCode().toString(),
+                            resp.headers().asHttpHeaders(),
+                            body.getBytes(),
+                            null
+                    );
+                });
     }
 
     private static ExchangeFilterFunction cdpAuthFilter(CdpJwtSigner signer) {

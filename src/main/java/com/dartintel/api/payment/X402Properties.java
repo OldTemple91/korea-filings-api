@@ -8,6 +8,22 @@ public record X402Properties(
         String network,
         String recipientAddress,
         String asset,
+        /**
+         * EIP-712 domain {@code name} for the configured ERC-20 asset.
+         * Must match the value the on-chain contract returns from
+         * {@code name()} — the facilitator simulates the
+         * {@code transferWithAuthorization} call and the contract
+         * reverts on any domain mismatch. Defaults to {@code "USDC"}
+         * which matches Base Sepolia testnet; Base mainnet USDC
+         * returns {@code "USD Coin"}.
+         */
+        String tokenName,
+        /**
+         * EIP-712 domain {@code version} for the configured asset.
+         * Defaults to {@code "2"} which matches both Base Sepolia and
+         * Base mainnet USDC.
+         */
+        String tokenVersion,
         int maxTimeoutSeconds,
         Timeout timeout,
         Replay replay,

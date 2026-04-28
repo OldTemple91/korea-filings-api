@@ -74,6 +74,11 @@ x402:
   # USDC contract. Base Sepolia: 0x036CbD53842c5426634e7929541eC2318f3dCF7e.
   # Base mainnet: 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913.
   asset: ${X402_ASSET:0x036CbD53842c5426634e7929541eC2318f3dCF7e}
+  # EIP-712 domain — must match the on-chain contract's name() and version()
+  # exactly or the facilitator's `transferWithAuthorization` simulation reverts
+  # with `invalid_payload`. Sepolia USDC: "USDC"/"2"; mainnet USDC: "USD Coin"/"2".
+  token-name: ${X402_TOKEN_NAME:USDC}
+  token-version: ${X402_TOKEN_VERSION:2}
   max-timeout-seconds: 300
   timeout:
     connect-ms: 5000

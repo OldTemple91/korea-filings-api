@@ -154,7 +154,10 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
                 props.asset(),
                 props.recipientAddress(),
                 props.maxTimeoutSeconds(),
-                Map.of("name", "USDC", "version", "2")
+                Map.of(
+                        "name", props.tokenName() != null ? props.tokenName() : "USDC",
+                        "version", props.tokenVersion() != null ? props.tokenVersion() : "2"
+                )
         );
     }
 

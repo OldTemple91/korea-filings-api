@@ -49,6 +49,8 @@ class FacilitatorClientTest {
                 "eip155:84532",
                 "0x209693Bc6afc0C5328bA36FaF03C514EF312287C",
                 "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+                "USDC",
+                "2",
                 300,
                 new X402Properties.Timeout(2000, 5000),
                 new X402Properties.Replay(3600),

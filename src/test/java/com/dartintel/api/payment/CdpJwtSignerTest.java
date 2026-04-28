@@ -80,6 +80,8 @@ class CdpJwtSignerTest {
                 "eip155:8453",
                 "0x0",
                 "0x0",
+                "USD Coin",
+                "2",
                 300,
                 new X402Properties.Timeout(5_000, 10_000),
                 new X402Properties.Replay(3600),

@@ -211,12 +211,12 @@ print(resp.json()["summaryEn"])</code></pre>
 <h2>First production settlement</h2>
 <p>A live 0.005 USDC settlement from this deployment:</p>
 <p class="tx-hash">
-  <a href="https://sepolia.basescan.org/tx/0x1dbf9885194261e1ad64be8205897ef9c5335ad254921b337c343c23d34b0a72">
-    0x1dbf9885194261e1ad64be8205897ef9c5335ad254921b337c343c23d34b0a72
+  <a href="https://basescan.org/tx/0x681c995e149d3ce5765ea8a3b0f921a45352fccefbd9fc9258bf4f6141eafd7c">
+    0x681c995e149d3ce5765ea8a3b0f921a45352fccefbd9fc9258bf4f6141eafd7c
   </a>
 </p>
 <p style="font-size:13px;">
-  Above is the original first settlement on Base Sepolia, kept as a permanent demo of the EIP-3009 + facilitator flow. Live calls now route to Base mainnet via the Coinbase CDP facilitator.
+  First on-chain settlement on Base mainnet via the Coinbase CDP facilitator. 0.005 USDC moved from a payer wallet to the merchant wallet (0x8467Be…) in a single <code>transferWithAuthorization</code> call.
 </p>
 
 <h2>Status</h2>

@@ -48,7 +48,7 @@ public class WellKnownController {
      * disclosure that exists today will still exist tomorrow, and
      * indexers do not need a moving target.
      */
-    private static final String SAMPLE_RCPT_NO = "20260424900874";
+    private static final String SAMPLE_RCPT_NO = "20260427901120";
 
     private final RequestMappingHandlerMapping handlerMapping;
     private final String publicBaseUrl;

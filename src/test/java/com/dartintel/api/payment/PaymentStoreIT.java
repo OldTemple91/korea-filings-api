@@ -41,7 +41,7 @@ class PaymentStoreIT {
         redisTemplate = new StringRedisTemplate(connectionFactory);
         redisTemplate.getConnectionFactory().getConnection().serverCommands().flushAll();
         X402Properties props = new X402Properties(
-                "http://x", "eip155:84532", "0x", "0x", 300,
+                "http://x", "eip155:84532", "0x", "0x", "USDC", "2", 300,
                 new X402Properties.Timeout(1000, 1000),
                 new X402Properties.Replay(3600),
                 new X402Properties.Cdp("", "")
