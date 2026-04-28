@@ -10,11 +10,13 @@ live, what's next, and the minimum setup to keep moving.
   live in production at `api.koreafilings.com`.
 - **10 on-chain x402 settlements** executed against Base Sepolia
   (curl + SDK + MCP regression suite). All recorded in `payment_log`.
-- **Mainnet flipped on 2026-04-27**: facilitator switched to Coinbase
-  CDP (Ed25519 JWT auth), network to eip155:8453, asset to Base
-  mainnet USDC. Production was untested on mainnet at flip time —
-  first real customer payment is the canary. Rollback: revert the
-  three env vars and `docker compose up -d` (~30s).
+- **Mainnet live since 2026-04-28**: first on-chain settlement at
+  [`0x681c995e…`](https://basescan.org/tx/0x681c995e149d3ce5765ea8a3b0f921a45352fccefbd9fc9258bf4f6141eafd7c).
+  Facilitator: Coinbase CDP (Ed25519 JWT auth). Bug caught at flip
+  time: EIP-712 domain `name` was hard-coded to "USDC" but the Base
+  mainnet contract returns "USD Coin"; fixed via the new
+  `X402_TOKEN_NAME` / `X402_TOKEN_VERSION` config knobs and committed
+  in b7af24e.
 - **PyPI packages published** — `koreafilings` 0.1.0 + `koreafilings-mcp`
   0.1.0. Names permanently reserved.
 - **PyPI packages published** — `koreafilings` 0.1.0 + `koreafilings-mcp` 0.1.0.
@@ -31,7 +33,7 @@ live, what's next, and the minimum setup to keep moving.
 | OpenAPI spec | https://api.koreafilings.com/v3/api-docs | Machine-readable JSON. |
 | Pricing | https://api.koreafilings.com/v1/pricing | Free, lists paid endpoints + x402 wallet. |
 | Health | https://api.koreafilings.com/actuator/health | Liveness/readiness. |
-| Paid summary | `GET /v1/disclosures/{rcptNo}/summary` | 0.005 USDC on Base Sepolia (currently). |
+| Paid summary | `GET /v1/disclosures/{rcptNo}/summary` | 0.005 USDC on Base mainnet via Coinbase CDP facilitator. |
 | Python SDK | https://pypi.org/project/koreafilings/ | `pip install koreafilings` |
 | MCP server | https://pypi.org/project/koreafilings-mcp/ | `uv tool install koreafilings-mcp` |
 | Source | https://github.com/OldTemple91/korea-filings-api | Private push via `OldTemple91`. |
@@ -49,47 +51,51 @@ live, what's next, and the minimum setup to keep moving.
 - **GitHub** — `OldTemple91/korea-filings-api`. Push access via stored
   HTTPS creds on this Mac.
 
-## What Week 6 still has
+## What's left
 
-1. **Base mainnet switch — code shipped, switch deferred.**
-   - All Java + config plumbing is in: `CdpJwtSigner` (Ed25519 JWT per
-     request, jjwt 0.12), `X402Properties.Cdp`, `FacilitatorClient` filter
-     that attaches `Authorization: Bearer <jwt>` only when the CDP fields
-     are populated. 3 unit tests cover the signer.
-   - Flipping `.env` to mainnet booted cleanly in production
-     (CDP signer initialised, pricing endpoint reflected mainnet
-     contract + chain id), but **no live on-chain mainnet settlement
-     was executed** — Coinbase Korea does not surface USDC for
-     small-amount card purchase, and the user opted not to KYC through
-     a secondary exchange (Bybit/MEXC) just for a smoke test.
-   - **Decision: launch on testnet**, keep the mainnet code dormant.
-     The switch is one env var (`X402_FACILITATOR_URL`,
-     `X402_NETWORK=eip155:8453`,
-     `X402_ASSET=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`,
-     plus `X402_CDP_KEY_ID` + `X402_CDP_PRIVATE_KEY`) and a container
-     restart. Time-to-mainnet from a verified-customer trigger is ~2 min.
-   - **Trigger to flip mainnet**: a real customer signals they want to
-     pay in real USDC, OR the operator runs a verified live test (Bybit
-     KYC + $5 USDC on Base mainnet to wallet
-     `0x254A42D7c617B38c7B43186e892d3af4bf9D6c44`, then SDK live test
-     with `network="base"`).
-   - **Risk acknowledged**: an untested mainnet flip means the first
-     real customer could hit a CDP JWT format quirk we never
-     exercised. Mitigations if needed at flip time: (a) run a live
-     test ourselves first, (b) add Slack/email alerts on facilitator
-     errors, (c) keep the rollback script ready (one rsync of `.env`
-     plus restart).
+1. **v2 prompt backfill** — the v1 prompt produced too many "OTHER"
+   eventTypes and generic boilerplate; the v2 prompt
+   (taxonomy + importance anchors + audience rules + temperature 0)
+   is shipped and a handful of natural-poll filings are already
+   summarised under it. The full re-summarisation of the existing
+   720 disclosures is blocked on Gemini's free-tier daily quota
+   resetting at 16:00 KST; trigger via:
+   ```bash
+   ssh root@<PROD_VM> "cd /root/korea-filings-api && \
+     SUMMARY_BACKFILL_ENABLED=true \
+     docker compose --profile prod up -d --force-recreate app"
+   ```
 
-2. **Directory registrations** — x402scan, Agent.market, MCP registries
-   (glama.ai, smithery.ai, mcp.so). Each takes 5–15 min; need name,
-   description, GitHub link, demo video or JSON schema.
+2. **Directory registrations**: x402scan ✅, Glama ✅, mcp.so ✅,
+   Smithery deferred (site outage at submission time, retry).
 
-3. **HN Show HN post** — draft in a new `docs/launch/HN_DRAFT.md`.
-   Ideal timing: Tuesday/Wednesday 13:00–15:00 UTC. The pitch is
-   "x402 testnet live, paste a 14-digit DART number and pay 0.005
-   testnet USDC for an English summary" — testnet keeps the friction
-   to zero for the HN crowd, who can grab faucet USDC and try it in
-   under a minute.
+3. **HN Show HN post** — `docs/launch/HN_DRAFT.md` is the copy. Ideal
+   timing: Tuesday/Wednesday 13:00–15:00 UTC (22:00–24:00 KST). The
+   first mainnet settlement at
+   [`0x681c995e…`](https://basescan.org/tx/0x681c995e149d3ce5765ea8a3b0f921a45352fccefbd9fc9258bf4f6141eafd7c)
+   is the headline proof.
+
+4. **Operational follow-ups (post-launch)**: Slack / email alert when
+   `payment_log` gets a new row, Grafana dashboard for the four
+   metrics that matter (calls/min, cache hit ratio, mean LLM cost
+   per cache miss, payer diversity), TypeScript SDK port.
+
+## Mainnet rollback recipe
+
+If a regression makes mainnet payments fail and we need to fall
+back to the public testnet facilitator while debugging, swap these
+five env vars and bounce the app:
+
+```env
+X402_FACILITATOR_URL=https://www.x402.org/facilitator
+X402_NETWORK=eip155:84532
+X402_ASSET=0x036CbD53842c5426634e7929541eC2318f3dCF7e
+X402_TOKEN_NAME=USDC
+X402_TOKEN_VERSION=2
+# Leave X402_CDP_KEY_ID / X402_CDP_PRIVATE_KEY blank.
+```
+
+Then `rsync .env <vm>:/root/korea-filings-api/.env && docker compose --profile prod up -d --force-recreate app`. ~30 seconds.
 
 ## Continuing on a different machine — minimum setup
 

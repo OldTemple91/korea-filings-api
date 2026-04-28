@@ -55,8 +55,8 @@ pip install koreafilings
 ```python
 from koreafilings import Client
 
-with Client(private_key="0x...", network="base-sepolia") as client:
-    summary = client.get_summary("20260424900874")
+with Client(private_key="0x...", network="base") as client:
+    summary = client.get_summary("20260427901120")
 
     print(f"[{summary.importance_score}/10] {summary.event_type}")
     print(summary.summary_en)
@@ -79,7 +79,7 @@ In your MCP client's config:
       "args": ["tool", "run", "koreafilings-mcp"],
       "env": {
         "KOREAFILINGS_PRIVATE_KEY": "0x...",
-        "KOREAFILINGS_NETWORK": "base-sepolia"
+        "KOREAFILINGS_NETWORK": "base"
       }
     }
   }
@@ -97,7 +97,7 @@ Two tools become available:
 
 ```bash
 # 1) Probe the endpoint without payment to discover the requirements.
-curl -i https://api.koreafilings.com/v1/disclosures/20260424900874/summary
+curl -i https://api.koreafilings.com/v1/disclosures/20260427901120/summary
 #   HTTP/2 402
 #   payment-required: <base64 PaymentRequired payload>
 #   { "x402Version": 2, "accepts": [{ "scheme": "exact", ... }], ... }
@@ -107,7 +107,7 @@ curl -i https://api.koreafilings.com/v1/disclosures/20260424900874/summary
 #    with the X-PAYMENT header. See testclient/payer.py for a 90-line
 #    reference implementation.
 curl -H "X-PAYMENT: $SIGNED" \
-     https://api.koreafilings.com/v1/disclosures/20260424900874/summary
+     https://api.koreafilings.com/v1/disclosures/20260427901120/summary
 #   HTTP/2 200
 #   x-payment-response: <base64 SettlementResponse with tx hash>
 #   { "rcptNo": "...", "summaryEn": "...", ... }
@@ -123,12 +123,12 @@ The full machine-readable pricing descriptor (current wallet, network,
 USDC contract, all paid endpoints) lives at
 [`/v1/pricing`](https://api.koreafilings.com/v1/pricing).
 
-Currently on Base Sepolia testnet — testnet USDC is free from the
-[Circle faucet](https://faucet.circle.com/), so anyone can try the
-service end-to-end without spending real money. The mainnet code path
-(Coinbase CDP facilitator with Ed25519 JWT auth) is wired and unit
-tested; the switch is a single environment variable when the first
-paying customer signals interest.
+Live on **Base mainnet** via the Coinbase CDP facilitator. The first
+on-chain settlement is permanent at
+[0x681c995e…](https://basescan.org/tx/0x681c995e149d3ce5765ea8a3b0f921a45352fccefbd9fc9258bf4f6141eafd7c) —
+a payer wallet moved 0.005 USDC to the merchant wallet
+`0x8467Be164C75824246CFd0fCa8E7F7009fB8f720` in a single
+`transferWithAuthorization` call.
 
 ## Architecture
 
@@ -199,13 +199,18 @@ docker compose up -d postgres redis
 
 To exercise a real x402 payment against a local instance, copy
 `testclient/.env.testclient.example` to `testclient/.env.testclient`,
-fill in a Base Sepolia wallet's private key (a fresh wallet funded
-from the [Circle faucet](https://faucet.circle.com/) is the safe
-pattern), and run `python testclient/payer.py`.
+fill in a wallet's private key (a fresh burner wallet funded with a
+dollar or two of Base mainnet USDC is the safe pattern), and run
+`python testclient/payer.py`. For local development against the public
+testnet facilitator, point `X402_FACILITATOR_URL` at
+`https://www.x402.org/facilitator` and use Base Sepolia parameters in
+your `.env`.
 
 ## Status
 
-Live on Base Sepolia, MVP feature set:
+Live on **Base mainnet** with verified on-chain settlement
+([first tx](https://basescan.org/tx/0x681c995e149d3ce5765ea8a3b0f921a45352fccefbd9fc9258bf4f6141eafd7c)).
+MVP feature set:
 
 - DART real-time ingestion (30-second poll)
 - Gemini 2.5 Flash-Lite summarisation with importance scoring + sector / ticker tagging
@@ -215,14 +220,15 @@ Live on Base Sepolia, MVP feature set:
 - Python SDK and MCP server published to PyPI
 - Indexed by [x402scan](https://www.x402scan.com)
 - Production deploy on VPS provider via Cloudflare Tunnel
+- Coinbase CDP facilitator (Ed25519 JWT auth) for mainnet settlement
 
 Coming next:
 
-- Base mainnet flip (CDP facilitator code already wired and unit-tested)
 - Additional paid endpoints: `/disclosures/latest`, `/by-ticker/{ticker}`,
   `POST /filter`, SSE `/stream`, `/impact`
 - TypeScript SDK
 - Korean-language landing page
+- Slack / email alerts on settlement
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the full plan.
 

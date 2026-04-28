@@ -25,15 +25,18 @@ https://koreafilings.com
 **Text field** (HN does NOT render markdown — keep formatting plain):
 
 ```
-I built a paywalled API that turns Korean DART (전자공시) corporate disclosures into structured English summaries, paid per call in USDC via the x402 protocol (https://www.x402.org/) on Base.
+I built a paywalled API that turns Korean DART (전자공시) corporate disclosures into structured English summaries, paid per call in USDC via the x402 protocol (https://www.x402.org/) on Base mainnet.
 
-Try it in ~60 seconds (you'll need a wallet with a few cents of USDC on Base):
+First on-chain settlement is verifiable here:
+https://basescan.org/tx/0x681c995e149d3ce5765ea8a3b0f921a45352fccefbd9fc9258bf4f6141eafd7c
+
+Try it in ~60 seconds (you'll need a wallet with a few cents of USDC on Base mainnet):
 
   pip install koreafilings
 
   from koreafilings import Client
   with Client(private_key="0x...", network="base") as c:
-      s = c.get_summary("20260424900874")
+      s = c.get_summary("20260427901120")
       print(s.summary_en)
       print("paid:", c.last_settlement.tx_hash)
 
@@ -52,7 +55,7 @@ What's there:
 
 Why: raw DART data is free but in Korean and structured for filing clerks, not LLMs. Korean equities carry real information asymmetry vs US/EU — but the entry tax for English-speaking quant teams is "hire someone to read Korean PDFs all day." Per-call x402 felt like the cleanest fit: an autonomous agent watching Korean markets pays $0.005 per filing it cares about, no signup, no API key, no monthly minimum.
 
-Honest caveats: live on Base mainnet via the Coinbase CDP facilitator. The code path is unit-tested and has 10 successful settlements on Base Sepolia testnet (BaseScan trail is in the repo) but the first on-chain mainnet settlement will be the one of you who tries this. One paid endpoint live; five more in the roadmap. Repo (MIT): https://github.com/OldTemple91/korea-filings-api
+Honest caveats: one paid endpoint live (single-summary fetch); five more (`latest`, `by-ticker`, `filter`, `stream`, `impact`) are in the roadmap. The first mainnet settlement above proves the EIP-3009 + CDP facilitator path; the testnet trail (10 settlements on Base Sepolia, in the repo) shows it survived a couple of weeks of regression testing too. Repo (MIT): https://github.com/OldTemple91/korea-filings-api
 
 Curious to hear what breaks.
 ```
@@ -72,7 +75,7 @@ Why a Java backend for a crypto-payments service: I'm a Spring Boot engineer by 
 
 x402 v2 quirks I hit: the spec moved the PaymentRequired payload from the body into a base64-encoded PAYMENT-REQUIRED header in v2, but most existing clients (including the popular x402.org facilitator) still read the body. I dual-emit both. The "bazaar" extension (specs/extensions/bazaar.md) isn't optional in x402scan's strict-mode validator — my first two registration attempts were rejected before I added it.
 
-On mainnet without a self-test: the code path is in the repo (CdpJwtSigner — Ed25519 JWT signed per request and attached as Authorization: Bearer to the CDP facilitator) and unit-tested. The first live mainnet settlement is whoever calls the SDK from this thread first. Korean banks rejected every fiat-on-ramp I tried (MetaMask Buy, Bybit, MoonPay, Coinbase) for small-amount USDC purchases, so the choice came down to a multi-day KYC sidequest at a different exchange or just shipping with the code path warm. I shipped — the testnet trail (10 successful settlements on Base Sepolia via the same EIP-3009 + facilitator flow, BaseScan visible from the repo) is robust enough that I'd bet a coffee the mainnet path Just Works. Rollback is one env var if it doesn't.
+The bug I caught right before launch: testnet USDC's EIP-712 domain `name` is "USDC", but the Base mainnet contract's `name()` returns "USD Coin" (full ERC-20 token name). The first mainnet attempt failed with the CDP facilitator's `transferWithAuthorization` simulation reverting and a tight `invalid_payload` error. The fix was a one-line config swap (X402_TOKEN_NAME=USD Coin) — both networks now coexist via env-var-driven domain values. If you're building anything that signs against multiple USDC deployments, this footgun is worth knowing about.
 
 Happy to dig into any of this.
 ```
