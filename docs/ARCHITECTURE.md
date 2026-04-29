@@ -342,7 +342,7 @@ in-place before considering any horizontal split.
 
 The DART polling rate (30s) is fixed by DART's recommendation
 and is independent of client traffic. LLM call volume is bounded
-by new disclosures per day (~300–500), so daily Gemini spend is
+by new disclosures per weekday (~870 average, range 600–1,100), so daily Gemini spend is
 predictable and small regardless of how many clients hit cached
 summaries.
 

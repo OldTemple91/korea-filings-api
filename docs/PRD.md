@@ -2,7 +2,7 @@
 
 ## Problem
 
-Korean corporate disclosures are filed through DART (Data Analysis, Retrieval and Transfer System) operated by the Financial Supervisory Service. Roughly 300–500 filings are published daily across the 3,961 KOSPI / KOSDAQ / KONEX listed companies the service tracks. The original filings are in Korean, often as PDF attachments to XML metadata, and use domain-specific vocabulary (감자, 유상증자, 자사주 매입, 전환사채, 지주사 전환, 대규모내부거래 등).
+Korean corporate disclosures are filed through DART (Data Analysis, Retrieval and Transfer System) operated by the Financial Supervisory Service. Roughly **800–1,100 filings are published per weekday (~870 average, ~220,000 per year)** across the ~3,800 KOSPI / KOSDAQ listed companies the service tracks (plus ~80 OTHER and unclassified entries in the DART corpCode dump). The original filings are in Korean, often as PDF attachments to XML metadata, and use domain-specific vocabulary (감자, 유상증자, 자사주 매입, 전환사채, 지주사 전환, 대규모내부거래 등).
 
 Global investors — foreign institutional investors, quant funds, and increasingly AI research agents deployed by these firms — need to react to these filings within minutes. Today they rely on (a) delayed English reporting from Korean financial news outlets, (b) in-house translators, or (c) no coverage at all for non-top-50 tickers. None of these work for an AI agent that must read and act programmatically.
 
