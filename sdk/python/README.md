@@ -5,8 +5,11 @@ Korean DART (금융감독원 전자공시) corporate disclosures, paid per call 
 on Base via the [x402](https://www.x402.org/) payment protocol.
 
 **No API keys. No monthly fee. No signup.** The wallet that signs the
-payment *is* the identity. First call for a disclosure triggers an LLM
-run; every call after costs the same flat fee from the server-side cache.
+payment *is* the identity. Free company-directory and recent-filings
+feeds let an agent browse before paying; paid endpoints settle on
+Base mainnet via Coinbase's CDP facilitator. The first call for a
+disclosure pays the LLM cost; every subsequent call hits the
+server-side cache for the same flat fee.
 
 ## Install
 
@@ -14,33 +17,95 @@ run; every call after costs the same flat fee from the server-side cache.
 pip install koreafilings
 ```
 
-## Quickstart
+## Quickstart — name to summary in two calls
+
+The natural agent flow is **one free call to resolve a company by
+name, one paid call to fetch summaries by ticker**:
 
 ```python
 from koreafilings import Client
 
-with Client(private_key="0x...", network="base-sepolia") as client:
-    summary = client.get_summary("20260424900874")
+with Client(private_key="0x...", network="base") as client:
+    # 1. Free name → ticker resolution. Matches Korean and English
+    #    names with trigram fuzzy search across 3,961 KRX-listed
+    #    companies.
+    matches = client.find_company("Samsung Electronics")
+    ticker = matches[0].ticker  # "005930"
 
-    print(f"[{summary.importance_score}/10] {summary.event_type}")
-    print(summary.summary_en)
-    print("tickers:", summary.ticker_tags)
+    # 2. Paid batch summary fetch. Price is declared dynamically in
+    #    the 402 challenge as 0.005 × limit USDC, so the SDK signs
+    #    the exact amount before settling.
+    filings = client.get_recent_filings(ticker, limit=5)
+    for f in filings:
+        print(f"[{f.importance_score}/10] {f.event_type}: {f.summary_en}")
+
     print("paid:", client.last_settlement.tx_hash)
 ```
 
 Example output:
 
 ```
-[7/10] SINGLE_STOCK_TRADING_SUSPENSION
-Global SM's common stock was suspended from trading by the Korea Exchange
-following irregular trading patterns observed on April 23, 2026...
-tickers: ['001680.KS']
-paid: 0x1dbf9885194261e1ad64be8205897ef9c5335ad254921b337c343c23d34b0a72
+[7/10] SUPPLY_CONTRACT_SIGNED: Samsung Electronics announced...
+[5/10] DIVIDEND_DECISION: Samsung Electronics' Q1 2026 dividend...
+[3/10] OTHER: Quarterly business report for Q1 2026...
+[8/10] MAJOR_SHAREHOLDER_FILING: National Pension Service raised...
+[4/10] OTHER: Disclosure of an executive's stock ownership change...
+paid: 0x37397cee5f9c8a1d2...
 ```
+
+If you already know the receipt number (e.g. you stored one
+yesterday and want to re-fetch on the same flat 0.005 USDC tier):
+
+```python
+summary = client.get_summary("20260424900874")
+```
+
+## Free discovery endpoints
+
+Three endpoints carry no payment challenge so an agent can plan
+before spending USDC:
+
+```python
+# 1. Search by name or ticker (Korean and English, trigram fuzzy):
+matches = client.find_company("삼성전자")          # Korean
+matches = client.find_company("Samsung Electronics")  # English
+matches = client.find_company("005930")            # ticker
+for m in matches:
+    print(m.ticker, m.name_kr, m.name_en, m.market)
+
+# 2. Direct ticker lookup:
+co = client.get_company("005930")
+
+# 3. Browse the market-wide recent feed (metadata only — no LLM
+#    summary, but lets the agent see what's hot before paying):
+recent = client.list_recent_filings(limit=20)
+for r in recent:
+    print(r.rcpt_no, r.ticker, r.corp_name, r.report_nm, r.rcept_dt)
+```
+
+## Pricing
+
+| Endpoint | Method | Price (USDC) |
+|---|---|---|
+| `client.find_company(q)` | `GET /v1/companies` | free |
+| `client.get_company(ticker)` | `GET /v1/companies/{ticker}` | free |
+| `client.list_recent_filings(limit)` | `GET /v1/disclosures/recent` | free |
+| `client.get_recent_filings(ticker, limit)` | `GET /v1/disclosures/by-ticker/{ticker}` | **0.005 × limit** |
+| `client.get_summary(rcpt_no)` | `GET /v1/disclosures/{rcptNo}/summary` | **0.005** |
+
+Per-result pricing on the by-ticker endpoint is declared dynamically
+in the 402 response: the SDK reads `accepts[0].amount` from the
+challenge and signs the exact charge for the requested `limit`.
+Direct receipt-number lookup stays at a flat 0.005 USDC.
+
+`client.get_pricing()` returns the live machine-readable pricing
+descriptor including the current recipient wallet, network, and
+USDC contract address.
 
 ## What you get
 
-Every response is a structured `Summary` with:
+`get_recent_filings` and `get_summary` return structured `Summary`
+objects (or a `list[Summary]` for the batch endpoint). Each carries:
 
 | field              | type                  | description                                       |
 |--------------------|-----------------------|---------------------------------------------------|
@@ -50,42 +115,62 @@ Every response is a structured `Summary` with:
 | `event_type`       | `str`                 | Canonical event taxonomy                          |
 | `sector_tags`      | `list[str]`           | GICS-style sector labels                          |
 | `ticker_tags`      | `list[str]`           | Affected KRX tickers (`.KS` / `.KQ`)              |
-| `actionable_for`   | `list[str]`           | Audience hints (`QUANT`, `M&A`, …)                |
+| `actionable_for`   | `list[str]`           | Audience hints (`traders`, `long_term_investors`, …) |
 | `generated_at`     | `datetime`            | When the summary was produced                     |
 
-## Pricing
+`find_company` / `get_company` return `Company` records (`ticker`,
+`corp_code`, `name_kr`, `name_en`, `market`). `list_recent_filings`
+returns `RecentFiling` records (`rcpt_no`, `ticker`, `corp_name`,
+`report_nm`, `rcept_dt`) — metadata only, no summary.
 
-`0.005` USDC per summary call, settled on Base. Call `client.get_pricing()`
-for the live machine-readable pricing descriptor including the current
-recipient wallet and USDC contract address.
+> **Honest scope.** Today's summaries are generated from filing
+> *metadata* (title, date, filer, DART flag) only. That gives event
+> type / importance / sector / ticker reliably — first-pass
+> screening — but the LLM honestly says "details are in the filing
+> body" for quantitative events instead of fabricating numbers.
+> v1.2 (planned) introduces a `/v1/disclosures/{rcptNo}/deep`
+> endpoint at ~0.020 USDC that pulls the per-filing XBRL via DART's
+> `/document.xml` and template-extracts amounts, dilution %,
+> counterparty, and dates into a structured `keyFacts` field. See
+> the [roadmap](https://github.com/OldTemple91/korea-filings-api/blob/main/docs/ROADMAP.md#v12--deep-filing-analysis-planned).
 
 ## Getting a wallet and USDC
 
-For testing on Base Sepolia (no real money):
+Production use on Base mainnet:
 
-1. Create a test wallet (MetaMask → new account → export private key).
-2. Get free Base Sepolia ETH from a faucet.
-3. Get free test USDC from the [Circle faucet](https://faucet.circle.com/).
-4. Pass the 0x-prefixed private key to `Client(private_key=...)`.
+1. Create a fresh burner wallet (MetaMask → new account → export
+   private key). **Do not reuse an existing personal wallet** — the
+   private key signs real-money authorizations.
+2. Fund it with the USDC you intend to spend (a few dollars covers
+   hundreds of summaries).
+3. Pass the 0x-prefixed key to `Client(private_key=..., network="base")`.
 
-For production use on Base mainnet, fund a wallet with real USDC and
-pass `network="base"` instead.
+For local development against the public testnet facilitator, point
+the SDK at Base Sepolia:
+
+```python
+client = Client(private_key="0x...", network="base-sepolia")
+```
+
+Get free Base Sepolia ETH from the
+[Coinbase faucet](https://www.coinbase.com/faucets/base-ethereum-sepolia-faucet)
+and free test USDC from the [Circle faucet](https://faucet.circle.com/).
 
 ## How payment works
 
 Under the hood, each paid call:
 
-1. GET the endpoint without payment → server returns **402** with a
-   [x402 `accepts`](https://www.x402.org/) block describing exact
-   amount, USDC contract, network, recipient, and expiry.
+1. **GET** the endpoint without payment → server returns **402** with
+   an [x402 v2 `accepts`](https://www.x402.org/) block describing
+   exact amount, USDC contract, network, recipient, and expiry.
 2. SDK signs an
    [EIP-3009 `TransferWithAuthorization`](https://eips.ethereum.org/EIPS/eip-3009)
-   message locally (your private key never leaves the process).
+   message locally — your private key never leaves the process.
 3. SDK base64-encodes the signed payload into `X-PAYMENT` and retries
    the GET.
 4. Server verifies the signature via the x402 facilitator, submits it
-   on-chain, streams the JSON body back to you, and attaches the
-   settlement proof as `X-PAYMENT-RESPONSE`.
+   on-chain, streams the JSON body back, and attaches the settlement
+   proof as `X-PAYMENT-RESPONSE`.
 
 The SDK exposes the proof as `client.last_settlement` so you can log
 transaction hashes for your accounting system.
@@ -96,14 +181,15 @@ transaction hashes for your accounting system.
 from koreafilings import Client, ApiError, PaymentError, ConfigurationError
 
 try:
-    summary = client.get_summary("20260424900874")
+    matches = client.find_company("Samsung Electronics")
+    filings = client.get_recent_filings(matches[0].ticker, limit=5)
 except PaymentError as e:
     # Facilitator rejected the signed payment (bad sig, low balance,
     # expired auth, network mismatch).
     print("payment failed:", e.reason, e.detail)
 except ApiError as e:
-    # Non-payment HTTP failure: 404 unknown rcpt_no, 429 rate limit,
-    # 5xx upstream outage.
+    # Non-payment HTTP failure: 404 unknown ticker / rcpt_no, 429
+    # rate limit, 5xx upstream outage.
     print("api error:", e.status_code, e.body)
 except ConfigurationError as e:
     # Bad private_key format or unknown network alias.
