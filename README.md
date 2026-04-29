@@ -19,8 +19,9 @@ Korean market events without reading Korean PDFs.
 
 Raw DART data is free, but it's in Korean and structured for human
 filings clerks, not LLMs. Korea Filings turns every disclosure into a
-structured, cached, English-summarised JSON payload an agent can
-consume in one call:
+structured, cached, English-summarised JSON payload — agents resolve
+a Korean company by name for free, then fetch a batch of summaries
+for that ticker in one paid x402 call. Each summary looks like:
 
 ```json
 {
@@ -36,9 +37,11 @@ consume in one call:
 ```
 
 The cache is the moat — the first agent to request a disclosure pays
-for the LLM run; every subsequent agent for the same `rcpt_no` hits a
-near-zero-cost DB lookup and still pays the same fixed fee. Margins
-compound as adoption grows.
+the LLM cost; every subsequent agent for the same `rcpt_no` hits a
+near-zero-cost DB lookup and still pays the same flat 0.005 USDC per
+summary. Batch by-ticker calls hit the same cache row-for-row, so a
+five-summary call is five cache lookups against one transferred
+USDC payment. Margins compound as adoption grows.
 
 ## How to use it
 
@@ -90,32 +93,58 @@ In your MCP client's config:
 }
 ```
 
-Two tools become available:
+Five tools become available — three free for discovery, two paid:
 
-- `get_pricing` — free; returns the live wallet, network, USDC
-  contract, and per-endpoint price.
-- `get_disclosure_summary(rcpt_no)` — paid; returns the structured
-  summary plus the on-chain settlement transaction hash.
+- `find_company(query)` — **free**; trigram fuzzy search of 3,961
+  KRX-listed companies by Korean name, English name, or ticker.
+- `list_recent_filings(limit)` — **free**; market-wide recent DART
+  feed (metadata only — let the agent decide what to pay for).
+- `get_pricing()` — **free**; live wallet, network, USDC contract,
+  per-endpoint price.
+- `get_recent_filings(ticker, limit)` — **paid 0.005 × limit USDC**;
+  batch AI summaries for one ticker, with the on-chain settlement
+  transaction hash.
+- `get_disclosure_summary(rcpt_no)` — **paid 0.005 USDC**; single
+  AI summary for a known receipt number.
+
+The natural agent flow is `find_company` → `get_recent_filings`:
+one free call to resolve a name to a ticker, one paid call to fetch
+summaries for that ticker.
 
 ### curl / direct HTTP
 
 ```bash
-# 1) Probe the endpoint without payment to discover the requirements.
-curl -i https://api.koreafilings.com/v1/disclosures/20260427901120/summary
-#   HTTP/2 402
-#   payment-required: <base64 PaymentRequired payload>
-#   { "x402Version": 2, "accepts": [{ "scheme": "exact", ... }], ... }
+# 1) Resolve a company name to a ticker. Free, no wallet needed.
+curl 'https://api.koreafilings.com/v1/companies?q=Samsung+Electronics&limit=1'
+#   HTTP/2 200
+#   { "matches": [{ "ticker": "005930", "nameKr": "삼성전자",
+#                   "nameEn": "SAMSUNG ELECTRONICS CO.,LTD.",
+#                   "market": "KOSPI", ... }] }
 
-# 2) Sign an EIP-3009 TransferWithAuthorization for one of the entries
+# 2) Probe the paid endpoint without payment — server tells you the
+#    exact USDC amount it wants for `limit=N` summaries.
+curl -i 'https://api.koreafilings.com/v1/disclosures/by-ticker/005930?limit=3'
+#   HTTP/2 402
+#   payment-required: <base64 PaymentRequired payload, amount = 15000>
+#   { "x402Version": 2, "accepts": [{ "scheme": "exact",
+#       "amount": "15000", "asset": "USDC", "payTo": "0x8467…",
+#       ... }], ... }
+
+# 3) Sign an EIP-3009 TransferWithAuthorization for one of the entries
 #    in `accepts`, base64-encode the signed PaymentPayload, and resend
 #    with the X-PAYMENT header. See testclient/payer.py for a 90-line
 #    reference implementation.
 curl -H "X-PAYMENT: $SIGNED" \
-     https://api.koreafilings.com/v1/disclosures/20260427901120/summary
+     'https://api.koreafilings.com/v1/disclosures/by-ticker/005930?limit=3'
 #   HTTP/2 200
 #   x-payment-response: <base64 SettlementResponse with tx hash>
-#   { "rcptNo": "...", "summaryEn": "...", ... }
+#   [ { "rcptNo": "...", "summaryEn": "...", "importanceScore": 7, ... },
+#     { ... }, { ... } ]
 ```
+
+The flat 0.005 USDC `/v1/disclosures/{rcptNo}/summary` endpoint is
+still there for callers that already have a 14-digit receipt number
+— same x402 flow, just `amount = 5000` and a single-summary body.
 
 ## Pricing
 
@@ -235,7 +264,9 @@ MVP feature set:
 - x402 v2 paywall with `bazaar` extension for agent-discoverable invocation
 - Discovery via `/.well-known/x402`
 - OpenAPI 3 spec at [`/v3/api-docs`](https://api.koreafilings.com/v3/api-docs) + interactive Swagger UI
-- Python SDK and MCP server published to PyPI
+- Python SDK ([`koreafilings` 0.2.1](https://pypi.org/project/koreafilings/)) and MCP server ([`koreafilings-mcp` 0.2.1](https://pypi.org/project/koreafilings-mcp/)) on PyPI
+- Free name → ticker resolution (`find_company`) + free recent feed (`list_recent_filings`) so agents can browse before paying
+- Per-result paid batch endpoint (`/v1/disclosures/by-ticker/{ticker}?limit=N`) with 0.005 × N USDC declared dynamically in the 402
 - Indexed by [x402scan](https://www.x402scan.com)
 - Production deploy on VPS provider via Cloudflare Tunnel
 - Coinbase CDP facilitator (Ed25519 JWT auth) for mainnet settlement
