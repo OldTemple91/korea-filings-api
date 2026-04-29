@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Korea Filings — AI summaries of Korean corporate disclosures</title>
-<meta name="description" content="Machine-ready English summaries of Korean DART filings for AI agents, quant funds, and research platforms. Paid per call in USDC via x402.">
+<title>Korea Filings — Search Korean disclosures by name, pay per call in USDC</title>
+<meta name="description" content="Search 3,961 KRX-listed companies for free, pay per call for AI-summarized DART filings in USDC via x402 on Base. Built for autonomous agents — no API key, no signup.">
 <meta property="og:title" content="Korea Filings">
-<meta property="og:description" content="AI-summarized Korean corporate disclosures. Paid per call in USDC.">
+<meta property="og:description" content="Search Korean corporate disclosures by name. AI-summarized in English, paid per call in USDC via x402.">
 <meta property="og:url" content="https://koreafilings.com">
 <meta name="twitter:card" content="summary">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%97%86%3C/text%3E%3C/svg%3E">
@@ -114,13 +114,14 @@
 
 <header>
   <div class="logo">KOREA FILINGS</div>
-  <h1>AI summaries of Korean corporate disclosures, paid per call.</h1>
+  <h1>Search Korean corporate disclosures by name, pay per call.</h1>
   <p class="lead">
-    Machine-ready English summaries of Korean DART filings for autonomous AI agents, quant funds, and research platforms covering Asian equities. No API key. No subscription. Payment is authentication.
+    Resolve any KRX-listed company by name for free, then fetch AI-summarized English filings priced per call in USDC. Built for autonomous AI agents and quant desks covering Asian equities. No API key. No subscription. Payment is authentication.
   </p>
   <div style="margin-top:24px;">
-    <span class="pill">x402 v2</span>
-    <span class="pill">USDC on Base</span>
+    <span class="pill">1 free + 1 paid call</span>
+    <span class="pill">x402 v2 on Base</span>
+    <span class="pill">3,961 listed companies</span>
     <span class="pill">300–500 filings/day</span>
   </div>
 </header>
@@ -137,21 +138,32 @@
 
 <h2>How it works</h2>
 
+<p>
+  An agent that knows nothing about Korean stock codes can still get to a paid summary in two HTTP calls — one free, one paid:
+</p>
+
 <div class="flow">
-Your agent → <span class="label">GET /v1/disclosures/{rcptNo}/summary</span><br>
-           ← <span class="arrow">402 Payment Required</span><br>
-           ← &nbsp;&nbsp;&nbsp;{ scheme, network, amount, payTo, asset, ... }<br>
+<span style="color:var(--text);">1. Resolve a name to a ticker (free)</span><br>
+Agent → <span class="label">GET /v1/companies?q=Samsung+Electronics</span><br>
+       ← <span class="arrow">200 OK</span> &nbsp; { matches: [{ ticker: "005930", nameKr: "삼성전자", ... }] }<br>
 <br>
-Sign the payment authorisation with your wallet (EIP-3009)<br>
+<span style="color:var(--text);">2. Fetch recent filings for that ticker (paid)</span><br>
+Agent → <span class="label">GET /v1/disclosures/by-ticker/005930?limit=5</span><br>
+       ← <span class="arrow">402 Payment Required</span> &nbsp; { amount: 25000, asset: USDC, payTo: 0x8467…, ... }<br>
 <br>
-Your agent → <span class="label">GET /v1/disclosures/{rcptNo}/summary</span><br>
-           &nbsp;&nbsp;&nbsp;&nbsp;<span class="arrow">X-PAYMENT: &lt;base64 signed payload&gt;</span><br>
-           ← <span class="arrow">200 OK</span> + X-PAYMENT-RESPONSE<br>
-           ← &nbsp;&nbsp;&nbsp;{ summaryEn, importanceScore, eventType, sectorTags, tickerTags, ... }
+Sign the EIP-3009 authorisation with your wallet (0.005 × limit USDC)<br>
+<br>
+Agent → <span class="label">GET /v1/disclosures/by-ticker/005930?limit=5</span><br>
+       &nbsp;&nbsp;&nbsp;&nbsp;<span class="arrow">X-PAYMENT: &lt;base64 signed payload&gt;</span><br>
+       ← <span class="arrow">200 OK</span> + X-PAYMENT-RESPONSE (settlement tx hash)<br>
+       ← &nbsp;&nbsp;[ { summaryEn, importanceScore, eventType, ... }, &times; 5 ]
 </div>
 
 <p>
   The <a href="https://x402.org">x402 protocol</a> routes the payment through Coinbase's facilitator, which validates your signature on-chain and settles USDC in a single transaction. The server never holds your private key. You never hold an API key. Every call is audited on-chain.
+</p>
+<p>
+  The price for batched endpoints is <strong>declared dynamically</strong> in the 402 response — for <code>by-ticker?limit=N</code>, the server signs <code>0.005 × N</code> USDC into the challenge, so an agent always sees the exact charge before authorising the wallet. Direct receipt-number lookup at <code>/v1/disclosures/{rcptNo}/summary</code> stays at a flat 0.005 USDC.
 </p>
 
 <h2>What you get</h2>
@@ -179,12 +191,19 @@ Your agent → <span class="label">GET /v1/disclosures/{rcptNo}/summary</span><b
 </ul>
 
 <h2>Pricing</h2>
-<p>Per call, in USDC on Base. No minimums, no monthly fee, no volume tiers.</p>
+<p>
+  Per call, in USDC on Base. No minimums, no monthly fee, no volume tiers. Free endpoints (<code>/v1/companies</code>, <code>/v1/disclosures/recent</code>) carry no payment challenge so an agent can browse before paying.
+</p>
 <table>
   <thead>
     <tr><th>Endpoint</th><th>Method</th><th style="text-align:right;">Price (USDC)</th></tr>
   </thead>
   <tbody id="pricing-rows">
+    <tr>
+      <td class="mono">/v1/disclosures/by-ticker/{ticker}?limit=N</td>
+      <td class="mono">GET</td>
+      <td class="price">0.005 × N</td>
+    </tr>
     <tr>
       <td class="mono">/v1/disclosures/{rcptNo}/summary</td>
       <td class="mono">GET</td>
@@ -193,20 +212,42 @@ Your agent → <span class="label">GET /v1/disclosures/{rcptNo}/summary</span><b
   </tbody>
 </table>
 <p style="font-size:13px;">
-  Canonical source: <a href="https://api.koreafilings.com/v1/pricing"><code>api.koreafilings.com/v1/pricing</code></a> — machine-readable JSON with the current recipient wallet, network, and USDC contract.
+  Canonical source: <a href="https://api.koreafilings.com/v1/pricing"><code>api.koreafilings.com/v1/pricing</code></a> — machine-readable JSON with the current recipient wallet, network, and USDC contract. Live <a href="https://api.koreafilings.com/.well-known/x402">x402 discovery document</a> lets agents auto-resolve.
 </p>
 
 <h2>Try it</h2>
 
-<p>Inspect the 402 without paying:</p>
-<pre><code>curl https://api.koreafilings.com/v1/disclosures/20260424900874/summary</code></pre>
+<p>Inspect a free company lookup — no wallet needed:</p>
+<pre><code>curl 'https://api.koreafilings.com/v1/companies?q=Samsung+Electronics'</code></pre>
 
-<p>Or with a Python x402 client:</p>
-<pre><code>from x402 import Client
+<p>Inspect the 402 challenge for a paid endpoint:</p>
+<pre><code>curl -i 'https://api.koreafilings.com/v1/disclosures/by-ticker/005930?limit=3'
+#   HTTP/2 402
+#   payment-required: &lt;base64 PaymentRequired payload, declares amount = 15000 (0.015 USDC)&gt;</code></pre>
 
-client = Client(private_key="0x...", network="base")  # Base mainnet, real USDC
-resp = client.get("https://api.koreafilings.com/v1/disclosures/20260424900874/summary")
-print(resp.json()["summaryEn"])</code></pre>
+<p>End-to-end with the official Python SDK (handles the EIP-3009 signing and the x402 retry):</p>
+<pre><code>pip install koreafilings</code></pre>
+<pre><code>from koreafilings import Client
+
+with Client(private_key="0x...", network="base") as client:
+    # 1. Free name → ticker resolution
+    matches = client.find_company("Samsung Electronics")
+    ticker = matches[0].ticker  # "005930"
+
+    # 2. Paid batch summary fetch (0.005 × limit USDC)
+    filings = client.get_recent_filings(ticker, limit=5)
+    for f in filings:
+        print(f"[{f.importance_score}/10] {f.event_type}: {f.summary_en}")
+    print("paid:", client.last_settlement.tx_hash)</code></pre>
+
+<p style="font-size:13px;">
+  Or plug it straight into Claude Desktop / Cursor / Continue with the
+  <a href="https://pypi.org/project/koreafilings-mcp/">MCP server</a>
+  — <code>uv tool install koreafilings-mcp</code> exposes
+  <code>find_company</code>, <code>list_recent_filings</code>,
+  <code>get_recent_filings</code>, <code>get_pricing</code> as native
+  agent tools.
+</p>
 
 <h2>First production settlement</h2>
 <p>A live 0.005 USDC settlement from this deployment:</p>
@@ -221,7 +262,10 @@ print(resp.json()["summaryEn"])</code></pre>
 
 <h2>Status</h2>
 <p>
-  Live on <strong>Base mainnet</strong> as of this commit — payments settle in real USDC via the Coinbase CDP facilitator. <a href="https://pypi.org/project/koreafilings/">Python SDK</a> and <a href="https://pypi.org/project/koreafilings-mcp/">MCP server</a> on PyPI; TypeScript SDK is next. Ping any time with questions.
+  Live on <strong>Base mainnet</strong> — payments settle in real USDC via the Coinbase CDP facilitator. v1.1 (name-based agent flow) is shipped: <a href="https://pypi.org/project/koreafilings/">Python SDK 0.2</a> and <a href="https://pypi.org/project/koreafilings-mcp/">MCP server 0.2</a> are on PyPI, and the service is indexed at <a href="https://www.x402scan.com">x402scan</a>.
+</p>
+<p>
+  <strong>What's next — v1.2 deep filing analysis.</strong> Today's summaries come from filing metadata only (title, filer, date, DART flag), so quantitative events ("rights offering size", "supply contract value") come back as "details are in the filing body". v1.2 pulls the per-filing XBRL via DART's <code>/document.xml</code> and template-extracts the actual numbers for the six highest-value event types — RIGHTS_OFFERING, CONVERTIBLE_BOND_ISSUANCE, DEBT_ISSUANCE, ACQUISITION, SUPPLY_CONTRACT_SIGNED, MAJOR_SHAREHOLDER_FILING — into a structured <code>keyFacts</code> field. New paid endpoint <code>/v1/disclosures/{rcptNo}/deep</code> at ~0.020 USDC; existing endpoints stay metadata-only at 0.005 USDC so callers pick depth at call time. See the <a href="https://github.com/OldTemple91/korea-filings-api/blob/main/docs/ROADMAP.md#v12--deep-filing-analysis-planned">roadmap</a> for the full plan.
 </p>
 
 <footer>
