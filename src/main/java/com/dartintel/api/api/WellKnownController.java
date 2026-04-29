@@ -57,7 +57,7 @@ public class WellKnownController {
     private static final String SERVICE_REPOSITORY =
             "https://github.com/OldTemple91/korea-filings-api";
     private static final String SERVICE_OPENAPI =
-            PUBLIC_BASE_URL + "/v3/api-docs";
+            PUBLIC_BASE_URL + "/openapi.json";
 
     private final X402Properties x402Properties;
     private final RequestMappingHandlerMapping handlerMapping;
@@ -88,10 +88,18 @@ public class WellKnownController {
                 .map(this::toResourceObject)
                 .toList();
 
-        // Legacy v1: a flat array of URLs. Some older indexers iterate
-        // resources by index assuming each entry is a string. Emit both
-        // shapes so neither breaks.
-        List<String> resourceUrls = resourceObjects.stream()
+        // The discovery spec validated by the @agentcash/discovery CLI
+        // (which is what x402scan runs to index a server) requires:
+        //   - version: number (NOT string)
+        //   - resources: array<string> (URL strings, NOT objects)
+        //   - description: string (optional, surfaced in directory)
+        //   - instructions: string (optional, surfaced to agents)
+        // Any deviation from those types makes the strict-mode validator
+        // silently mark the document as missing. Keep those fields
+        // exactly to spec; add richer metadata under sibling keys that
+        // the validator's `passthrough` behaviour will preserve for
+        // clients that look for them.
+        List<String> resources = resourceObjects.stream()
                 .map(r -> (String) r.get("url"))
                 .toList();
 
@@ -109,13 +117,21 @@ public class WellKnownController {
         x402.put("recipient", x402Properties.recipientAddress());
 
         Map<String, Object> body = new LinkedHashMap<>();
-        body.put("version", "2");
+        // === Spec-required fields (strict types) ===
+        body.put("version", 1);
+        body.put("resources", resources);
+        body.put("description", SERVICE_DESCRIPTION);
+        body.put("instructions",
+                "Free company directory + recent feed at /v1/companies and " +
+                "/v1/disclosures/recent for cold-start discovery; paid " +
+                "summaries at /v1/disclosures/by-ticker/{ticker}?limit=N " +
+                "(0.005 × N USDC, dynamic price in 402) and " +
+                "/v1/disclosures/{rcptNo}/summary (0.005 USDC fixed).");
+
+        // === Optional sibling extensions (validator-tolerated) ===
         body.put("service", service);
         body.put("x402", x402);
-        body.put("resources", resourceObjects);
-        // Legacy compatibility: also expose the flat URL array under a
-        // separate key for crawlers that hard-coded the v1 shape.
-        body.put("resourceUrls", resourceUrls);
+        body.put("resourceDetails", resourceObjects);
         return body;
     }
 
