@@ -7,4 +7,4 @@ exposes the koreafilings SDK's paid endpoints as tools the model can
 call.
 """
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"

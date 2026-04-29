@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "koreafilings-mcp"
-version = "0.2.0"
+version = "0.2.1"
 description = "MCP server exposing koreafilings.com's x402-paid DART summary API as a tool for Claude Desktop, Cursor, Continue, and other MCP clients."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -24,7 +24,7 @@ classifiers = [
 ]
 dependencies = [
     "mcp>=1.2.0",
-    "koreafilings>=0.2.0",
+    "koreafilings>=0.2.1",
 ]
 
 [project.urls]
