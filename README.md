@@ -119,13 +119,27 @@ curl -H "X-PAYMENT: $SIGNED" \
 
 ## Pricing
 
+Per call, in USDC on Base. Free endpoints (`/v1/companies`,
+`/v1/companies/{ticker}`, `/v1/disclosures/recent`) carry no payment
+challenge so an agent can browse before paying.
+
 | Endpoint | Method | Price (USDC) |
 |---|---|---|
+| `/v1/disclosures/by-ticker/{ticker}?limit=N` | GET | 0.005 × N |
 | `/v1/disclosures/{rcptNo}/summary` | GET | 0.005 |
 
+Per-result pricing on the by-ticker endpoint is declared dynamically
+in the 402 challenge — for `limit=N`, the server signs `0.005 × N`
+USDC into `accepts[0].amount` so the caller sees the exact charge
+before authorising the wallet. The flat-rate single-summary endpoint
+stays at 0.005 USDC and is the right shape when a caller already has
+a 14-digit receipt number from somewhere else.
+
 The full machine-readable pricing descriptor (current wallet, network,
-USDC contract, all paid endpoints) lives at
-[`/v1/pricing`](https://api.koreafilings.com/v1/pricing).
+USDC contract, every paid endpoint) lives at
+[`/v1/pricing`](https://api.koreafilings.com/v1/pricing); agent-driven
+discovery is at
+[`/.well-known/x402`](https://api.koreafilings.com/.well-known/x402).
 
 Live on **Base mainnet** via the Coinbase CDP facilitator. The first
 on-chain settlement is permanent at
@@ -133,14 +147,6 @@ on-chain settlement is permanent at
 a payer wallet moved 0.005 USDC to the merchant wallet
 `0x8467Be164C75824246CFd0fCa8E7F7009fB8f720` in a single
 `transferWithAuthorization` call.
-
-Pricing modes:
-
-- **Fixed (per-call)**: `GET /v1/disclosures/{rcptNo}/summary` —
-  flat 0.005 USDC for one summary.
-- **Per-result (batch)**: `GET /v1/disclosures/by-ticker/{ticker}?limit=N`
-  — 0.005 × N USDC, declared dynamically in the 402 response so
-  agents see the exact charge before signing.
 
 ## Architecture
 
