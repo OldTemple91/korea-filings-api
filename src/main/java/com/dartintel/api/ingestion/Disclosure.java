@@ -47,7 +47,7 @@ public class Disclosure {
      * code (delisted entities, foreign filers, non-corp filers) — the
      * by-ticker endpoint filters those out.
      */
-    @Column(name = "ticker", length = 6)
+    @Column(name = "ticker", length = 7)
     private String ticker;
 
     @CreationTimestamp

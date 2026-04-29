@@ -30,7 +30,7 @@ import java.util.Objects;
 public class Company {
 
     @Id
-    @Column(name = "ticker", length = 6, nullable = false, updatable = false)
+    @Column(name = "ticker", length = 7, nullable = false, updatable = false)
     private String ticker;
 
     @Column(name = "corp_code", length = 8, nullable = false, unique = true)
