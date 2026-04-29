@@ -43,7 +43,7 @@ class DisclosureSummaryRepositoryIT {
         Disclosure d = new Disclosure(
                 "20260423000999", "00126380", "삼성전자", null,
                 "주요사항보고서(유상증자결정)", "삼성전자",
-                LocalDate.of(2026, 4, 23), "유"
+                LocalDate.of(2026, 4, 23), "유", "005930"
         );
         disclosureRepository.saveAndFlush(d);
 
@@ -84,7 +84,7 @@ class DisclosureSummaryRepositoryIT {
         Disclosure d = new Disclosure(
                 "20260423001000", "00126380", "삼성전자", null,
                 "기업설명회(IR)개최(안내공시)", "삼성전자",
-                LocalDate.of(2026, 4, 23), null
+                LocalDate.of(2026, 4, 23), null, "005930"
         );
         disclosureRepository.saveAndFlush(d);
         summaryRepository.saveAndFlush(new DisclosureSummary(
@@ -112,12 +112,12 @@ class DisclosureSummaryRepositoryIT {
         Disclosure withSummary = new Disclosure(
                 "20260423002001", "00126380", "삼성전자", null,
                 "기업설명회(IR)개최(안내공시)", "삼성전자",
-                LocalDate.of(2026, 4, 23), null
+                LocalDate.of(2026, 4, 23), null, "005930"
         );
         Disclosure orphan = new Disclosure(
                 "20260423002002", "00126380", "삼성전자", null,
                 "주식소각결정", "삼성전자",
-                LocalDate.of(2026, 4, 23), null
+                LocalDate.of(2026, 4, 23), null, "005930"
         );
         disclosureRepository.saveAllAndFlush(List.of(withSummary, orphan));
         summaryRepository.saveAndFlush(new DisclosureSummary(

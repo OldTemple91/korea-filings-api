@@ -40,6 +40,16 @@ public class Disclosure {
     @Column(name = "rm", length = 20)
     private String rm;
 
+    /**
+     * Six-digit KRX ticker, denormalised from the {@code company}
+     * table at ingestion time so the by-ticker query path is a single
+     * indexed table scan. {@code NULL} for filers without a stock
+     * code (delisted entities, foreign filers, non-corp filers) — the
+     * by-ticker endpoint filters those out.
+     */
+    @Column(name = "ticker", length = 6)
+    private String ticker;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -59,7 +69,8 @@ public class Disclosure {
             String reportNm,
             String flrNm,
             LocalDate rceptDt,
-            String rm
+            String rm,
+            String ticker
     ) {
         this.rcptNo = rcptNo;
         this.corpCode = corpCode;
@@ -69,6 +80,7 @@ public class Disclosure {
         this.flrNm = flrNm;
         this.rceptDt = rceptDt;
         this.rm = rm;
+        this.ticker = ticker;
     }
 
     public String getRcptNo() {
@@ -101,6 +113,10 @@ public class Disclosure {
 
     public String getRm() {
         return rm;
+    }
+
+    public String getTicker() {
+        return ticker;
     }
 
     public Instant getCreatedAt() {

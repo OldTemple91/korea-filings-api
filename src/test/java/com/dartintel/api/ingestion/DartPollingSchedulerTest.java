@@ -1,5 +1,6 @@
 package com.dartintel.api.ingestion;
 
+import com.dartintel.api.company.CompanyService;
 import com.dartintel.api.summarization.job.SummaryJobQueue;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -41,6 +42,9 @@ class DartPollingSchedulerTest {
     @Mock
     SummaryJobQueue summaryJobQueue;
 
+    @Mock
+    CompanyService companyService;
+
     DartPollingScheduler scheduler;
 
     @BeforeEach
@@ -50,8 +54,13 @@ class DartPollingSchedulerTest {
                 new DartProperties.Polling(true, 30000, 1, 100)
         );
         scheduler = new DartPollingScheduler(
-                dartClient, disclosureRepository, redisTemplate, props, summaryJobQueue);
+                dartClient, disclosureRepository, redisTemplate, props, summaryJobQueue, companyService);
         when(redisTemplate.opsForValue()).thenReturn(valueOps);
+        // Default to "no ticker mapping" so existing tests stay
+        // unaffected. Tests that care about ticker resolution can
+        // override this stub with companyService.findByCorpCode(...)
+        // returning a populated Optional<Company>.
+        when(companyService.findByCorpCode(anyString())).thenReturn(java.util.Optional.empty());
     }
 
     @Test

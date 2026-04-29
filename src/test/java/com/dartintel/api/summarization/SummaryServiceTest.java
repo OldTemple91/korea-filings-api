@@ -54,7 +54,7 @@ class SummaryServiceTest {
         sampleDisclosure = new Disclosure(
                 "20260423000001", "00126380", "삼성전자", "Samsung Electronics Co., Ltd.",
                 "주요사항보고서(유상증자결정)", "삼성전자",
-                LocalDate.of(2026, 4, 23), "유"
+                LocalDate.of(2026, 4, 23), "유", "005930"
         );
         sampleEnvelope = new SummaryEnvelope(
                 new SummaryResult(

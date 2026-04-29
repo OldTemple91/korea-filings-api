@@ -1,5 +1,6 @@
 package com.dartintel.api.ingestion;
 
+import com.dartintel.api.company.CompanyService;
 import com.dartintel.api.summarization.job.SummaryJobQueue;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -29,6 +30,7 @@ public class DartPollingScheduler {
     private final StringRedisTemplate redisTemplate;
     private final DartProperties props;
     private final SummaryJobQueue summaryJobQueue;
+    private final CompanyService companyService;
 
     @Scheduled(fixedDelayString = "${dart.polling.interval-ms:30000}")
     @Transactional
@@ -63,6 +65,13 @@ public class DartPollingScheduler {
                 continue;
             }
             LocalDate filingDate = LocalDate.parse(filing.rceptDt(), YYYYMMDD);
+            // Resolve the corp_code → ticker mapping at ingestion time so
+            // by-ticker queries don't need a join. Returns null for
+            // unlisted filers (delisted, foreign, non-corp) — the
+            // by-ticker endpoint then transparently filters them out.
+            String ticker = companyService.findByCorpCode(filing.corpCode())
+                    .map(c -> c.getTicker())
+                    .orElse(null);
             disclosureRepository.save(new Disclosure(
                     filing.rcptNo(),
                     filing.corpCode(),
@@ -71,7 +80,8 @@ public class DartPollingScheduler {
                     filing.reportNm(),
                     filing.flrNm(),
                     filingDate,
-                    filing.rm()
+                    filing.rm(),
+                    ticker
             ));
             // Hand the newly persisted filing off to the summarisation pipeline.
             // Redis outages here are tolerated: the filing is already in the DB

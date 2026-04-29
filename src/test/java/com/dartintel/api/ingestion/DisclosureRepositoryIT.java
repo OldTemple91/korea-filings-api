@@ -36,7 +36,8 @@ class DisclosureRepositoryIT {
                 "주요사항보고서(유상증자결정)",
                 "삼성전자",
                 LocalDate.of(2026, 4, 23),
-                "유"
+                "유",
+                "005930"
         );
         repository.saveAndFlush(d);
 
@@ -47,6 +48,7 @@ class DisclosureRepositoryIT {
         assertThat(loaded.get().getReportNm()).isEqualTo("주요사항보고서(유상증자결정)");
         assertThat(loaded.get().getRceptDt()).isEqualTo(LocalDate.of(2026, 4, 23));
         assertThat(loaded.get().getRm()).isEqualTo("유");
+        assertThat(loaded.get().getTicker()).isEqualTo("005930");
     }
 
     @Test
@@ -59,7 +61,8 @@ class DisclosureRepositoryIT {
                 "현금ㆍ현물배당결정",
                 "한국가스공사",
                 LocalDate.of(2026, 4, 23),
-                null
+                null,
+                "036460"
         );
 
         repository.saveAndFlush(d);

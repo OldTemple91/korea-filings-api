@@ -120,7 +120,7 @@ class DisclosuresControllerIT {
         disclosureRepository.save(new Disclosure(
                 "20260423000001", "00126380", "삼성전자", null,
                 "주요사항보고서(유상증자결정)", "삼성전자",
-                LocalDate.of(2026, 4, 23), "유"
+                LocalDate.of(2026, 4, 23), "유", "005930"
         ));
         summaryRepository.save(new DisclosureSummary(
                 "20260423000001",
