@@ -11,10 +11,10 @@ Pre-staged copy-paste content for the Hacker News launch.
 **Title** (80-char limit, leave room for "Show HN: " prefix):
 
 ```
-Show HN: AI summaries of Korean corporate filings, paid in USDC via x402
+Show HN: Search Korean corporate filings by name, pay per call in USDC via x402
 ```
 
-(Alternative: `Show HN: Korean DART filings summarised in English, 0.005 USDC/call on Base`)
+(Alternative: `Show HN: 1 free call + 1 paid call to get Korean DART filings as English signals`)
 
 **URL field:**
 
@@ -25,39 +25,49 @@ https://koreafilings.com
 **Text field** (HN does NOT render markdown — keep formatting plain):
 
 ```
-I built a paywalled API that turns Korean DART (전자공시) corporate disclosures into structured English summaries, paid per call in USDC via the x402 protocol (https://www.x402.org/) on Base mainnet.
+I built a paywalled API that turns Korean DART (전자공시) corporate disclosures into structured English signals, paid per call in USDC via the x402 protocol (https://www.x402.org/) on Base mainnet.
 
-First on-chain settlement is verifiable here:
-https://basescan.org/tx/0x681c995e149d3ce5765ea8a3b0f921a45352fccefbd9fc9258bf4f6141eafd7c
-
-Try it in ~60 seconds (you'll need a wallet with a few cents of USDC on Base mainnet):
+The agent flow is one free call + one paid call:
 
   pip install koreafilings
 
   from koreafilings import Client
   with Client(private_key="0x...", network="base") as c:
-      s = c.get_summary("20260427901120")
-      print(s.summary_en)
+      # Free: name → ticker resolution, 3961 KRX-listed companies
+      matches = c.find_company("Samsung Electronics")
+      ticker = matches[0].ticker  # "005930"
+
+      # Paid: 0.005 × limit USDC, declared dynamically in the 402
+      filings = c.get_recent_filings(ticker, limit=5)
+      for f in filings:
+          print(f"[{f.importance_score}/10] {f.event_type}: {f.summary_en}")
       print("paid:", c.last_settlement.tx_hash)
 
-The SDK signs an EIP-3009 TransferWithAuthorization, sends it as the X-PAYMENT header, the server verifies with the x402 facilitator, settles 0.005 USDC on-chain, and returns the JSON summary plus the tx hash.
+First mainnet settlement: https://basescan.org/tx/0x681c995e149d3ce5765ea8a3b0f921a45352fccefbd9fc9258bf4f6141eafd7c
 
-Stack: Java 21 / Spring Boot 3.4 / Postgres 16 / Redis 7 on VPS provider behind Cloudflare Tunnel. Gemini 2.5 Flash-Lite for the summarization. Resilience4j for circuit-breaking the LLM and facilitator.
+Stack: Java 21 / Spring Boot 3.4 / Postgres 16 with pg_trgm fuzzy search / Redis 7 on VPS provider behind Cloudflare Tunnel. Gemini 2.5 Flash-Lite for the summarisation, prompted with a 50-row Korean → English filing-type taxonomy + importance anchors so OTHER stays under 5%. Resilience4j circuit-breaks the LLM, the DART poller, and the facilitator independently.
 
 What's there:
 
-- Live API at https://api.koreafilings.com, polling DART every 30s
-- Summary cached forever per rcpt_no — first agent pays the LLM cost, every later one hits a cheap DB lookup at the same price (margin compounds)
-- x402 v2 transport (PAYMENT-REQUIRED header + bazaar extension for agent invocability)
-- MCP server (koreafilings-mcp) so Claude Desktop / Cursor / Continue can call it as a tool
-- OpenAPI 3 spec at /v3/api-docs, discovery at /.well-known/x402
+- Live at https://api.koreafilings.com, DART polled every 30s
+- Free company directory ("Samsung" → 005930) with trigram fuzzy search across Korean and English names — the entry point that earlier rcpt_no-only versions of this API didn't give agents
+- Free recent-filings feed (metadata only) so an agent can browse before paying
+- Paid single-summary at 0.005 USDC and paid by-ticker batches at 0.005 × limit USDC, dynamic price declared in the 402 response
+- x402 v2 transport (PAYMENT-REQUIRED header) + bazaar extension declaring input/output schema so agents can autonomously invoke
+- MCP server (koreafilings-mcp 0.2 on PyPI) — four tools usable from Claude Desktop / Cursor / Continue
+- OpenAPI at /v3/api-docs, discovery at /.well-known/x402
 - Indexed at https://www.x402scan.com/server/46ef920d-18db-4255-8ec1-f7233451bec7
 
-Why: raw DART data is free but in Korean and structured for filing clerks, not LLMs. Korean equities carry real information asymmetry vs US/EU — but the entry tax for English-speaking quant teams is "hire someone to read Korean PDFs all day." Per-call x402 felt like the cleanest fit: an autonomous agent watching Korean markets pays $0.005 per filing it cares about, no signup, no API key, no monthly minimum.
+Why: raw DART data is free but in Korean and structured for filing clerks, not LLMs. Korean equities carry real information asymmetry vs US/EU — but the entry tax for English-speaking quant teams is "hire someone to read Korean PDFs all day." Per-call x402 means an autonomous agent watching Korea pays cents per signal, with no signup, no API key, no monthly minimum.
 
-Honest caveats: one paid endpoint live (single-summary fetch); five more (`latest`, `by-ticker`, `filter`, `stream`, `impact`) are in the roadmap. The first mainnet settlement above proves the EIP-3009 + CDP facilitator path; the testnet trail (10 settlements on Base Sepolia, in the repo) shows it survived a couple of weeks of regression testing too. Repo (MIT): https://github.com/OldTemple91/korea-filings-api
+Honest scope:
 
-Curious to hear what breaks.
+- Today's summaries are generated from filing **metadata** (title, date, filer, DART flag) only. That gives event type / importance score / sector / ticker reliably — first-pass screening — but the LLM honestly says "details are in the filing body" for quantitative events instead of fabricating numbers. Whether to extract the actual amounts is the v1.2 question.
+- v1.2 plan, on the roadmap: pull the per-filing XBRL via DART's `/document.xml` and template-extract numbers (issuance amount, dilution %, contract value, …) for the six highest-value event types into a structured `keyFacts` field. New paid endpoint `/v1/disclosures/{rcptNo}/deep` at ~0.020 USDC; existing endpoints stay metadata-only at 0.005 USDC so callers pick depth at call time.
+
+Repo (MIT, Java backend + Python SDK + Python MCP + landing): https://github.com/OldTemple91/korea-filings-api
+
+Would love feedback on what filing types you'd most want quantitative depth for, what's missing from the agent flow, and whether the per-result pricing in the 402 challenge feels intuitive.
 ```
 
 ---

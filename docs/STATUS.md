@@ -53,32 +53,45 @@ live, what's next, and the minimum setup to keep moving.
 
 ## What's left
 
-1. **v2 prompt backfill** — the v1 prompt produced too many "OTHER"
-   eventTypes and generic boilerplate; the v2 prompt
-   (taxonomy + importance anchors + audience rules + temperature 0)
-   is shipped and a handful of natural-poll filings are already
-   summarised under it. The full re-summarisation of the existing
-   720 disclosures is blocked on Gemini's free-tier daily quota
-   resetting at 16:00 KST; trigger via:
-   ```bash
-   ssh root@<PROD_VM> "cd /root/korea-filings-api && \
-     SUMMARY_BACKFILL_ENABLED=true \
-     docker compose --profile prod up -d --force-recreate app"
-   ```
+1. **v1.1 — done (2026-04-29).** Replaced the rcpt_no entry point
+   with a name-based agent flow. The natural call sequence now is
+   `find_company` → `get_recent_filings` (or
+   `list_recent_filings` → `get_summary`). All four flows are live,
+   the SDK / MCP server are 0.2.0 on PyPI, and three on-chain
+   mainnet settlements (`0x681c995e…`, `0x142719c5…`,
+   `0x37397cee…`) confirm both fixed-price and per-result pricing
+   modes work end-to-end. ROADMAP.md carries the full ship summary.
 
-2. **Directory registrations**: x402scan ✅, Glama ✅, mcp.so ✅,
+2. **v1.2 — planned, body-fetch + numerical extraction.** The
+   single biggest honest weakness of v1.1: every summary is
+   generated from filing metadata only, so quantitative events
+   (rights offerings, debt issuance, supply contracts) come back as
+   "details are in the filing body". v1.2 fixes this by pulling
+   per-filing XBRL via DART's `/document.xml` API, parsing
+   templated facts for the six highest-value event types, and
+   exposing them through a new `/v1/disclosures/{rcptNo}/deep`
+   endpoint at a higher price tier (~0.020 USDC) alongside a
+   `keyFacts` field on the summary DTO. Build trigger: at least a
+   week of v1.1 traffic showing which filing types agents actually
+   pay for. Detailed plan in
+   [`docs/ROADMAP.md`](ROADMAP.md#v12--deep-filing-analysis-planned).
+
+3. **Directory registrations**: x402scan ✅, Glama ✅, mcp.so ✅,
    Smithery deferred (site outage at submission time, retry).
+   Glama needs a v0.2 re-release pass once the new SDK / MCP
+   versions propagate to PyPI consumers.
 
-3. **HN Show HN post** — `docs/launch/HN_DRAFT.md` is the copy. Ideal
-   timing: Tuesday/Wednesday 13:00–15:00 UTC (22:00–24:00 KST). The
-   first mainnet settlement at
-   [`0x681c995e…`](https://basescan.org/tx/0x681c995e149d3ce5765ea8a3b0f921a45352fccefbd9fc9258bf4f6141eafd7c)
-   is the headline proof.
+4. **HN Show HN post** — `docs/launch/HN_DRAFT.md` is the copy.
+   Targeting Tuesday/Wednesday 22:00 KST. Headline shifted from
+   "rcpt_no demo" (the v1 framing) to "1 free call + 1 paid call to
+   get Korean filings as English signals", with v1.2 deep analysis
+   explicitly named as the next phase so the launch positions a
+   roadmap, not a demo.
 
-4. **Operational follow-ups (post-launch)**: Slack / email alert when
-   `payment_log` gets a new row, Grafana dashboard for the four
-   metrics that matter (calls/min, cache hit ratio, mean LLM cost
-   per cache miss, payer diversity), TypeScript SDK port.
+5. **Operational follow-ups (post-launch)**: Slack / email alert
+   when `payment_log` gets a new row, Grafana dashboard for the
+   four metrics that matter (calls/min, cache hit ratio, mean LLM
+   cost per cache miss, payer diversity), TypeScript SDK port.
 
 ## Mainnet rollback recipe
 

@@ -56,10 +56,14 @@ pip install koreafilings
 from koreafilings import Client
 
 with Client(private_key="0x...", network="base") as client:
-    summary = client.get_summary("20260427901120")
+    # 1. Free name → ticker resolution
+    matches = client.find_company("Samsung Electronics")
+    ticker = matches[0].ticker  # "005930"
 
-    print(f"[{summary.importance_score}/10] {summary.event_type}")
-    print(summary.summary_en)
+    # 2. Paid batch summary fetch (0.005 × limit USDC)
+    filings = client.get_recent_filings(ticker, limit=5)
+    for f in filings:
+        print(f"[{f.importance_score}/10] {f.event_type}: {f.summary_en}")
     print("paid:", client.last_settlement.tx_hash)
 ```
 
@@ -129,6 +133,14 @@ on-chain settlement is permanent at
 a payer wallet moved 0.005 USDC to the merchant wallet
 `0x8467Be164C75824246CFd0fCa8E7F7009fB8f720` in a single
 `transferWithAuthorization` call.
+
+Pricing modes:
+
+- **Fixed (per-call)**: `GET /v1/disclosures/{rcptNo}/summary` —
+  flat 0.005 USDC for one summary.
+- **Per-result (batch)**: `GET /v1/disclosures/by-ticker/{ticker}?limit=N`
+  — 0.005 × N USDC, declared dynamically in the 402 response so
+  agents see the exact charge before signing.
 
 ## Architecture
 
@@ -222,10 +234,29 @@ MVP feature set:
 - Production deploy on VPS provider via Cloudflare Tunnel
 - Coinbase CDP facilitator (Ed25519 JWT auth) for mainnet settlement
 
+Current limitation: every summary the service produces today is
+generated from filing metadata only — title, date, filer, DART flag.
+That is enough to surface event type, importance, and ticker / sector
+tags ("first-pass screening"), but not enough to extract concrete
+numbers like rights-offering size, dilution %, or contract value. The
+LLM honestly admits this with phrases like "details are in the filing
+body" rather than fabricating figures.
+
 Coming next:
 
-- Additional paid endpoints: `/disclosures/latest`, `/by-ticker/{ticker}`,
-  `POST /filter`, SSE `/stream`, `/impact`
+- **v1.2 — deep filing analysis.** Pull the filing body via DART's
+  `/document.xml` ZIP endpoint, parse the XBRL templates for the
+  six highest-value event types (RIGHTS_OFFERING,
+  CONVERTIBLE_BOND_ISSUANCE, DEBT_ISSUANCE, ACQUISITION,
+  SUPPLY_CONTRACT_SIGNED, MAJOR_SHAREHOLDER_FILING), and extract
+  amounts, dilution %, counterparty, and dates into a structured
+  `keyFacts` field. New paid endpoint
+  `/v1/disclosures/{rcptNo}/deep` at a higher price tier (~0.020
+  USDC) — existing endpoints stay metadata-only at 0.005 USDC so
+  callers pick depth at call time. Roadmap detail in
+  [`docs/ROADMAP.md`](docs/ROADMAP.md#v12--deep-filing-analysis-planned).
+- POST `/v1/disclosures/filter` (sector + event-type query)
+- SSE `/v1/disclosures/stream` (real-time push)
 - TypeScript SDK
 - Korean-language landing page
 - Slack / email alerts on settlement

@@ -134,6 +134,84 @@ Do not commit to features ahead of time. Look at what the data says. Some likely
 - If customers ask for earnings data: build earnings call summary as a separate product line under the same domain.
 - If volume stays low: diagnose (pricing? discoverability? wrong customer?) before building anything new.
 
+## v1.1 — Agent-Friendly Discovery (shipped 2026-04-29)
+
+Replaced the rcpt_no-only entry point with a name-based agent flow.
+The original v1 forced callers to know a 14-digit DART receipt
+number, which no LLM has in its training data and no agent can
+derive from a company name. v1.1 turns the service into a 1 free +
+1 paid call sequence:
+
+```
+find_company("Samsung Electronics")  → free, returns ticker
+get_recent_filings("005930", 5)      → 0.005 × 5 = 0.025 USDC, returns batch
+```
+
+What ships:
+
+- `GET /v1/companies?q=…`            — fuzzy name + ticker search (free)
+- `GET /v1/companies/{ticker}`        — single lookup (free)
+- `GET /v1/disclosures/recent`        — metadata feed across the market (free)
+- `GET /v1/disclosures/by-ticker/{ticker}?limit=N` — batch summaries for one company (paid 0.005 × N USDC)
+- `GET /v1/disclosures/{rcptNo}/summary` — kept for direct receipt lookup (paid 0.005 USDC)
+- `@X402Paywall(pricingMode = PER_RESULT)` — declarative dynamic pricing
+- DART corpCode.xml sync on bootstrap + daily 09:30 KST refresh
+- Python SDK 0.2 + MCP server 0.2 expose all four flows
+- All summaries remain metadata-only — same Gemini cache as v1
+
+## v1.2 — Deep Filing Analysis (planned)
+
+v1.1 fixed the discovery problem; v1.2 fixes the depth problem. Right
+now Gemini only sees the filing's metadata (title, date, filer name)
+and routinely returns "specifics are in the filing body" for
+quantitative events like rights offerings, debt issuance, and supply
+contracts — exactly the events agents most want numbers for.
+
+**Build:**
+
+1. **`DartClient.fetchDocument(rcptNo)`** — pulls the per-filing
+   ZIP from `https://opendart.fss.or.kr/api/document.xml`. Each ZIP
+   carries an XBRL or HTML payload with the actual content. Cache
+   the unzipped body on Postgres next to the existing summary so
+   downstream LLM runs are idempotent.
+
+2. **Body extractor** — most filing types follow a small set of
+   templated XBRL fact patterns. Start with the highest-value six
+   (RIGHTS_OFFERING, CONVERTIBLE_BOND_ISSUANCE, DEBT_ISSUANCE,
+   ACQUISITION, SUPPLY_CONTRACT_SIGNED, MAJOR_SHAREHOLDER_FILING)
+   — these are where customers actually want concrete numbers.
+   Each gets a small parser that pulls amount, dilution %,
+   counterparty, and material dates.
+
+3. **`SummaryResult.keyFacts`** — new structured field on the
+   summary DTO carrying the extracted numbers. The free-text
+   `summary_en` paragraph cites them inline; agents that want
+   strict typing read `keyFacts` directly.
+
+4. **New paid endpoint** — `GET /v1/disclosures/{rcptNo}/deep`
+   priced higher (~0.020 USDC) to reflect the body fetch + extra
+   LLM tokens. The existing `summary` endpoint stays at
+   0.005 USDC and stays metadata-only — customers pick depth at
+   call time.
+
+5. **MCP tool** — `get_disclosure_deep(rcpt_no)` mirrors the new
+   endpoint so Claude Desktop / Cursor can request depth on
+   demand.
+
+**Guardrails:**
+
+- DART rate-limits the document endpoint per-key. Add a
+  Resilience4j RateLimiter alongside the existing `dart` instance.
+- Body fetch is opt-in only — never auto-fire on every ingestion,
+  or the LLM cost balloons before any agent has paid for depth.
+- Document bodies can run megabytes of XBRL; cap per-request
+  tokens sent to Gemini at ~5k characters of the most relevant
+  template fields, not the raw body.
+
+**When to ship:** after v1.1 has been live for at least a week and
+we have agent traffic telling us which filing types they actually
+care about.
+
 ## Guardrails Throughout
 
 - No side-project resources (*** code, data, or accounts) used at any point.
