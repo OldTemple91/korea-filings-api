@@ -2,15 +2,14 @@
 
 ## High-Level View
 
-The system is one Spring Boot 3.4 application running on a VPS provider
-VPS ARM VM in ***, fronted by Cloudflare Tunnel
-(no inbound ports), backed by Redis 7 and PostgreSQL 16 in Docker
-Compose, calling out to DART for source disclosures and to Gemini
-2.5 Flash-Lite for English summarisation. x402 payment verification
-and on-chain settlement are outsourced to the Coinbase CDP
-facilitator. No Kafka, no Kubernetes, no microservices — this is
-deliberately a well-factored monolith that one person can operate
-on weekends.
+The system is one Spring Boot 3.4 application running on a small
+Linux VPS, fronted by Cloudflare Tunnel (no inbound ports), backed
+by Redis 7 and PostgreSQL 16 in Docker Compose, calling out to
+DART for source disclosures and to Gemini 2.5 Flash-Lite for
+English summarisation. x402 payment verification and on-chain
+settlement are outsourced to the Coinbase CDP facilitator. No
+Kafka, no Kubernetes, no microservices — this is deliberately a
+well-factored monolith that a single maintainer can operate.
 
 ```
                     ┌─────────────────────────┐
@@ -22,10 +21,10 @@ on weekends.
                     │     Cloudflare Edge     │  DDoS, HTTPS, IP hiding
                     │ (api.koreafilings.com)  │
                     └────────────┬────────────┘
-                                 │ Tunnel (outbound from VPS provider)
+                                 │ Tunnel (outbound only)
                                  ▼
           ┌──────────────────────────────────────────────┐
-          │     Linux VPS (Docker Compose, ARM)      │
+          │      Production VM (Docker Compose)          │
           │                                                │
           │  ┌──────────────────────────────────────┐    │
           │  │     Spring Boot 3.4 / Java 21        │    │
@@ -313,7 +312,7 @@ covers the whole batch in one on-chain transferWithAuthorization.
 - **Cloudflare Tunnel disconnects** — reconnects automatically
   when connectivity returns. Cloudflare returns 5xx to clients
   during the outage.
-- **VPS provider host down** — VPS provider SLA + Docker Compose restart
+- **VM host down** — VPS provider SLA + Docker Compose restart
   policy bring the stack back. No multi-region failover for MVP.
 
 ## Deployment Model
@@ -335,12 +334,11 @@ boring.
 
 ## Scaling Assumptions
 
-MVP expects peak ~10 RPS. A single JVM on a Linux VPS (ARM,
-2 vCPU, 4 GB RAM) handles this comfortably — JVM heap is sized
-to ~2 GB, the rest is for Postgres + Redis + the OS. If
-sustained traffic exceeds 100 RPS we vertically scale to VPS /
-VPS (one click in the VPS provider console) before considering any
-horizontal split.
+MVP expects peak ~10 RPS. A single JVM on a small Linux VPS
+handles this comfortably — JVM heap is sized to leave room for
+Postgres, Redis, and the OS on the same host. If sustained
+traffic exceeds 100 RPS the path is to vertically scale the VPS
+in-place before considering any horizontal split.
 
 The DART polling rate (30s) is fixed by DART's recommendation
 and is independent of client traffic. LLM call volume is bounded

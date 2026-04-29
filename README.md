@@ -205,7 +205,7 @@ discoverability), while the body keeps a v1-compatible JSON copy so
 older clients keep working.
 
 Stack: Java 21, Spring Boot 3.4, PostgreSQL 16, Redis 7, Docker
-Compose, Cloudflare Tunnel, Cloudflare Workers, Linux VPS. See
+Compose, Cloudflare Tunnel, Cloudflare Workers. See
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for deeper notes.
 
 ## Repository layout
@@ -268,7 +268,7 @@ MVP feature set:
 - Free name → ticker resolution (`find_company`) + free recent feed (`list_recent_filings`) so agents can browse before paying
 - Per-result paid batch endpoint (`/v1/disclosures/by-ticker/{ticker}?limit=N`) with 0.005 × N USDC declared dynamically in the 402
 - Indexed by [x402scan](https://www.x402scan.com)
-- Production deploy on VPS provider via Cloudflare Tunnel
+- Production deploy on a Linux VPS via Cloudflare Tunnel
 - Coinbase CDP facilitator (Ed25519 JWT auth) for mainnet settlement
 
 Current limitation: every summary the service produces today is

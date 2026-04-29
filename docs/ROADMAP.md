@@ -1,6 +1,6 @@
-# Roadmap — DART Intelligence API
+# Roadmap — Korea Filings
 
-Six-week plan from zero to public launch. Weekends-only work assumed (~10 hours/week). If weekday time appears, use it to catch up or get ahead, not to sprint into later weeks.
+Six-week plan from zero to public launch, sized for ~10 hours of focused work per week.
 
 ## Week 1 — Foundation and Ingestion
 
@@ -71,16 +71,16 @@ Deliverable: a demo video-able payment flow on localhost against testnet USDC.
 Goal: the API is reachable at `api.{domain}/v1/...` from the public internet, with HTTPS, not exposing the home IP.
 
 **Day 1**
-- Buy a domain (owner's choice; `korwire.io` / `kordata.io` / etc.).
+- Register the chosen domain (`koreafilings.com`).
 - Point the domain's DNS to Cloudflare (transfer nameservers).
-- Install `cloudflared` on the home server.
+- Install `cloudflared` on the production VM.
 - Create a Cloudflare Tunnel in the dashboard, connect to the server, route `api.{domain}` → `http://app:8080` (inside Docker Compose).
 - Verify external reachability with `curl https://api.{domain}/v1/pricing`.
 
 **Day 2**
 - Switch from Base Sepolia to Base mainnet in production config.
 - Purchase $5 worth of real USDC on Base to test live flow.
-- Run the test client against production once. Confirm settlement appears in the payer wallet and funds arrive in the owner's wallet.
+- Run the test client against production once. Confirm settlement appears in the payer wallet and funds arrive in the merchant wallet.
 - Set up Prometheus + Grafana in Docker Compose. Import a basic Spring Boot dashboard.
 - Install `monit` or equivalent for process health.
 - Write the status page (can be a static HTML on Cloudflare Pages).
@@ -89,7 +89,7 @@ Deliverable: a working paid API at a real URL, observable in Grafana.
 
 ## Week 5 — Distribution
 
-Goal: somebody other than the owner can find this API and use it.
+Goal: external users can find this API and use it.
 
 **Day 1**
 - Write `docs/openapi.yaml` by hand or auto-generate with springdoc. Host at `docs.{domain}`.
@@ -105,21 +105,21 @@ Goal: somebody other than the owner can find this API and use it.
 - Submit to `awesome-mcp-servers` GitHub repo via PR.
 - Draft a HN "Show HN" post, sleep on it.
 
-Deliverable: a person who has never heard of the owner can find the service via x402scan, MCP registry, or Google.
+Deliverable: a person who has never heard of the project can find the service via x402scan, MCP registry, or Google.
 
 ## Week 6 — Launch
 
 Goal: first external paid call.
 
 **Day 1**
-- Post "Show HN: DART Intelligence API — Korean corporate disclosures for AI agents, paid per call via x402" on Hacker News on a Tuesday or Wednesday morning US time.
+- Post the prepared Show HN draft on Hacker News on a Tuesday or Wednesday morning US time.
 - Cross-post on r/LocalLLaMA, r/MachineLearning, r/ClaudeAI with angle appropriate to each.
-- Post on GeekNews (Korean), OKKY, and owner's personal velog/Twitter.
+- Cross-post on GeekNews (Korean) and OKKY.
 - Monitor Grafana for traffic and errors. Stay available for the first 6 hours to answer questions.
 
 **Day 2**
 - Review metrics. Document bugs found during launch.
-- Post a followup post on the owner's blog — "What I learned building my first x402 API" — covering technical choices, cost structure, launch numbers (however embarrassing).
+- Optionally publish a write-up covering technical choices, cost structure, and launch numbers (however embarrassing).
 - Start a changelog at `{domain}/changelog`.
 - Stop coding. Watch the data for a week before deciding what to build next.
 
@@ -214,8 +214,8 @@ care about.
 
 ## Guardrails Throughout
 
-- No side-project resources (*** code, data, or accounts) used at any point.
+- Built on public DART data only — no proprietary or third-party code, data, or accounts referenced at any point.
 - Every external dependency (DART, Gemini, OpenAI, Coinbase) gated behind a client class with timeouts and a circuit breaker.
 - Secrets only in `.env`, never in the repo. `.env.example` documents all variables.
 - Before every week's work: re-read `CLAUDE.md` and `PRD.md`. Update them if reality has diverged.
-- Spend no money that cannot be replaced from the month's normal budget. If the project is not at $50/month in revenue by month 4, scale costs down, not up.
+- Keep recurring infrastructure spend bounded by the previous month's revenue. If revenue is not at $50/month by month 4, scale costs down, not up.

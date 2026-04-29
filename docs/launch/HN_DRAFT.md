@@ -45,7 +45,7 @@ The agent flow is one free call + one paid call:
 
 First mainnet settlement: https://basescan.org/tx/0x681c995e149d3ce5765ea8a3b0f921a45352fccefbd9fc9258bf4f6141eafd7c
 
-Stack: Java 21 / Spring Boot 3.4 / Postgres 16 with pg_trgm fuzzy search / Redis 7 on VPS provider behind Cloudflare Tunnel. Gemini 2.5 Flash-Lite for the summarisation, prompted with a 50-row Korean → English filing-type taxonomy + importance anchors so OTHER stays under 5%. Resilience4j circuit-breaks the LLM, the DART poller, and the facilitator independently.
+Stack: Java 21 / Spring Boot 3.4 / Postgres 16 with pg_trgm fuzzy search / Redis 7 on a Linux VPS behind Cloudflare Tunnel. Gemini 2.5 Flash-Lite for the summarisation, prompted with a 50-row Korean → English filing-type taxonomy + importance anchors so OTHER stays under 5%. Resilience4j circuit-breaks the LLM, the DART poller, and the facilitator independently.
 
 What's there:
 
@@ -81,7 +81,7 @@ OP here. A few notes on the parts I think are most interesting:
 
 The cache is the moat: every summary is generated once and stored as an immutable Postgres row. The first call for a given rcpt_no pays the LLM tokens; every subsequent call is a near-free DB lookup. The price stays flat at 0.005 USDC, so the LLM cost is amortized across however many agents care about that filing. Margins compound as adoption grows. This is also why I felt confident charging per call instead of per token or per month — the marginal cost on the cache-hit path approaches zero.
 
-Why a Java backend for a crypto-payments service: I'm a Spring Boot engineer by trade and wanted to prove the x402 flow is implementable in any stack. The SDK, MCP server, and reference client are Python; the production server is Java. Both ends use JdkClientHttpConnector (not Reactor Netty — its TLS implementation rejects the Korean gov endpoint we poll for source data, learned that the hard way).
+Why a Java backend for a crypto-payments service: most x402 examples in the wild are TypeScript, and I wanted a worked reference proving the flow lands clean on the JVM too. The SDK, MCP server, and reference client are Python; the production server is Java. Both ends use JdkClientHttpConnector (not Reactor Netty — its TLS implementation rejects the Korean gov endpoint we poll for source data, learned that the hard way).
 
 x402 v2 quirks I hit: the spec moved the PaymentRequired payload from the body into a base64-encoded PAYMENT-REQUIRED header in v2, but most existing clients (including the popular x402.org facilitator) still read the body. I dual-emit both. The "bazaar" extension (specs/extensions/bazaar.md) isn't optional in x402scan's strict-mode validator — my first two registration attempts were rejected before I added it.
 

@@ -28,7 +28,7 @@ live, what's next, and the minimum setup to keep moving.
 | surface | URL | notes |
 |---|---|---|
 | Landing page | https://koreafilings.com | Cloudflare Workers + static assets. Source in `landing/index.html`. |
-| API root | https://api.koreafilings.com | Spring Boot on production VM via Cloudflare Tunnel. |
+| API root | https://api.koreafilings.com | Spring Boot on the production VM via Cloudflare Tunnel. |
 | Swagger UI | https://api.koreafilings.com/swagger-ui/index.html | Human-readable API docs. |
 | OpenAPI spec | https://api.koreafilings.com/v3/api-docs | Machine-readable JSON. |
 | Pricing | https://api.koreafilings.com/v1/pricing | Free, lists paid endpoints + x402 wallet. |
@@ -40,16 +40,16 @@ live, what's next, and the minimum setup to keep moving.
 
 ## Infrastructure
 
-- **production VM** — VPS ARM, 2 vCPU / 4GB / 40GB, ***.
-  Public IP `<PROD_VM>`. Ubuntu 24.04. SSH as root with key. App
-  runs under `docker compose --profile prod` at `/root/korea-filings-api/`.
-- **Cloudflare** — DNS, Tunnel (connector running on VM, outbound-only,
-  no inbound ports), Workers hosting `koreafilings.com`. Zone on
-  `kianchau.ns.cloudflare.com / michelle.ns.cloudflare.com`.
-- **PyPI** — both packages under account that owns
-  `***`.
-- **GitHub** — `OldTemple91/korea-filings-api`. Push access via stored
-  HTTPS creds on this Mac.
+- **Production VM** — small Linux VPS behind Cloudflare Tunnel.
+  Reachable as `<PROD_VM>` in the deploy commands below. App runs
+  under `docker compose --profile prod` from the project directory.
+- **Cloudflare** — DNS, Tunnel (connector running on the VM,
+  outbound-only, no inbound ports), Workers hosting
+  `koreafilings.com`.
+- **PyPI** — both packages published under the maintainer's PyPI
+  account.
+- **GitHub** — `OldTemple91/korea-filings-api`. Push via stored
+  HTTPS credentials on the maintainer's workstation.
 
 ## What's left
 
@@ -147,8 +147,8 @@ koreafilings-mcp  # stdio MCP server
 - `testclient/.env.testclient` — payer wallet private key for live tests.
 - `~/.pypirc` — PyPI upload token. **Delete after each upload session**
   unless you're planning frequent releases.
-- production VM keeps its own copy of `/root/korea-filings-api/.env` —
-  rsync from the laptop if the contents diverge.
+- The production VM keeps its own copy of `<REMOTE_REPO_DIR>/.env` —
+  rsync from the maintainer's workstation if the contents diverge.
 
 ## Commands cheat sheet
 
@@ -157,14 +157,14 @@ koreafilings-mcp  # stdio MCP server
 rsync -az --delete --exclude='.git' --exclude='build/' --exclude='.venv' \
   --exclude='mcp/.venv' --exclude='sdk/python/.venv' \
   --exclude='testclient/.env.testclient' \
-  <LOCAL_REPO>/ root@<PROD_VM>:/root/korea-filings-api/
-ssh root@<PROD_VM> 'cd /root/korea-filings-api && docker compose --profile prod build app && docker compose --profile prod up -d app'
+  <REPO_ROOT>/ root@<PROD_VM>:<REMOTE_REPO_DIR>/
+ssh root@<PROD_VM> 'cd <REMOTE_REPO_DIR> && docker compose --profile prod build app && docker compose --profile prod up -d app'
 
 # Verify paid endpoint
 curl -I https://api.koreafilings.com/v1/disclosures/20260424900874/summary   # should 402
 
 # Check production payment_log
-ssh root@<PROD_VM> "cd /root/korea-filings-api && docker compose exec -T postgres \
+ssh root@<PROD_VM> "cd <REMOTE_REPO_DIR> && docker compose exec -T postgres \
   psql -U dartintel -d dartintel -c 'SELECT id, rcpt_no_accessed, amount_usdc, facilitator_tx_id, settled_at FROM payment_log ORDER BY settled_at DESC LIMIT 10;'"
 
 # PyPI re-upload (after `~/.pypirc` is set up)

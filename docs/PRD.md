@@ -63,7 +63,7 @@ See `README.md` (Pricing section) and the live machine-readable descriptor at [`
 ## Non-Functional Requirements
 
 - **Latency**: p95 response time for cached summary reads ≤ 200 ms. Cold (uncached) reads ≤ 8 seconds (dominated by the Gemini call). Free endpoints (`/v1/companies`, `/v1/disclosures/recent`) ≤ 100 ms p95 — pg_trgm fuzzy search across 3,961 rows is sub-50 ms in practice.
-- **Availability**: Target 99% monthly uptime for MVP, gated by VPS provider's SLA + Cloudflare Tunnel. Planned maintenance is acceptable with notice on the status page.
+- **Availability**: Target 99% monthly uptime for MVP, gated by the underlying VPS provider's SLA + Cloudflare Tunnel. Planned maintenance is acceptable with notice on the status page.
 - **Freshness**: New DART disclosures appear in `/v1/disclosures/recent` within 60 seconds of publication (30 s poll interval + 30 s summarisation headroom).
 - **Cost per request**: average Gemini cost per unique disclosure ≤ $0.002, amortised to ≤ $0.0003 per call at 10-call reuse. The cache-hit path costs effectively nothing (Postgres lookup + JSON serialisation), so margins compound with adoption. If the per-disclosure floor is ever violated, reconsider the prompt or model.
 - **Observability**: Every paid request emits a structured log with `rcptNo`, endpoint, payment amount, facilitator latency, and LLM cost (if applicable). The `payment_log` table is the single source of truth for revenue; a post-launch ops follow-up wires Slack / email alerts on every new row.
@@ -101,6 +101,6 @@ If by end of month 6:
 
 - Total lifetime revenue < $150
 - No repeat users (same wallet calling twice on different days) numbering more than 3
-- x402scan traffic dominated by the owner's own test calls
+- x402scan traffic dominated by the project's own self-test calls
 
 ... then reassess: ship v1.2 deep analysis to lift average revenue per call (higher tier ~0.020 USDC), pivot toward a Korean address-normalisation API (higher call volume but lower margin per call), or pivot toward a Chaebol graph API (higher marginal value per call, different customer).
