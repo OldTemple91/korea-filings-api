@@ -35,7 +35,8 @@ logs/
 .DS_Store
 Thumbs.db
 
-# Claude Code session files + local-only context
+# Claude Code / Codex / agent session files + local-only context
 .claude/
 CLAUDE.md
+AGENTS.md
 docs/INITIAL_PROMPT.md
