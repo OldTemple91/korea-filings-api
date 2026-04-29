@@ -15,6 +15,7 @@ CREATE TABLE company (
     market             VARCHAR(20),                 -- KOSPI / KOSDAQ / KONEX (best effort)
     last_modified_at   DATE         NOT NULL,        -- DART's modify_date
     synced_at          TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    updated_at         TIMESTAMPTZ  NOT NULL DEFAULT now(),
     CONSTRAINT company_ticker_format CHECK (ticker ~ '^[0-9]{6}$'),
     CONSTRAINT company_corp_code_format CHECK (corp_code ~ '^[0-9]{8}$')
 );

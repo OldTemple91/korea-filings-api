@@ -76,7 +76,8 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
         }
 
         String resourceUrl = request.getRequestURL().toString();
-        PaymentRequirement requirement = buildRequirement(paywall.priceUsdc());
+        String effectivePriceUsdc = computeEffectivePrice(paywall, request);
+        PaymentRequirement requirement = buildRequirement(effectivePriceUsdc);
 
         String xPayment = request.getHeader(X_PAYMENT_HEADER);
         if (xPayment == null || xPayment.isBlank()) {
@@ -142,6 +143,37 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
         }
         // 2xx settlement is handled by X402SettlementAdvice so X-PAYMENT-RESPONSE
         // can reach the client before the body is committed.
+    }
+
+    /**
+     * Resolve the actual price for this request based on the annotation's
+     * {@link X402Paywall#pricingMode()}. Per-result endpoints multiply
+     * the unit price by an integer query parameter (e.g. {@code limit})
+     * so a single 0.005-per-summary annotation can charge correctly for
+     * any batch size. The multiplier is clamped at the annotation's
+     * {@code maxCount} as defence-in-depth even if the controller's
+     * Bean Validation already rejects out-of-range requests.
+     */
+    private static String computeEffectivePrice(X402Paywall paywall, HttpServletRequest request) {
+        if (paywall.pricingMode() != X402Paywall.Mode.PER_RESULT) {
+            return paywall.priceUsdc();
+        }
+        int count = paywall.defaultCount();
+        String raw = request.getParameter(paywall.countQueryParam());
+        if (raw != null) {
+            try {
+                count = Integer.parseInt(raw.trim());
+            } catch (NumberFormatException ignored) {
+                count = paywall.defaultCount();
+            }
+        }
+        if (count < 1) count = 1;
+        if (count > paywall.maxCount()) count = paywall.maxCount();
+        BigDecimal unit = new BigDecimal(paywall.priceUsdc());
+        return unit.multiply(BigDecimal.valueOf(count))
+                .setScale(6, RoundingMode.HALF_UP)
+                .stripTrailingZeros()
+                .toPlainString();
     }
 
     private PaymentRequirement buildRequirement(String priceUsdc) {

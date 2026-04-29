@@ -78,17 +78,21 @@ class PublicControllerIT {
 
     @Test
     void pricingReturnsAllPaidEndpointsAndX402Config() throws Exception {
+        // Paths are sorted alphabetically. After v1.1 added by-ticker, the
+        // payable list is two entries deep: by-ticker (cheaper letter, comes
+        // first) then the original /{rcptNo}/summary route. Assert by path
+        // pattern rather than index to keep the test stable as future paid
+        // endpoints land.
         mockMvc.perform(get("/v1/pricing"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.x402Network").value("eip155:84532"))
                 .andExpect(jsonPath("$.x402Asset").value("0x036CbD53842c5426634e7929541eC2318f3dCF7e"))
                 .andExpect(jsonPath("$.x402Recipient").value("0x209693Bc6afc0C5328bA36FaF03C514EF312287C"))
                 .andExpect(jsonPath("$.endpoints").isArray())
-                .andExpect(jsonPath("$.endpoints[0].method").value("GET"))
-                .andExpect(jsonPath("$.endpoints[0].path").value("/v1/disclosures/{rcptNo}/summary"))
-                .andExpect(jsonPath("$.endpoints[0].priceUsdc").value("0.005"))
-                .andExpect(jsonPath("$.endpoints[0].description")
-                        .value("AI-generated English summary of a Korean DART disclosure"));
+                .andExpect(jsonPath("$.endpoints[?(@.path == '/v1/disclosures/{rcptNo}/summary')].priceUsdc")
+                        .value("0.005"))
+                .andExpect(jsonPath("$.endpoints[?(@.path == '/v1/disclosures/by-ticker/{ticker}')].priceUsdc")
+                        .value("0.005"));
     }
 
     @Test
