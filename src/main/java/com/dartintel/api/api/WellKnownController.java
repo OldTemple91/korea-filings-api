@@ -1,6 +1,7 @@
 package com.dartintel.api.api;
 
 import com.dartintel.api.payment.X402Paywall;
+import com.dartintel.api.payment.X402Properties;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -13,6 +14,7 @@ import org.springframework.web.servlet.mvc.method.RequestMappingInfo;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -21,48 +23,51 @@ import java.util.Map;
  * indexers like <a href="https://www.x402scan.com">x402scan</a> can
  * register the service automatically without probing each endpoint.
  *
- * <p>The format is the minimal payload the x402scan discovery spec
- * recognises:
- * <pre>{@code
- * {
- *   "version": 1,
- *   "resources": [ "https://host/path", ... ]
- * }
- * }</pre>
+ * <p>The response includes:
  *
- * <p>The list is generated dynamically from every handler annotated with
- * {@link X402Paywall}, so adding a new paid endpoint exposes it here
- * with no extra wiring. URLs are emitted both in their templated form
- * (e.g. {@code .../{rcptNo}/summary}) and in a concrete known-good
- * sample form so indexers that probe directly always land on a real
- * 402 response.
+ * <ul>
+ *   <li><b>service</b> — human-readable identity (name, description,
+ *       homepage, repository, openapi pointer).</li>
+ *   <li><b>x402</b> — the merchant's wallet, CAIP-2 network, and the
+ *       USDC asset address that every paid endpoint settles against.</li>
+ *   <li><b>resources</b> — one object per paid endpoint, generated
+ *       from {@link X402Paywall} annotations. Each carries the URL
+ *       template, HTTP method, USDC price, pricing mode (FIXED or
+ *       PER_RESULT), and the multiplier query parameter when the price
+ *       is dynamic. This is the metadata indexers use to decide whether
+ *       to surface the listing in search results.</li>
+ * </ul>
+ *
+ * <p>The legacy v1 {@code resources} array (just an array of URLs) is
+ * also included alongside the v2 objects, so older crawlers that
+ * iterate the field by index still resolve a real endpoint.
  */
 @RestController
 @Tag(name = "Discovery", description = "Well-known discovery documents for x402 indexers.")
 public class WellKnownController {
 
-    /**
-     * Hard-coded sample so x402scan's fallback probe always hits a
-     * disclosure that exists in the Postgres cache. We intentionally
-     * pin a known rcpt_no rather than picking the latest one — a
-     * disclosure that exists today will still exist tomorrow, and
-     * indexers do not need a moving target.
-     */
-    private static final String SAMPLE_RCPT_NO = "20260427901120";
+    private static final String PUBLIC_BASE_URL = "https://api.koreafilings.com";
+    private static final String SERVICE_NAME = "Korea Filings";
+    private static final String SERVICE_DESCRIPTION =
+            "Search Korean DART (전자공시) corporate disclosures by name " +
+            "and pay per call in USDC via x402 on Base. Free company " +
+            "directory + recent feed for discovery, paid AI-summarised " +
+            "English filings for content.";
+    private static final String SERVICE_HOMEPAGE = "https://koreafilings.com";
+    private static final String SERVICE_REPOSITORY =
+            "https://github.com/OldTemple91/korea-filings-api";
+    private static final String SERVICE_OPENAPI =
+            PUBLIC_BASE_URL + "/v3/api-docs";
 
+    private final X402Properties x402Properties;
     private final RequestMappingHandlerMapping handlerMapping;
-    private final String publicBaseUrl;
 
     public WellKnownController(
+            X402Properties x402Properties,
             @Qualifier("requestMappingHandlerMapping") RequestMappingHandlerMapping handlerMapping
     ) {
+        this.x402Properties = x402Properties;
         this.handlerMapping = handlerMapping;
-        // Hard-coded for now; once we have a config for it we can plumb
-        // X402Properties or a dedicated app.publicBaseUrl. The forward-
-        // headers strategy ensures other endpoints already self-report
-        // https://, but this document is generated at request time and
-        // we want the same canonical URL no matter the request scheme.
-        this.publicBaseUrl = "https://api.koreafilings.com";
     }
 
     @GetMapping(value = "/.well-known/x402", produces = MediaType.APPLICATION_JSON_VALUE)
@@ -70,31 +75,76 @@ public class WellKnownController {
     @Operation(
             summary = "x402 service discovery document",
             description = """
-                    Lists every paid endpoint this service exposes in the format
-                    expected by x402 ecosystem indexers (x402scan, etc.). Each
-                    paid endpoint appears twice — once as a path template and
-                    once as a concrete known-good sample URL — so an indexer
-                    can verify the runtime 402 response without guessing path
-                    parameters.
+                    Lists every paid endpoint this service exposes, plus the
+                    merchant wallet and the USDC asset address. Used by
+                    x402 ecosystem indexers (x402scan, etc.) to register
+                    the service without probing each endpoint.
                     """
     )
     public Map<String, Object> discoveryDocument() {
-        List<String> resources = handlerMapping.getHandlerMethods().entrySet().stream()
+        List<Map<String, Object>> resourceObjects = handlerMapping.getHandlerMethods().entrySet().stream()
                 .filter(e -> e.getValue().hasMethodAnnotation(X402Paywall.class))
                 .sorted(Comparator.comparing(e -> pathPattern(e.getKey())))
-                .flatMap(e -> {
-                    String template = pathPattern(e.getKey());
-                    return List.of(
-                            publicBaseUrl + template,
-                            publicBaseUrl + template.replace("{rcptNo}", SAMPLE_RCPT_NO)
-                    ).stream();
-                })
-                .distinct()
+                .map(this::toResourceObject)
                 .toList();
-        return Map.of(
-                "version", 1,
-                "resources", resources
-        );
+
+        // Legacy v1: a flat array of URLs. Some older indexers iterate
+        // resources by index assuming each entry is a string. Emit both
+        // shapes so neither breaks.
+        List<String> resourceUrls = resourceObjects.stream()
+                .map(r -> (String) r.get("url"))
+                .toList();
+
+        Map<String, Object> service = new LinkedHashMap<>();
+        service.put("name", SERVICE_NAME);
+        service.put("description", SERVICE_DESCRIPTION);
+        service.put("homepage", SERVICE_HOMEPAGE);
+        service.put("repository", SERVICE_REPOSITORY);
+        service.put("openapi", SERVICE_OPENAPI);
+
+        Map<String, Object> x402 = new LinkedHashMap<>();
+        x402.put("scheme", "exact");
+        x402.put("network", x402Properties.network());
+        x402.put("asset", x402Properties.asset());
+        x402.put("recipient", x402Properties.recipientAddress());
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("version", "2");
+        body.put("service", service);
+        body.put("x402", x402);
+        body.put("resources", resourceObjects);
+        // Legacy compatibility: also expose the flat URL array under a
+        // separate key for crawlers that hard-coded the v1 shape.
+        body.put("resourceUrls", resourceUrls);
+        return body;
+    }
+
+    private Map<String, Object> toResourceObject(
+            Map.Entry<RequestMappingInfo, HandlerMethod> entry
+    ) {
+        HandlerMethod handler = entry.getValue();
+        X402Paywall annotation = handler.getMethodAnnotation(X402Paywall.class);
+        RequestMappingInfo info = entry.getKey();
+
+        String path = pathPattern(info);
+        String method = info.getMethodsCondition().getMethods().isEmpty()
+                ? "GET"
+                : info.getMethodsCondition().getMethods().iterator().next().name();
+
+        Map<String, Object> resource = new LinkedHashMap<>();
+        resource.put("url", PUBLIC_BASE_URL + path);
+        resource.put("method", method);
+        resource.put("description", annotation.description());
+        resource.put("priceUsdc", annotation.priceUsdc());
+        resource.put("priceMode", annotation.pricingMode().name().toLowerCase());
+
+        if (annotation.pricingMode() == X402Paywall.Mode.PER_RESULT) {
+            resource.put("countParam", annotation.countQueryParam());
+            resource.put("defaultCount", annotation.defaultCount());
+            resource.put("maxCount", annotation.maxCount());
+        }
+
+        return resource;
     }
 
     private static String pathPattern(RequestMappingInfo info) {
@@ -102,12 +152,5 @@ public class WellKnownController {
             return info.getPathPatternsCondition().getPatterns().iterator().next().getPatternString();
         }
         return info.getPatternValues().iterator().next();
-    }
-
-    @SuppressWarnings("unused")
-    private static String firstMethod(HandlerMethod handler) {
-        // Reserved for future extensions if x402scan begins requiring
-        // method metadata in the resources array.
-        return "GET";
     }
 }
