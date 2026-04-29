@@ -16,14 +16,14 @@ the returned model via the ``last_settlement`` property.
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, List, Optional
 
 import httpx
 from eth_account import Account
 
 from . import _payment
 from .errors import ApiError, ConfigurationError, PaymentError
-from .models import Pricing, SettlementProof, Summary
+from .models import Company, Pricing, RecentFiling, SettlementProof, Summary
 
 
 DEFAULT_BASE_URL = "https://api.koreafilings.com"
@@ -106,6 +106,62 @@ class Client:
             raise ApiError(resp.status_code, _safe_json(resp))
         return Pricing.model_validate(resp.json())
 
+    # ------------------------------------------------------------------
+    # Free discovery (v1.1)
+    # ------------------------------------------------------------------
+
+    def find_company(self, query: str, limit: int = 20) -> List[Company]:
+        """Search the KRX listed-company directory by name or ticker. Free.
+
+        Use this as the first step in an agent flow when you have a
+        company name (English or Korean) but not the ticker. Pass the
+        resulting ``ticker`` to :meth:`get_recent_filings` to fetch
+        paid AI summaries.
+
+        ``limit`` is capped at 50 server-side; passing more is a no-op.
+        """
+        resp = self._http.get(
+            f"{self._base_url}/v1/companies",
+            params={"q": query, "limit": min(max(limit, 1), 50)},
+        )
+        if resp.status_code != 200:
+            raise ApiError(resp.status_code, _safe_json(resp))
+        body = resp.json() or {}
+        return [Company.model_validate(m) for m in body.get("matches", [])]
+
+    def get_company(self, ticker: str) -> Optional[Company]:
+        """Fetch a single company by ticker, or ``None`` if unknown. Free."""
+        resp = self._http.get(f"{self._base_url}/v1/companies/{ticker}")
+        if resp.status_code == 404:
+            return None
+        if resp.status_code != 200:
+            raise ApiError(resp.status_code, _safe_json(resp))
+        return Company.model_validate(resp.json())
+
+    def list_recent_filings(
+            self,
+            limit: int = 20,
+            since_hours: int = 24,
+    ) -> List[RecentFiling]:
+        """Browse recent DART filings across every listed company. Free.
+
+        Returns metadata only — no AI summaries. Use this to discover
+        what is happening today, then call :meth:`get_recent_filings`
+        or :meth:`get_summary` to pay for the summaries you actually
+        want.
+        """
+        resp = self._http.get(
+            f"{self._base_url}/v1/disclosures/recent",
+            params={
+                "limit": min(max(limit, 1), 100),
+                "since_hours": min(max(since_hours, 1), 168),
+            },
+        )
+        if resp.status_code != 200:
+            raise ApiError(resp.status_code, _safe_json(resp))
+        body = resp.json() or {}
+        return [RecentFiling.model_validate(f) for f in body.get("filings", [])]
+
     def get_summary(self, rcpt_no: str) -> Summary:
         """Fetch the AI summary for a DART receipt number, paying if required.
 
@@ -119,13 +175,42 @@ class Client:
         - :class:`PaymentError` if signing/settlement is rejected.
         """
         url = f"{self._base_url}/v1/disclosures/{rcpt_no}/summary"
+        body = self._paid_get(url, params=None)
+        return Summary.model_validate(body)
 
-        unpaid = self._http.get(url)
+    def get_recent_filings(self, ticker: str, limit: int = 5) -> List[Summary]:
+        """Fetch up to ``limit`` AI summaries for one Korean ticker.
+
+        Costs ``0.005 × limit`` USDC, settled in a single x402 payment.
+        Returns up to ``limit`` summaries, newest first; if the company
+        has fewer recent filings than requested the response is shorter
+        and the agent has overpaid for the missing slots — pre-filter
+        with :meth:`list_recent_filings` if budget is tight.
+
+        ``limit`` is capped at 50 server-side; passing more is rejected
+        with :class:`ApiError`.
+        """
+        url = f"{self._base_url}/v1/disclosures/by-ticker/{ticker}"
+        body = self._paid_get(url, params={"limit": min(max(limit, 1), 50)})
+        return [Summary.model_validate(s) for s in body.get("summaries", [])]
+
+    # ------------------------------------------------------------------
+    # Paid-call helper
+    # ------------------------------------------------------------------
+
+    def _paid_get(self, url: str, params: Optional[dict]) -> Any:
+        """Issue a paid GET, signing the EIP-3009 authorization on demand.
+
+        Centralises the 402 → sign → retry flow so every paid endpoint
+        shares the same error handling, network mismatch check, and
+        settlement-proof attachment.
+        """
+        unpaid = self._http.get(url, params=params)
         if unpaid.status_code == 200:
-            # Free/cached response path (the server currently always charges,
-            # but a future free-tier could land here without breaking callers).
+            # Server-issued free response — preserved for forward
+            # compatibility with future tiers.
             self._last_settlement = None
-            return Summary.model_validate(unpaid.json())
+            return unpaid.json()
         if unpaid.status_code != 402:
             raise ApiError(unpaid.status_code, _safe_json(unpaid))
 
@@ -141,11 +226,14 @@ class Client:
 
         authorization = _payment.build_authorization(self._account.address, requirement)
         signature = _payment.sign_eip3009(self._account, requirement, authorization)
-        header_value = _payment.build_x_payment_header(url, requirement, authorization, signature)
+        # The signed resource URL must be the exact request URL the
+        # server will see, including any query string. httpx's
+        # `request.url` after the unpaid call captures that for us.
+        full_url = str(unpaid.request.url) if unpaid.request else url
+        header_value = _payment.build_x_payment_header(full_url, requirement, authorization, signature)
 
-        paid = self._http.get(url, headers={"X-PAYMENT": header_value})
+        paid = self._http.get(url, params=params, headers={"X-PAYMENT": header_value})
         if paid.status_code == 402:
-            # Facilitator rejected after we signed — bubble up its reason.
             rejection = _safe_json(paid) or {}
             raise PaymentError(
                 reason=rejection.get("error") or "payment_rejected",
@@ -158,7 +246,7 @@ class Client:
         self._last_settlement = (
             SettlementProof.model_validate(settlement_raw) if settlement_raw else None
         )
-        return Summary.model_validate(paid.json())
+        return paid.json()
 
     def close(self) -> None:
         """Close the underlying HTTP connection pool."""

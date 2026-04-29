@@ -4,18 +4,33 @@ Minimal usage:
 
     from koreafilings import Client
 
-    with Client(private_key="0x...", network="base-sepolia") as client:
-        summary = client.get_summary("20260424900874")
-        print(summary.importance_score, summary.summary_en)
-        print("paid tx:", client.last_settlement.tx_hash)
+    with Client(private_key="0x...", network="base") as client:
+        # 1. Free name → ticker resolution
+        matches = client.find_company("Samsung Electronics")
+        ticker = matches[0].ticker  # "005930"
+
+        # 2. Paid batch summary fetch
+        filings = client.get_recent_filings(ticker, limit=5)
+        for f in filings:
+            print(f.importance_score, f.event_type, f.summary_en)
+        print("paid:", client.last_settlement.tx_hash)
 """
 
 from .client import Client
 from .errors import ApiError, ConfigurationError, KoreaFilingsError, PaymentError
-from .models import Pricing, PricingEndpoint, SettlementProof, Summary
+from .models import (
+    Company,
+    Pricing,
+    PricingEndpoint,
+    RecentFiling,
+    SettlementProof,
+    Summary,
+)
 
 __all__ = [
     "Client",
+    "Company",
+    "RecentFiling",
     "Summary",
     "SettlementProof",
     "Pricing",
@@ -26,4 +41,4 @@ __all__ = [
     "ConfigurationError",
 ]
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

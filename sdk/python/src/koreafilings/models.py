@@ -8,7 +8,7 @@ we do not re-camelcase on the way in.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -76,3 +76,40 @@ class PricingEndpoint(BaseModel):
 
 
 Pricing.model_rebuild()
+
+
+class Company(BaseModel):
+    """A Korean listed company from the KRX directory.
+
+    Returned by the free :meth:`Client.find_company` and
+    :meth:`Client.get_company` methods. ``ticker`` is the six-digit KRX
+    code; ``corp_code`` is DART's eight-digit internal id (rarely needed
+    by an agent but exposed for advanced use cases like cross-referencing
+    with raw DART API tools).
+    """
+
+    model_config = ConfigDict(populate_by_name=True, frozen=True)
+
+    ticker: str
+    corp_code: str = Field(alias="corpCode")
+    name_kr: str = Field(alias="nameKr")
+    name_en: Optional[str] = Field(alias="nameEn", default=None)
+    market: Optional[str] = None
+
+
+class RecentFiling(BaseModel):
+    """Lightweight metadata for a recent DART filing — no AI summary.
+
+    Returned by the free :meth:`Client.list_recent_filings`. Use the
+    ``rcpt_no`` to fetch a single summary via :meth:`Client.get_summary`,
+    or the ``ticker`` to fetch a batch via
+    :meth:`Client.get_recent_filings`.
+    """
+
+    model_config = ConfigDict(populate_by_name=True, frozen=True)
+
+    rcpt_no: str = Field(alias="rcptNo")
+    ticker: Optional[str] = None
+    corp_name: str = Field(alias="corpName")
+    report_nm: str = Field(alias="reportNm")
+    rcept_dt: date = Field(alias="rceptDt")

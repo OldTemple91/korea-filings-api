@@ -19,8 +19,10 @@ from eth_account import Account
 from koreafilings import (
     ApiError,
     Client,
+    Company,
     ConfigurationError,
     PaymentError,
+    RecentFiling,
     SettlementProof,
     Summary,
 )
@@ -141,6 +143,47 @@ def test_summary_rejects_out_of_range_importance():
     }
     with pytest.raises(Exception):
         Summary.model_validate(raw)
+
+
+def test_company_parses_camel_case_api_response():
+    raw = {
+        "ticker": "005930",
+        "corpCode": "00126380",
+        "nameKr": "삼성전자",
+        "nameEn": "Samsung Electronics Co., Ltd.",
+        "market": "KOSPI",
+    }
+    company = Company.model_validate(raw)
+    assert company.ticker == "005930"
+    assert company.corp_code == "00126380"
+    assert company.name_en == "Samsung Electronics Co., Ltd."
+    assert company.market == "KOSPI"
+
+
+def test_company_omits_optional_name_en():
+    raw = {
+        "ticker": "012345",
+        "corpCode": "00012345",
+        "nameKr": "한국전력",
+        "market": "KOSPI",
+    }
+    company = Company.model_validate(raw)
+    assert company.name_en is None
+
+
+def test_recent_filing_parses_camel_case_api_response():
+    raw = {
+        "rcptNo": "20260429000123",
+        "ticker": "005930",
+        "corpName": "Samsung Electronics",
+        "reportNm": "유상증자결정",
+        "rceptDt": "2026-04-29",
+    }
+    filing = RecentFiling.model_validate(raw)
+    assert filing.rcpt_no == "20260429000123"
+    assert filing.ticker == "005930"
+    assert filing.report_nm == "유상증자결정"
+    assert str(filing.rcept_dt) == "2026-04-29"
 
 
 def test_settlement_proof_parses():
