@@ -1,0 +1,52 @@
+# Smithery configuration file: https://smithery.ai/docs/config#smitheryyaml
+#
+# koreafilings-mcp wraps the koreafilings.com x402-paid Korean DART
+# disclosure API as an MCP toolset. It is published to PyPI as
+# `koreafilings-mcp` and we launch it with `uvx` so the deployment
+# tracks the latest release without rebuilding the container.
+
+startCommand:
+  type: stdio
+
+configSchema:
+  # JSON Schema defining the configuration options for the MCP. Smithery
+  # turns this into the per-deployment secrets form on the connection
+  # screen — keep the property names camelCase since that's how the
+  # values are routed back into commandFunction below.
+  type: object
+  required:
+    - koreafilingsPrivateKey
+  properties:
+    koreafilingsPrivateKey:
+      type: string
+      title: Wallet private key (0x-prefixed)
+      description: 32-byte hex private key that signs EIP-3009 USDC authorizations locally for x402 payment. The key is never transmitted off-host. Use a fresh burner wallet funded only with the USDC you intend to spend (~$1 covers ~200 calls).
+    koreafilingsNetwork:
+      type: string
+      title: Base network
+      enum:
+        - base
+        - base-sepolia
+      default: base
+      description: '"base" = Base mainnet (real USDC, default); "base-sepolia" = Base Sepolia testnet for free faucet USDC during testing.'
+    koreafilingsBaseUrl:
+      type: string
+      title: API base URL
+      default: https://api.koreafilings.com
+      description: Override for self-hosted deployments. Leave the default to hit the live koreafilings.com production cluster.
+
+commandFunction:
+  # A function that produces the CLI command to start the MCP on stdio.
+  # `uvx koreafilings-mcp` resolves the latest published wheel from
+  # PyPI on every cold start, so Smithery deployments automatically
+  # pick up new releases without a Docker rebuild.
+  |-
+    config => ({
+      command: 'uvx',
+      args: ['koreafilings-mcp'],
+      env: {
+        KOREAFILINGS_PRIVATE_KEY: config.koreafilingsPrivateKey,
+        KOREAFILINGS_NETWORK: config.koreafilingsNetwork || 'base',
+        KOREAFILINGS_BASE_URL: config.koreafilingsBaseUrl || 'https://api.koreafilings.com'
+      }
+    })
