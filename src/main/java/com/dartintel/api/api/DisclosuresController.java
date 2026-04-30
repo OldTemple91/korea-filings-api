@@ -9,6 +9,8 @@ import com.dartintel.api.summarization.DisclosureSummary;
 import com.dartintel.api.summarization.DisclosureSummaryRepository;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.extensions.Extension;
+import io.swagger.v3.oas.annotations.extensions.ExtensionProperty;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -99,7 +101,22 @@ public class DisclosuresController {
                     response is shorter and the agent has overpaid for the
                     missing slots — pre-filter with {@code /v1/disclosures/recent}
                     if budget is tight.
-                    """
+                    """,
+            extensions = {
+                    @Extension(name = "x-payment-info", properties = {
+                            @ExtensionProperty(name = "scheme", value = "exact"),
+                            @ExtensionProperty(name = "network", value = "eip155:8453"),
+                            @ExtensionProperty(name = "asset", value = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"),
+                            @ExtensionProperty(name = "payTo", value = "0x8467Be164C75824246CFd0fCa8E7F7009fB8f720"),
+                            @ExtensionProperty(name = "amount", value = "5000"),
+                            @ExtensionProperty(name = "amountMode", value = "perResult"),
+                            @ExtensionProperty(name = "countParam", value = "limit"),
+                            @ExtensionProperty(name = "defaultCount", value = "5"),
+                            @ExtensionProperty(name = "maxCount", value = "50"),
+                            @ExtensionProperty(name = "tokenName", value = "USD Coin"),
+                            @ExtensionProperty(name = "tokenVersion", value = "2")
+                    })
+            }
     )
     @ApiResponses({
             @ApiResponse(
@@ -144,7 +161,19 @@ public class DisclosuresController {
                     and served from cache thereafter — the price does not
                     change between cold and warm calls, but the LLM cost is
                     only paid by the first caller globally.
-                    """
+                    """,
+            extensions = {
+                    @Extension(name = "x-payment-info", properties = {
+                            @ExtensionProperty(name = "scheme", value = "exact"),
+                            @ExtensionProperty(name = "network", value = "eip155:8453"),
+                            @ExtensionProperty(name = "asset", value = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"),
+                            @ExtensionProperty(name = "payTo", value = "0x8467Be164C75824246CFd0fCa8E7F7009fB8f720"),
+                            @ExtensionProperty(name = "amount", value = "5000"),
+                            @ExtensionProperty(name = "amountMode", value = "fixed"),
+                            @ExtensionProperty(name = "tokenName", value = "USD Coin"),
+                            @ExtensionProperty(name = "tokenVersion", value = "2")
+                    })
+            }
     )
     @ApiResponses({
             @ApiResponse(
