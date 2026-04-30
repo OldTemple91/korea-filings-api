@@ -7,8 +7,13 @@ services:
       POSTGRES_DB: dartintel
       POSTGRES_USER: dartintel
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme_in_env}
+    # Bind to localhost only — Spring app reaches Postgres through the
+    # docker compose network (`postgres:5432`). Exposing 5432 on the
+    # public interface gives attackers direct DB access; binding to
+    # 127.0.0.1 keeps `psql` available over SSH but blocks the open
+    # internet.
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -21,8 +26,15 @@ services:
     image: redis:7-alpine
     container_name: dartintel-redis
     restart: unless-stopped
+    # Bind to localhost only — Spring app reaches Redis through the
+    # docker compose network (`redis:6379`). An open Redis with no
+    # password (the default config) lets any attacker read/write/delete
+    # the cache + payment-replay keys + the summary job queue, which
+    # would let them inflate Gemini bills via injected work. Localhost
+    # binding closes the public port while keeping `redis-cli`
+    # accessible over SSH for debugging.
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes
@@ -66,8 +78,13 @@ services:
       X402_TOKEN_NAME: ${X402_TOKEN_NAME:-USDC}
       X402_TOKEN_VERSION: ${X402_TOKEN_VERSION:-2}
       SUMMARY_BACKFILL_ENABLED: ${SUMMARY_BACKFILL_ENABLED:-false}
+    # Bind to localhost only — public traffic reaches the app via the
+    # cloudflared sidecar through the docker compose network
+    # (`app:8080`), so the host port doesn't need to be open to the
+    # internet. Localhost binding prevents anyone from bypassing
+    # Cloudflare's edge by hitting the VM IP directly.
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health/liveness | grep -q UP"]
       interval: 30s
