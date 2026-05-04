@@ -109,6 +109,11 @@ services:
       X402_TOKEN_NAME: ${X402_TOKEN_NAME:-USDC}
       X402_TOKEN_VERSION: ${X402_TOKEN_VERSION:-2}
       SUMMARY_BACKFILL_ENABLED: ${SUMMARY_BACKFILL_ENABLED:-false}
+      # Audit log toggle for the RequestAuditFilter — see
+      # src/main/java/com/dartintel/api/observability/RequestAuditFilter.java.
+      # Off in dev/tests; flip to true in prod to capture
+      # REQ_AUDIT lines for non-GET / 4xx-5xx traffic.
+      REQUEST_AUDIT_ENABLED: ${REQUEST_AUDIT_ENABLED:-false}
     # Bind to localhost only — public traffic reaches the app via the
     # cloudflared sidecar through the docker compose network
     # (`app:8080`), so the host port doesn't need to be open to the
