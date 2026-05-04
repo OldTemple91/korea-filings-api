@@ -54,13 +54,23 @@ live, what's next, and the minimum setup to keep moving.
 ## What's left
 
 1. **v1.1 — done (2026-04-29).** Replaced the rcpt_no entry point
-   with a name-based agent flow. The natural call sequence now is
+   with a name-based agent flow. The natural call sequence is now
    `find_company` → `get_recent_filings` (or
    `list_recent_filings` → `get_summary`). All four flows are live,
-   the SDK / MCP server are 0.2.0 on PyPI, and three on-chain
-   mainnet settlements (`0x681c995e…`, `0x142719c5…`,
-   `0x37397cee…`) confirm both fixed-price and per-result pricing
-   modes work end-to-end. ROADMAP.md carries the full ship summary.
+   and three on-chain mainnet settlements (`0x681c995e…`,
+   `0x142719c5…`, `0x37397cee…`) confirm both fixed-price and
+   per-result pricing modes work end-to-end.
+
+   **v0.3 transport-spec pass (2026-05-04).** Migrated paid endpoints
+   to query parameters (`/v1/disclosures/summary?rcptNo=…`,
+   `/v1/disclosures/by-ticker?ticker=…&limit=…`) so the bazaar v1
+   schema can declare the inputs. Adopted x402 v2 transport headers
+   (`PAYMENT-SIGNATURE` / `PAYMENT-RESPONSE`, with `X-PAYMENT` /
+   `X-PAYMENT-RESPONSE` accepted as compat). Settle-failure now
+   matches the spec (HTTP 402 + failure SettlementResponse in
+   `PAYMENT-RESPONSE` + empty body) instead of leaking paid data on
+   facilitator outage. SDK is at 0.3.1 on PyPI, MCP at 0.3.0.
+   ROADMAP.md carries the full ship summary.
 
 2. **v1.2 — planned, body-fetch + numerical extraction.** The
    single biggest honest weakness of v1.1: every summary is
@@ -76,10 +86,13 @@ live, what's next, and the minimum setup to keep moving.
    pay for. Detailed plan in
    [`docs/ROADMAP.md`](ROADMAP.md#v12--deep-filing-analysis-planned).
 
-3. **Directory registrations**: x402scan ✅, Glama ✅, mcp.so ✅,
-   Smithery deferred (site outage at submission time, retry).
-   Glama needs a v0.2 re-release pass once the new SDK / MCP
-   versions propagate to PyPI consumers.
+3. **Directory registrations**: x402scan ✅ (re-registered after v0.3
+   migration; UUID `46ef920d-…` preserved, stale path-param
+   resources auto-deprecated), Glama ✅, mcp.so ✅, Smithery deferred
+   (site outage at submission time, retry). Glama benefits from a
+   manual "Rebuild" once the v0.3 SDK / MCP versions propagate to
+   PyPI consumers, but it auto-pulls README content, so the listing
+   stays current without intervention.
 
 4. **HN Show HN post** — `docs/launch/HN_DRAFT.md` is the copy.
    Targeting Tuesday/Wednesday 22:00 KST. Headline shifted from

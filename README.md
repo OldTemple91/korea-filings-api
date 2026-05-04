@@ -269,7 +269,7 @@ MVP feature set:
 - x402 v2 paywall with `bazaar` extension for agent-discoverable invocation
 - Discovery via `/.well-known/x402`
 - OpenAPI 3 spec at [`/v3/api-docs`](https://api.koreafilings.com/v3/api-docs) + interactive Swagger UI
-- Python SDK ([`koreafilings` 0.2.1](https://pypi.org/project/koreafilings/)) and MCP server ([`koreafilings-mcp` 0.2.1](https://pypi.org/project/koreafilings-mcp/)) on PyPI
+- Python SDK ([`koreafilings` 0.3.1](https://pypi.org/project/koreafilings/)) and MCP server ([`koreafilings-mcp` 0.3.0](https://pypi.org/project/koreafilings-mcp/)) on PyPI
 - Free name → ticker resolution (`find_company`) + free recent feed (`list_recent_filings`) so agents can browse before paying
 - Per-result paid batch endpoint (`/v1/disclosures/by-ticker?ticker=…&limit=N`) with 0.005 × N USDC declared dynamically in the 402
 - Indexed by [x402scan](https://www.x402scan.com)
