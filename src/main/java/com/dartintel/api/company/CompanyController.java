@@ -9,8 +9,12 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -37,6 +41,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/v1/companies")
 @RequiredArgsConstructor
+@Validated
 @Tag(name = "Companies", description = "Free directory of Korean listed companies — search by name or ticker.")
 public class CompanyController {
 
@@ -63,7 +68,10 @@ public class CompanyController {
                     example = "Samsung Electronics",
                     required = true
             )
-            @RequestParam("q") String q,
+            @RequestParam("q")
+            @NotBlank
+            @Size(max = 200, message = "q must be at most 200 characters")
+            String q,
             @Parameter(description = "Max matches to return (1-50, default 20).")
             @RequestParam(value = "limit", defaultValue = "20") @Min(1) @Max(50) int limit
     ) {
@@ -87,7 +95,10 @@ public class CompanyController {
     public ResponseEntity<CompanyDto> getByTicker(
             @Parameter(description = "Six-digit KRX ticker, e.g. \"005930\" for Samsung Electronics.",
                     example = "005930", required = true)
-            @PathVariable String ticker
+            @PathVariable
+            @Pattern(regexp = "^[0-9A-Z]{6,7}$",
+                    message = "ticker must be 6–7 alphanumeric characters")
+            String ticker
     ) {
         return service.findByTicker(ticker)
                 .map(CompanyDto::from)

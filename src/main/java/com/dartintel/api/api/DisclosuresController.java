@@ -18,6 +18,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.ResponseEntity;
@@ -134,20 +135,42 @@ public class DisclosuresController {
             @Parameter(description = "Six-digit KRX ticker, e.g. `005930` for Samsung Electronics. " +
                     "Use the free `/v1/companies?q=<name>` endpoint first to resolve a company name.",
                     example = "005930", required = true)
-            @RequestParam("ticker") @NotBlank String ticker,
+            @RequestParam("ticker")
+            @NotBlank
+            @Pattern(regexp = "^[0-9A-Z]{6,7}$",
+                    message = "ticker must be 6–7 alphanumeric characters (KRX SPAC tickers can include letters)")
+            String ticker,
             @Parameter(description = "Max filings to return (1-50, default 5). Each costs 0.005 USDC.")
             @RequestParam(value = "limit", defaultValue = "5") @Min(1) @Max(50) int limit
     ) {
         List<Disclosure> recent = disclosureRepository
                 .findByTickerRecent(ticker, PageRequest.of(0, limit));
+        // Single bulk lookup instead of N findById calls — keeps
+        // get-by-ticker latency O(1) DB round-trips even at the 50-row
+        // ceiling. The result preserves recent's order via lookup map.
+        List<String> rcptNos = recent.stream().map(Disclosure::getRcptNo).toList();
+        Map<String, DisclosureSummary> byRcptNo = summaryRepository.findAllById(rcptNos)
+                .stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        DisclosureSummary::getRcptNo,
+                        s -> s,
+                        (a, b) -> a));
         List<DisclosureSummaryDto> summaries = recent.stream()
-                .map(d -> summaryRepository.findById(d.getRcptNo()).orElse(null))
-                .filter(s -> s != null)
+                .map(d -> byRcptNo.get(d.getRcptNo()))
+                .filter(java.util.Objects::nonNull)
                 .map(DisclosureSummaryDto::from)
                 .toList();
         Map<String, Object> body = new HashMap<>();
         body.put("ticker", ticker);
+        // chargedFor: the limit the agent paid for. delivered: how many
+        // summaries we actually returned. The two diverge when a ticker
+        // has fewer recent filings than `limit`, or when one of those
+        // filings does not yet have an AI summary in cache. Surfacing
+        // both lets agents reconcile what they paid against what they
+        // got without comparing raw tx amount to body length.
         body.put("count", summaries.size());
+        body.put("chargedFor", limit);
+        body.put("delivered", summaries.size());
         body.put("summaries", summaries);
         return ResponseEntity.ok(body);
     }
@@ -194,7 +217,11 @@ public class DisclosuresController {
                     example = "20260424900874",
                     required = true
             )
-            @RequestParam("rcptNo") @NotBlank String rcptNo) {
+            @RequestParam("rcptNo")
+            @NotBlank
+            @Pattern(regexp = "^[0-9]{14}$",
+                    message = "rcptNo must be exactly 14 digits")
+            String rcptNo) {
         return summaryRepository.findById(rcptNo)
                 .map(DisclosureSummaryDto::from)
                 .map(ResponseEntity::ok)

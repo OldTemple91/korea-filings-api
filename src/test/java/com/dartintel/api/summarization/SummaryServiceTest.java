@@ -41,6 +41,10 @@ class SummaryServiceTest {
     ComplexityClassifier classifier;
     @Mock
     LlmClient llmClient;
+    @Mock
+    org.springframework.data.redis.core.StringRedisTemplate redisTemplate;
+    @Mock
+    org.springframework.data.redis.core.ValueOperations<String, String> valueOps;
 
     @InjectMocks
     SummaryService service;
@@ -51,6 +55,12 @@ class SummaryServiceTest {
     @BeforeEach
     void setUp() {
         when(llmClient.modelId()).thenReturn("gemini-2.5-flash-lite");
+        // Single-flight lock: by default the test acquires the lock
+        // immediately. Specific tests override this to simulate a
+        // racing consumer holding the lock.
+        when(redisTemplate.opsForValue()).thenReturn(valueOps);
+        when(valueOps.setIfAbsent(anyString(), anyString(), any(java.time.Duration.class)))
+                .thenReturn(true);
         sampleDisclosure = new Disclosure(
                 "20260423000001", "00126380", "삼성전자", "Samsung Electronics Co., Ltd.",
                 "주요사항보고서(유상증자결정)", "삼성전자",

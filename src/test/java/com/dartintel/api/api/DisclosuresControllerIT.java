@@ -231,8 +231,10 @@ class DisclosuresControllerIT {
                                 {"success":true,"transaction":"0xT","network":"eip155:84532","payer":"0x857b06519E91e3A54538791bDbb0E22373e36b66"}
                                 """)));
 
+        String byTickerUrl = "http://localhost/v1/disclosures/by-ticker?ticker=005930&limit=3";
         mockMvc.perform(get("/v1/disclosures/by-ticker?ticker=005930&limit=3")
-                        .header("PAYMENT-SIGNATURE", validPaymentPayloadBase64("sig-bt")))
+                        .header("PAYMENT-SIGNATURE",
+                                validPaymentPayloadBase64("sig-bt", byTickerUrl)))
                 .andExpect(status().isOk())
                 .andExpect(header().exists("PAYMENT-RESPONSE"))
                 .andExpect(jsonPath("$.ticker").value("005930"))
@@ -240,11 +242,78 @@ class DisclosuresControllerIT {
     }
 
     @Test
-    void malformedXPaymentHeaderReturns402() throws Exception {
+    void malformedPaymentHeaderReturns400() throws Exception {
+        // x402 v2 transport spec error table: malformed payment payload
+        // maps to HTTP 400, not 402. 402 is reserved for "no payment
+        // provided" or "payment failed" — clients that send garbage need
+        // a distinguishable code path.
         mockMvc.perform(get("/v1/disclosures/summary?rcptNo=20260423000001")
                         .header("X-PAYMENT", "not-valid-base64!@#"))
-                .andExpect(status().isPaymentRequired())
+                .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value(containsString("Malformed")));
+    }
+
+    @Test
+    void resourceUrlMismatchInSignedPayloadReturns402() throws Exception {
+        // Cross-endpoint replay defence: a payment signed for the cheap
+        // fixed-price endpoint must NOT verify on the more expensive
+        // per-result endpoint. The interceptor compares
+        // paymentPayload.resource.url to the actual request URL and
+        // refuses on mismatch.
+        String summaryUrl = "http://localhost/v1/disclosures/summary?rcptNo=20260423000001";
+        String header = validPaymentPayloadBase64("sig-mismatch", summaryUrl);
+
+        mockMvc.perform(get("/v1/disclosures/by-ticker?ticker=005930&limit=10")
+                        .header("PAYMENT-SIGNATURE", header))
+                .andExpect(status().isPaymentRequired())
+                .andExpect(jsonPath("$.error").value(containsString("Resource URL mismatch")));
+    }
+
+    @Test
+    void settlementFailureReleasesSignatureSoClientCanRetryWithSameNonce() throws Exception {
+        // After /settle fails, the EIP-3009 nonce inside the signed
+        // authorisation was NOT consumed on-chain — so the same signed
+        // payload is still cryptographically valid. The Redis lock
+        // therefore must be released; otherwise a transient facilitator
+        // outage permanently strands a paying client. This test fails
+        // /settle on the first attempt, then succeeds on the second
+        // (using the same payment header) and asserts the second call
+        // produces a 200.
+        wireMock.stubFor(post(urlPathEqualTo("/verify"))
+                .willReturn(aResponse().withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"isValid\":true,\"payer\":\"0x857b06519E91e3A54538791bDbb0E22373e36b66\"}")));
+        // First /settle call: reject. Second: succeed.
+        wireMock.stubFor(post(urlPathEqualTo("/settle"))
+                .inScenario("retry-after-fail")
+                .whenScenarioStateIs(com.github.tomakehurst.wiremock.stubbing.Scenario.STARTED)
+                .willReturn(aResponse().withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"success\":false,\"errorReason\":\"facilitator_busy\"}"))
+                .willSetStateTo("recovered"));
+        wireMock.stubFor(post(urlPathEqualTo("/settle"))
+                .inScenario("retry-after-fail")
+                .whenScenarioStateIs("recovered")
+                .willReturn(aResponse().withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("""
+                                {"success":true,"transaction":"0xRECOVERED","network":"eip155:84532","payer":"0x857"}
+                                """)));
+
+        String header = validPaymentPayloadBase64("sig-recover");
+
+        // First attempt: settle fails → 402 with PAYMENT-RESPONSE.
+        mockMvc.perform(get("/v1/disclosures/summary?rcptNo=20260423000001")
+                        .header("PAYMENT-SIGNATURE", header))
+                .andExpect(status().isPaymentRequired())
+                .andExpect(header().exists("PAYMENT-RESPONSE"));
+
+        // Second attempt with the same header: lock was released, settle
+        // succeeds → 200 with the summary.
+        mockMvc.perform(get("/v1/disclosures/summary?rcptNo=20260423000001")
+                        .header("PAYMENT-SIGNATURE", header))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.rcptNo").value("20260423000001"));
     }
 
     @Test
@@ -308,10 +377,15 @@ class DisclosuresControllerIT {
     }
 
     private String validPaymentPayloadBase64(String nonce) throws Exception {
+        return validPaymentPayloadBase64(nonce,
+                "http://localhost/v1/disclosures/summary?rcptNo=20260423000001");
+    }
+
+    private String validPaymentPayloadBase64(String nonce, String resourceUrl) throws Exception {
         PaymentPayload payload = new PaymentPayload(
                 2,
                 new ResourceInfo(
-                        "http://localhost/v1/disclosures/summary?rcptNo=20260423000001",
+                        resourceUrl,
                         "DART summary",
                         "application/json"
                 ),

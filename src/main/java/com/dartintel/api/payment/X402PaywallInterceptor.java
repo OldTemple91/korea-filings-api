@@ -7,6 +7,7 @@ import com.dartintel.api.payment.dto.PaymentPayload;
 import com.dartintel.api.payment.dto.PaymentRequirement;
 import com.dartintel.api.payment.dto.PaymentRequirementsBody;
 import com.dartintel.api.payment.dto.ResourceInfo;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -121,9 +122,36 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
             byte[] decoded = Base64.getDecoder().decode(paymentHeader);
             paymentPayload = objectMapper.readValue(decoded, PaymentPayload.class);
         } catch (Exception e) {
+            // Spec maps a malformed payment payload to HTTP 400, not 402
+            // (transports-v2/http.md error table: "Invalid Payment | 400 |
+            // Malformed payment payload or requirements"). 402 is reserved
+            // for "no payment provided" or "payment required after a settle
+            // failure" — using it for garbage input prevents spec-aware
+            // clients from branching on the malformed-payload code path.
             paymentStore.release(sigHash);
+            writeBadRequest(response, "Malformed payment payload");
+            return false;
+        }
+
+        // Resource URL binding (x402 v2 §5.1 §5.2.2). The client
+        // signed for a specific resource URL; the server must refuse to
+        // honour that signature on any other URL. Without this check, a
+        // signature for the cheap fixed-price endpoint
+        // (/v1/disclosures/summary?rcptNo=…, 0.005 USDC) could be
+        // replayed against the more expensive per-result endpoint
+        // (/v1/disclosures/by-ticker?ticker=…&limit=50, up to 0.25 USDC)
+        // — the EIP-3009 signature itself binds amount/nonce/validity,
+        // not URL, so URL binding is purely server policy. Comparison
+        // is exact (including query string) because the signature was
+        // computed over exactly that string.
+        ResourceInfo signedResource = paymentPayload.resource();
+        if (signedResource == null || signedResource.url() == null
+                || !signedResource.url().equals(resourceUrl)) {
+            paymentStore.release(sigHash);
+            String signedUrl = signedResource != null ? signedResource.url() : "(missing)";
+            log.warn("x402 resource URL mismatch: signed={} actual={}", signedUrl, resourceUrl);
             writePaymentRequired(response, resourceUrl, requirement, paywall.description(),
-                    "Malformed payment header");
+                    "Resource URL mismatch — signature scoped to a different endpoint");
             return false;
         }
 
@@ -246,6 +274,26 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
                         "version", props.tokenVersion() != null ? props.tokenVersion() : "2"
                 )
         );
+    }
+
+    /**
+     * Emit HTTP 400 with a small JSON envelope for malformed payment
+     * payloads. Per the x402 v2 transport spec error table, 400 is
+     * the correct status for an unparseable {@code PAYMENT-SIGNATURE}
+     * header — clients that send garbage need to know they sent
+     * garbage rather than think they were charged or rate-limited.
+     */
+    private void writeBadRequest(HttpServletResponse response, String error) throws IOException {
+        response.setStatus(HttpStatus.BAD_REQUEST.value());
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        try {
+            byte[] body = objectMapper.writeValueAsBytes(Map.of("error", error));
+            response.getOutputStream().write(body);
+        } catch (JsonProcessingException e) {
+            // Should not happen for the static map literal above.
+            log.error("Failed to serialise 400 envelope: {}", e.getMessage());
+        }
     }
 
     private void writePaymentRequired(HttpServletResponse response, String resourceUrl,
@@ -389,7 +437,15 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
                 int eq = pair.indexOf('=');
                 if (eq <= 0) continue;
                 if ("rcptNo".equals(pair.substring(0, eq))) {
-                    String value = pair.substring(eq + 1);
+                    String rawValue = pair.substring(eq + 1);
+                    // URL-decode in case an upstream proxy or caller
+                    // percent-encoded the digits or used `+`. Bare
+                    // 14-digit numerics never need decoding, but
+                    // defensive decoding makes the function robust to
+                    // future endpoints whose rcptNo could carry
+                    // non-numeric chars.
+                    String value = java.net.URLDecoder.decode(
+                            rawValue, java.nio.charset.StandardCharsets.UTF_8);
                     return isFourteenDigit(value) ? value : null;
                 }
             }

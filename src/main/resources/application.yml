@@ -5,6 +5,16 @@ server:
   # internal http:// scheme — confusing for clients and x402 indexers
   # that probe the resource.
   forward-headers-strategy: framework
+  tomcat:
+    # Trust X-Forwarded-* only from internal Docker bridge networks
+    # where the cloudflared sidecar runs. The default Docker bridge is
+    # 172.17.0.0/16, compose-managed bridges typically 172.18-22.0.0/16.
+    # We also include 127.0.0.0/8 in case the container is run in
+    # `network_mode: host` for testing. An attacker outside these
+    # ranges sending forged X-Forwarded-Host cannot influence
+    # `buildResourceUrl`, so the 402 challenge URL stays trustworthy.
+    remoteip:
+      internal-proxies: "127\\.0\\.0\\.1|172\\.(1[6-9]|2[0-9]|3[0-1])\\.\\d+\\.\\d+|10\\.\\d+\\.\\d+\\.\\d+"
 
 spring:
   application:
@@ -13,6 +23,17 @@ spring:
     url: jdbc:postgresql://localhost:5432/dartintel
     username: dartintel
     password: ${POSTGRES_PASSWORD:changeme_in_env}
+    hikari:
+      # Sized for: concurrent paid HTTP requests + DartPollingScheduler
+      # (every 30s) + SummaryJobConsumer (one connection, blocks on LLM)
+      # + SummaryRetryScheduler + CompanySyncScheduler (long-running).
+      # Default 10 is tight; bump to 20 with a generous timeout. If the
+      # pool ever empties, log and surface the failure rather than hang.
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 10000
+      max-lifetime: 1800000
+      idle-timeout: 600000
   jpa:
     open-in-view: false
     hibernate:
@@ -53,7 +74,10 @@ management:
       enabled: true
     git:
       enabled: true
-      mode: full
+      # Public actuator/info — full mode would surface every commit's
+      # author/email/branch graph to anyone who pings the endpoint.
+      # `simple` exposes just the current commit id and time.
+      mode: simple
 
 dart:
   api:

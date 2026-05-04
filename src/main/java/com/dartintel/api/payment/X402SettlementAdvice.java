@@ -76,6 +76,7 @@ public class X402SettlementAdvice implements ResponseBodyAdvice<Object> {
 
     private final FacilitatorClient facilitatorClient;
     private final PaymentLogRepository paymentLogRepository;
+    private final PaymentStore paymentStore;
     private final ObjectMapper objectMapper;
 
     @Override
@@ -112,19 +113,24 @@ public class X402SettlementAdvice implements ResponseBodyAdvice<Object> {
                     verified.payload(),
                     verified.requirement()));
         } catch (Exception e) {
+            // Drop the stack trace from this log line — it can be quite
+            // long and risks accidentally leaking the request URL into
+            // operational logs that are not separately access-controlled.
+            // Operators that need stack traces during an outage can
+            // re-run with TRACE on this logger.
             log.error("x402 settle exception for endpoint={}: {}",
-                    verified.endpoint(), e.getMessage(), e);
+                    verified.endpoint(), e.getMessage());
             FacilitatorSettleResponse synthesised = new FacilitatorSettleResponse(
                     false, "settle_unavailable", "",
                     verified.requirement().network(), verified.payer());
-            return failClosed(response, servletResp, synthesised);
+            return failClosed(response, servletResp, synthesised, verified);
         }
 
         if (!settle.success()) {
             String reason = settle.errorReason() != null ? settle.errorReason() : "unknown";
             log.error("x402 settle rejected: reason={} endpoint={}",
                     reason, verified.endpoint());
-            return failClosed(response, servletResp, settle);
+            return failClosed(response, servletResp, settle, verified);
         }
 
         attachSettlementHeader(response, settle);
@@ -142,17 +148,25 @@ public class X402SettlementAdvice implements ResponseBodyAdvice<Object> {
      * encoded into the {@code PAYMENT-RESPONSE} header (and the
      * legacy {@code X-PAYMENT-RESPONSE} alias) and an empty JSON body.
      *
-     * <p>The payment signature stays locked in Redis for its 1-hour
-     * TTL — the client cannot retry the same signature, but they can
-     * sign a fresh authorisation and try again once the facilitator
-     * is healthy. Spec-aware clients see the 402 + failure payload
-     * and can reach for that retry path automatically; legacy
-     * clients see "Payment Required" and surface the same
-     * recoverable-failure semantics.
+     * <p>Releases the Redis signature lock immediately. The on-chain
+     * EIP-3009 nonce inside the signed authorisation is the source of
+     * truth for replay protection — if {@code /settle} failed (for
+     * any reason: facilitator transient outage, insufficient funds,
+     * network mismatch), the on-chain nonce was NOT consumed, so the
+     * same signed authorisation is still cryptographically valid.
+     * Holding the Redis lock would prevent a client from recovering
+     * via the cleanest path (retry with the same signature once the
+     * facilitator is healthy). Releasing here is also defensive
+     * against a bypass via the {@code afterCompletion} chain — the
+     * lock release is now explicit at the failure point rather than
+     * implicit on a 402 status read in
+     * {@link X402PaywallInterceptor#afterCompletion}.
      */
     private Object failClosed(ServerHttpResponse response,
                               ServletServerHttpResponse servletResp,
-                              FacilitatorSettleResponse failure) {
+                              FacilitatorSettleResponse failure,
+                              VerifiedPayment verified) {
+        paymentStore.release(verified.signatureHash());
         attachSettlementHeader(response, failure);
         servletResp.getServletResponse().setStatus(HttpStatus.PAYMENT_REQUIRED.value());
         servletResp.getHeaders().setContentType(MediaType.APPLICATION_JSON);

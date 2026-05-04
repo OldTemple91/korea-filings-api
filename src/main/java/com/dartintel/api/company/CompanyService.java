@@ -47,13 +47,20 @@ public class CompanyService {
 
     private final CompanyRepository repository;
     private final DartClient dartClient;
+    private final CompanyDirectoryUpserter upserter;
 
     /**
      * Fetch the current corpCode dump and upsert every listed-company
      * row. Returns the number of rows inserted/updated for logging.
      * Idempotent.
+     *
+     * <p>The DART HTTP fetch and the XML parse run OUTSIDE any DB
+     * transaction so a slow {@code corpCode.xml} download (which is
+     * frequently in the multi-minute range for the ~30 MB dump) does
+     * not pin a Hikari connection for the duration. Only the
+     * in-memory upsert loop is transactional, scoped to
+     * {@link #upsertParsedRows}.
      */
-    @Transactional
     public int syncDirectory() {
         long started = System.nanoTime();
         byte[] xml = dartClient.fetchCorpCodeXml();
@@ -62,24 +69,7 @@ public class CompanyService {
                 rows.size(),
                 rows.stream().filter(r -> r.ticker != null).count());
 
-        Map<String, Company> existing = new HashMap<>();
-        repository.findAll().forEach(c -> existing.put(c.getTicker(), c));
-
-        int upserted = 0;
-        for (Row r : rows) {
-            if (r.ticker == null) {
-                continue; // skip unlisted entries
-            }
-            Company company = existing.get(r.ticker);
-            if (company == null) {
-                repository.save(new Company(
-                        r.ticker, r.corpCode, r.nameKr, r.nameEn,
-                        guessMarket(r.ticker), r.modifyDate));
-            } else {
-                company.update(r.nameKr, r.nameEn, guessMarket(r.ticker), r.modifyDate);
-            }
-            upserted++;
-        }
+        int upserted = upserter.upsert(rows);
         long ms = (System.nanoTime() - started) / 1_000_000L;
         log.info("Company sync complete: {} listed companies upserted in {} ms", upserted, ms);
         return upserted;
@@ -96,7 +86,7 @@ public class CompanyService {
      * KOSDAQ" hint; the strict market identifier comes from upstream
      * if a caller really needs it.
      */
-    private static String guessMarket(String ticker) {
+    static String guessMarket(String ticker) {
         if (ticker == null) return null;
         // Heuristic: KOSPI stocks below ticker 200000 are reliably KOSPI;
         // anything above is more likely KOSDAQ. Edge cases exist but the
@@ -175,7 +165,7 @@ public class CompanyService {
         return text != null ? text : null;
     }
 
-    private record Row(String corpCode, String nameKr, String nameEn,
-                       String ticker, LocalDate modifyDate) {
+    record Row(String corpCode, String nameKr, String nameEn,
+               String ticker, LocalDate modifyDate) {
     }
 }

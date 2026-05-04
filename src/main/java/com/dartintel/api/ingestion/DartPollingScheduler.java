@@ -14,6 +14,28 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.Optional;
 
+/**
+ * Polls the DART {@code /list.json} endpoint and persists new
+ * disclosures.
+ *
+ * <h3>Transaction boundary</h3>
+ *
+ * The DART HTTP fetch runs OUTSIDE any DB transaction so a slow DART
+ * response (or an open Resilience4j circuit breaker) does not pin a
+ * Hikari connection for the duration of the call. The DB writes are
+ * scoped to {@link #persistBatch} which opens its own transaction and
+ * runs against rows we already have in memory. Without this split,
+ * a DART read timing out at 10 s could drain the connection pool.
+ *
+ * <h3>Cursor write timing</h3>
+ *
+ * The Redis cursor write only happens after the DB transaction
+ * commits. Otherwise a Postgres failure mid-batch would roll back the
+ * disclosure inserts but leave the cursor advanced — silently losing
+ * filings forever. The {@code persistBatch} return value carries the
+ * latest filing date out so the caller (no longer transactional)
+ * can write it post-commit.
+ */
 @Component
 @RequiredArgsConstructor
 @Slf4j
@@ -33,7 +55,6 @@ public class DartPollingScheduler {
     private final CompanyService companyService;
 
     @Scheduled(fixedDelayString = "${dart.polling.interval-ms:30000}")
-    @Transactional
     public void poll() {
         LocalDate cursor = readCursor()
                 .orElseGet(() -> LocalDate.now().minusDays(props.polling().initialCursorDaysBack()));
@@ -41,6 +62,8 @@ public class DartPollingScheduler {
 
         DartListResponse response;
         try {
+            // External HTTP call — run BEFORE opening any transaction
+            // so a slow DART response cannot starve the Hikari pool.
             response = dartClient.fetchList(cursor);
         } catch (Exception e) {
             log.error("DART polling call failed: {}", e.getMessage());
@@ -58,9 +81,31 @@ public class DartPollingScheduler {
             return;
         }
 
+        BatchResult batch = persistBatch(response.list(), cursor);
+
+        if (batch.newCount() > 0) {
+            log.info("Persisted {} new DART filings (latest rcept_dt {})",
+                    batch.newCount(), batch.maxDate());
+            // Cursor write happens AFTER the persist transaction
+            // commits. If persistBatch threw, we never reach here, so
+            // the cursor stays at its old value and the next poll
+            // re-fetches the missed window.
+            writeCursor(batch.maxDate());
+        }
+    }
+
+    /**
+     * Persists the new filings inside a single transaction and returns
+     * the count plus the highest {@code rceptDt} seen. The whole
+     * method runs in one Hikari connection because it is short
+     * (in-memory iteration over a bounded list, no further HTTP
+     * calls).
+     */
+    @Transactional
+    public BatchResult persistBatch(java.util.List<DartListResponse.DartFiling> filings, LocalDate cursor) {
         int newCount = 0;
         LocalDate maxDate = cursor;
-        for (DartListResponse.DartFiling filing : response.list()) {
+        for (DartListResponse.DartFiling filing : filings) {
             if (disclosureRepository.existsByRcptNo(filing.rcptNo())) {
                 continue;
             }
@@ -97,11 +142,7 @@ public class DartPollingScheduler {
                 maxDate = filingDate;
             }
         }
-
-        if (newCount > 0) {
-            log.info("Persisted {} new DART filings (latest rcept_dt {})", newCount, maxDate);
-            writeCursor(maxDate);
-        }
+        return new BatchResult(newCount, maxDate);
     }
 
     private Optional<LocalDate> readCursor() {
@@ -111,5 +152,9 @@ public class DartPollingScheduler {
 
     private void writeCursor(LocalDate date) {
         redisTemplate.opsForValue().set(CURSOR_KEY, date.format(YYYYMMDD));
+    }
+
+    /** Outcome of a single persist transaction — used to advance the cursor post-commit. */
+    public record BatchResult(int newCount, LocalDate maxDate) {
     }
 }

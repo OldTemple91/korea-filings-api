@@ -227,7 +227,22 @@ public class GeminiFlashLiteClient implements LlmClient {
             throw new IllegalStateException("Gemini returned no candidates for " + context.rcptNo());
         }
 
-        String json = response.candidates().get(0).content().parts().get(0).text();
+        // Gemini's SAFETY filter can return a candidate with no
+        // content() / no parts() — the candidate exists, finishReason
+        // is "SAFETY", and there is nothing to parse. Without this
+        // guard we'd throw NPE which surfaces as opaque
+        // NullPointerException in operational logs and recorded as a
+        // failure audit row with no useful context.
+        var candidate = response.candidates().get(0);
+        if (candidate.content() == null
+                || candidate.content().parts() == null
+                || candidate.content().parts().isEmpty()) {
+            throw new IllegalStateException(
+                    "Gemini candidate has no content for " + context.rcptNo()
+                    + " (finishReason may be SAFETY)");
+        }
+
+        String json = candidate.content().parts().get(0).text();
         SummaryResult result;
         try {
             result = objectMapper.readValue(json, SummaryResult.class);
