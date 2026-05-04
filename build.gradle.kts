@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "com.dartintel"
-version = "0.0.1-SNAPSHOT"
+version = "0.4.0"
 
 // Override Spring Boot 3.4 BOM's Testcontainers (1.20.4) so the bundled
 // docker-java client can negotiate API 1.44+ that Docker Engine 29 requires.

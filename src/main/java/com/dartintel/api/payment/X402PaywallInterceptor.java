@@ -107,13 +107,13 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
             paymentHeader = request.getHeader(LEGACY_X_PAYMENT_HEADER);
         }
         if (paymentHeader == null || paymentHeader.isBlank()) {
-            writePaymentRequired(response, resourceUrl, requirement, paywall.description(), "Payment required");
+            writePaymentRequired(response, resourceUrl, requirement, paywall, "Payment required");
             return false;
         }
 
         String sigHash = sha256Hex(paymentHeader);
         if (!paymentStore.registerIfAbsent(sigHash)) {
-            writePaymentRequired(response, resourceUrl, requirement, paywall.description(), "Payment signature reused");
+            writePaymentRequired(response, resourceUrl, requirement, paywall, "Payment signature reused");
             return false;
         }
 
@@ -150,7 +150,7 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
             paymentStore.release(sigHash);
             String signedUrl = signedResource != null ? signedResource.url() : "(missing)";
             log.warn("x402 resource URL mismatch: signed={} actual={}", signedUrl, resourceUrl);
-            writePaymentRequired(response, resourceUrl, requirement, paywall.description(),
+            writePaymentRequired(response, resourceUrl, requirement, paywall,
                     "Resource URL mismatch — signature scoped to a different endpoint");
             return false;
         }
@@ -162,7 +162,7 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
         } catch (Exception e) {
             log.error("Facilitator verify call failed: {}", e.getMessage());
             paymentStore.release(sigHash);
-            writePaymentRequired(response, resourceUrl, requirement, paywall.description(),
+            writePaymentRequired(response, resourceUrl, requirement, paywall,
                     "Facilitator unavailable");
             return false;
         }
@@ -170,7 +170,7 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
         if (!verifyResp.isValid()) {
             paymentStore.release(sigHash);
             String reason = verifyResp.invalidReason() != null ? verifyResp.invalidReason() : "unknown";
-            writePaymentRequired(response, resourceUrl, requirement, paywall.description(),
+            writePaymentRequired(response, resourceUrl, requirement, paywall,
                     "Payment rejected: " + reason);
             return false;
         }
@@ -297,8 +297,9 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
     }
 
     private void writePaymentRequired(HttpServletResponse response, String resourceUrl,
-                                      PaymentRequirement requirement, String description,
+                                      PaymentRequirement requirement, X402Paywall paywall,
                                       String error) throws IOException {
+        String description = paywall.description();
         PaymentRequirementsBody body = new PaymentRequirementsBody(
                 X402_VERSION,
                 error,
@@ -306,7 +307,7 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
                         description == null || description.isBlank() ? null : description,
                         MediaType.APPLICATION_JSON_VALUE),
                 List.of(requirement),
-                Map.of("bazaar", buildBazaarExtension(resourceUrl))
+                Map.of("bazaar", buildBazaarExtension(paywall))
         );
         response.setStatus(HttpStatus.PAYMENT_REQUIRED.value());
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
@@ -328,42 +329,56 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
      * output so AI agents can call the endpoint without prior schema
      * negotiation.
      *
-     * <p>Both paid endpoints take their inputs as query parameters
-     * ({@code rcptNo} for summary, {@code ticker} + {@code limit} for
-     * by-ticker). The bazaar v1 input schema only has buckets for
-     * {@code queryParams}, {@code bodyFields}, and {@code headerFields}
-     * — path parameters are silently dropped by x402scan's
-     * OpenAPI → bazaar translation, leaving the endpoint discoverable
-     * but un-callable from raw discovery. Declaring real query params
-     * here is what makes the endpoint actually usable from a
-     * cold-start agent.
+     * <p>Both paid endpoints take their inputs as query parameters. The
+     * bazaar v1 input schema only has buckets for {@code queryParams},
+     * {@code bodyFields}, and {@code headerFields} — path parameters
+     * are silently dropped by x402scan's OpenAPI → bazaar translation,
+     * leaving the endpoint discoverable but un-callable from raw
+     * discovery. Declaring real query params here is what makes the
+     * endpoint actually usable from a cold-start agent.
+     *
+     * <p>The set of query params is derived from the {@link X402Paywall}
+     * annotation's pricing mode rather than from the resource URL —
+     * {@code PER_RESULT} mode implies a {@code countParam} (currently
+     * {@code limit}) plus a per-resource selector ({@code ticker});
+     * {@code FIXED} mode implies a per-resource selector
+     * ({@code rcptNo}). Driving this from the annotation keeps the
+     * declaration in sync with the paywall config without depending
+     * on URL substring heuristics.
      */
-    private Map<String, Object> buildBazaarExtension(String resourceUrl) {
-        boolean isByTicker = resourceUrl.contains("/by-ticker");
-        Map<String, Object> queryParams = isByTicker
-                ? Map.of(
-                        "ticker", Map.of(
-                                "type", "string",
-                                "required", true,
-                                "description",
-                                        "Six-digit KRX ticker (e.g. 005930 for Samsung Electronics). " +
-                                        "Resolve from a company name first via the free " +
-                                        "/v1/companies?q={name} endpoint."),
-                        "limit", Map.of(
-                                "type", "integer",
-                                "required", false,
-                                "description",
-                                        "Max filings to return (1–50, default 5). " +
-                                        "Final price is 0.005 × limit USDC."))
-                : Map.of(
-                        "rcptNo", Map.of(
-                                "type", "string",
-                                "required", true,
-                                "description",
-                                        "14-digit DART receipt number (e.g. 20260424900874). " +
-                                        "Obtain from the free /v1/disclosures/recent feed or " +
-                                        "from the by-ticker response. Receipt numbers are " +
-                                        "not LLM-knowable and must always be looked up first."));
+    private Map<String, Object> buildBazaarExtension(X402Paywall paywall) {
+        Map<String, Object> queryParams;
+        if (paywall.pricingMode() == X402Paywall.Mode.PER_RESULT) {
+            // PER_RESULT — by-ticker shape. Selector is `ticker`,
+            // multiplier is `paywall.countQueryParam()` (default `limit`).
+            queryParams = Map.of(
+                    "ticker", Map.of(
+                            "type", "string",
+                            "required", true,
+                            "description",
+                                    "Six-digit KRX ticker (e.g. 005930 for Samsung Electronics). " +
+                                    "Resolve from a company name first via the free " +
+                                    "/v1/companies?q={name} endpoint."),
+                    paywall.countQueryParam(), Map.of(
+                            "type", "integer",
+                            "required", false,
+                            "description",
+                                    "Max filings to return (1–" + paywall.maxCount()
+                                    + ", default " + paywall.defaultCount() + "). "
+                                    + "Final price is " + paywall.priceUsdc()
+                                    + " × " + paywall.countQueryParam() + " USDC."));
+        } else {
+            // FIXED — summary shape. Selector is `rcptNo`.
+            queryParams = Map.of(
+                    "rcptNo", Map.of(
+                            "type", "string",
+                            "required", true,
+                            "description",
+                                    "14-digit DART receipt number (e.g. 20260424900874). " +
+                                    "Obtain from the free /v1/disclosures/recent feed or " +
+                                    "from the by-ticker response. Receipt numbers are " +
+                                    "not LLM-knowable and must always be looked up first."));
+        }
         Map<String, Object> input = Map.of(
                 "type", "http",
                 "method", "GET",

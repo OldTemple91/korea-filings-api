@@ -1,4 +1,4 @@
-# STATUS — where we left off (2026-04-24)
+# STATUS — where we left off (2026-05-04)
 
 Read this first when picking up on a different machine. Summarises what is
 live, what's next, and the minimum setup to keep moving.
@@ -71,6 +71,23 @@ live, what's next, and the minimum setup to keep moving.
    `PAYMENT-RESPONSE` + empty body) instead of leaking paid data on
    facilitator outage. SDK is at 0.3.1 on PyPI, MCP at 0.3.0.
    ROADMAP.md carries the full ship summary.
+
+   **v0.4 audit pass (2026-05-04).** Closed 3 P0 + 16 P1 items from
+   a multi-agent code review (Spring Boot / security / x402 spec /
+   general). The biggest correctness fix: **resource URL binding** —
+   the interceptor now compares the signed `paymentPayload.resource.url`
+   to the actual request URL and refuses cross-endpoint replay (a
+   signature for `?rcptNo=…` (0.005 USDC) can no longer be replayed
+   against `?ticker=…&limit=50` (up to 0.25 USDC)). Other highlights:
+   single-flight Redis lock around the LLM call so concurrent
+   consumers never double-charge Gemini, `REQUIRES_NEW` on the audit
+   writer to keep the audit-first-commit invariant under nested
+   transactions, malformed `PAYMENT-SIGNATURE` → 400 (was 402) per
+   spec, `@Pattern` validation on `rcptNo` / `ticker`, Redis
+   `requirepass`, Tomcat `internal-proxies` allowlist, actuator
+   `git.mode=simple`, Hikari pool sizing, and HTTP-fetch lifted out
+   of `@Transactional` in the DART poller / `corpCode` sync.
+   See commit `e5cd9ae` for the full diff.
 
 2. **v1.2 — planned, body-fetch + numerical extraction.** The
    single biggest honest weakness of v1.1: every summary is

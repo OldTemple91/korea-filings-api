@@ -235,13 +235,22 @@ on-chain reconciliation and tax prep.
 4. SHA-256 hash the payload, `paymentStore.registerIfAbsent(hash)`
    via Redis `SET payment_sig:{hash} 1 NX EX 3600`.
    - Already registered → 402 "signature reused".
-5. `facilitatorClient.verify(payload, requirements)` against the
+   - Non-base64 / non-JSON header → **400** "Malformed payment
+     payload" per x402 v2 transport-spec error table (release lock).
+5. **Resource URL binding** — compare
+   `paymentPayload.resource.url` to the actual request URL (path +
+   query). On mismatch, release the Redis signature and return 402
+   "Resource URL mismatch". This is the server-side enforcement
+   that prevents a signature for the cheap fixed-price endpoint
+   from being replayed against the per-result endpoint — the
+   EIP-3009 signature itself binds amount/nonce/validity, not URL.
+6. `facilitatorClient.verify(payload, requirements)` against the
    CDP facilitator (Ed25519 JWT auth).
    - Invalid → release the Redis signature, 402 with reason.
    - Valid → attach `VerifiedPayment` to request as an attribute.
-6. Controller runs. Reads summary from Redis, falls back to
+7. Controller runs. Reads summary from Redis, falls back to
    Postgres, serialises.
-7. `X402SettlementAdvice#beforeBodyWrite` fires before the
+8. `X402SettlementAdvice#beforeBodyWrite` fires before the
    response body lands on the wire.
    - 2xx + settle success → write base64 settlement proof to
      `PAYMENT-RESPONSE` (with `X-PAYMENT-RESPONSE` echoed for v1
@@ -254,9 +263,28 @@ on-chain reconciliation and tax prep.
      facilitator outage cannot leak paid data unpaid; the 402 status
      lets spec-aware clients recognise the outcome as "payment not
      captured, retry with a fresh signature" rather than misreading
-     it as a generic server fault.
+     it as a generic server fault. The Redis signature lock is also
+     explicitly released — the on-chain EIP-3009 nonce was not
+     consumed, so the same signed authorisation is still
+     cryptographically valid for the client's retry.
    - non-2xx → settlement skipped; `afterCompletion` releases the
      Redis signature so the client can retry without paying twice.
+
+### Summarisation pipeline — single-flight lock
+
+`SummaryService#summarize` runs a Redis SETNX lock keyed
+`summary_inflight:{rcptNo}` around the LLM call so the standing
+{@link SummaryJobConsumer}, the retry scheduler, and any ad-hoc
+backfill cannot race on the same receipt number. A consumer that
+loses the SETNX returns immediately without paying for a redundant
+LLM run; the lock has a 2-minute TTL that exceeds the configured
+Gemini read timeout so a stuck consumer cannot hold the slot
+forever. An audit-success short-circuit (`existsByRcptNoAndSuccessTrue`)
+additionally protects the partial-write recovery case: if a previous
+run committed the audit row but the summary insert failed, the retry
+scheduler re-enqueues the rcptNo, but `summarize` sees the audit
+success and returns without re-paying — operators can heal the
+missing summary row from the audit data offline.
 
 ## Request Lifecycle — Paid endpoint, per-result price
 

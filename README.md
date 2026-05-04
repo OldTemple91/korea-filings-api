@@ -138,8 +138,16 @@ curl -H "PAYMENT-SIGNATURE: $SIGNED" \
      'https://api.koreafilings.com/v1/disclosures/by-ticker?ticker=005930&limit=3'
 #   HTTP/2 200
 #   payment-response: <base64 SettlementResponse with tx hash>
-#   [ { "rcptNo": "...", "summaryEn": "...", "importanceScore": 7, ... },
-#     { ... }, { ... } ]
+#   {
+#     "ticker":     "005930",
+#     "chargedFor": 3,         # what the agent paid for (`limit`)
+#     "delivered":  3,         # how many summaries were actually returned
+#     "count":      3,         # alias of `delivered` for older clients
+#     "summaries":  [ { "rcptNo": "...", "summaryEn": "...", ... }, … ]
+#   }
+# `chargedFor` and `delivered` diverge when a ticker has fewer recent
+# filings than `limit` or when one of those filings does not yet have
+# an AI summary in cache.
 ```
 
 The flat 0.005 USDC `/v1/disclosures/summary?rcptNo=…` endpoint is
