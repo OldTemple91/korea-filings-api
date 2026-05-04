@@ -194,11 +194,16 @@ def main() -> None:
             "[SUMMARY]\n"
             + json.dumps(resp.json(), indent=2, ensure_ascii=False)
         )
-    elif resp.status_code == 502:
-        print(
-            "[FAIL-CLOSED] settlement rejected; data was withheld:\n"
-            + resp.text
-        )
+    elif resp.status_code == 402:
+        # Could be the initial challenge (no payment header sent — caught
+        # earlier by fetch_payment_requirements) or the v2 settle-failure
+        # shape: 402 + PAYMENT-RESPONSE with success: false and an empty
+        # body. The decoded settlement header above already prints the
+        # facilitator's reason, so we only need to flag the outcome here.
+        if settlement_header:
+            print("[FAIL-CLOSED] settlement rejected by facilitator; data withheld.")
+        else:
+            print(f"[ERROR] 402 with no PAYMENT-RESPONSE header:\n{resp.text}")
     else:
         print(f"[ERROR] {resp.status_code} body:\n{resp.text}")
 

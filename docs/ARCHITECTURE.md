@@ -246,9 +246,15 @@ on-chain reconciliation and tax prep.
    - 2xx + settle success → write base64 settlement proof to
      `PAYMENT-RESPONSE` (with `X-PAYMENT-RESPONSE` echoed for v1
      clients), append a row to `payment_log`.
-   - 2xx + settle throws / `success: false` → **fail-close**: status
-     is rewritten to 502 and the body is replaced with an error
-     envelope so a facilitator outage cannot leak paid data unpaid.
+   - 2xx + settle throws / `success: false` → **fail-close per
+     x402 v2 spec**: status is rewritten to 402, the failure
+     `SettlementResponse` is base64-encoded into `PAYMENT-RESPONSE`
+     (with the `X-PAYMENT-RESPONSE` alias), and the body is replaced
+     with `{}`. The original controller payload is dropped so a
+     facilitator outage cannot leak paid data unpaid; the 402 status
+     lets spec-aware clients recognise the outcome as "payment not
+     captured, retry with a fresh signature" rather than misreading
+     it as a generic server fault.
    - non-2xx → settlement skipped; `afterCompletion` releases the
      Redis signature so the client can retry without paying twice.
 

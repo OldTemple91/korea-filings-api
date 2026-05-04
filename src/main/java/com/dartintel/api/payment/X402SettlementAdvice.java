@@ -43,13 +43,26 @@ import java.util.Map;
  * <h3>Fail-closed on settlement failure</h3>
  *
  * <p>If the facilitator's {@code /settle} call throws or returns a
- * non-success result, the controller's response body is replaced with
- * a 502 error envelope and the original payload is dropped. Returning
- * the bought data while the merchant is unpaid would be a
- * non-revocable revenue leak — verify is binding, but settle is what
- * actually transfers funds, and a server that delivers data on a
+ * non-success result, the controller's response body is dropped and
+ * the response is rewritten to match the
+ * <a href="https://github.com/coinbase/x402/blob/main/specs/transports-v2/http.md">
+ * x402 v2 transport spec</a> failure shape:
+ *
+ * <pre>
+ *   HTTP/1.1 402 Payment Required
+ *   PAYMENT-RESPONSE: &lt;base64 of {"success":false,"errorReason":"...",...}&gt;
+ *
+ *   {}
+ * </pre>
+ *
+ * <p>Returning the bought data while the merchant is unpaid would be
+ * a non-revocable revenue leak — verify is binding, but settle is
+ * what actually transfers funds, and a server that delivers data on a
  * failed settle is effectively giving it away whenever the
- * facilitator has an outage.
+ * facilitator has an outage. Sending a 502 instead of the spec's 402
+ * would also confuse range-of-the-mill x402 clients into treating the
+ * outcome as a generic server fault rather than a payment failure
+ * they can recover from by re-signing.
  */
 @ControllerAdvice
 @RequiredArgsConstructor
@@ -101,16 +114,17 @@ public class X402SettlementAdvice implements ResponseBodyAdvice<Object> {
         } catch (Exception e) {
             log.error("x402 settle exception for endpoint={}: {}",
                     verified.endpoint(), e.getMessage(), e);
-            return failClosed(servletResp, "settle_unavailable",
-                    "x402 facilitator unreachable; payment not captured");
+            FacilitatorSettleResponse synthesised = new FacilitatorSettleResponse(
+                    false, "settle_unavailable", "",
+                    verified.requirement().network(), verified.payer());
+            return failClosed(response, servletResp, synthesised);
         }
 
         if (!settle.success()) {
             String reason = settle.errorReason() != null ? settle.errorReason() : "unknown";
             log.error("x402 settle rejected: reason={} endpoint={}",
                     reason, verified.endpoint());
-            return failClosed(servletResp, "settle_rejected",
-                    "x402 facilitator rejected the payment: " + reason);
+            return failClosed(response, servletResp, settle);
         }
 
         attachSettlementHeader(response, settle);
@@ -123,19 +137,28 @@ public class X402SettlementAdvice implements ResponseBodyAdvice<Object> {
     }
 
     /**
-     * Replace the controller's body with a 502 error envelope so a
-     * failed settlement does not deliver paid data unpaid. The
-     * payment signature stays locked in Redis for its 1-hour TTL —
-     * the client cannot retry the same signature, but they can sign
-     * a fresh one once the facilitator is healthy.
+     * Rewrite the response to the x402 v2 settle-failure shape:
+     * HTTP 402 with the failure {@link FacilitatorSettleResponse}
+     * encoded into the {@code PAYMENT-RESPONSE} header (and the
+     * legacy {@code X-PAYMENT-RESPONSE} alias) and an empty JSON body.
+     *
+     * <p>The payment signature stays locked in Redis for its 1-hour
+     * TTL — the client cannot retry the same signature, but they can
+     * sign a fresh authorisation and try again once the facilitator
+     * is healthy. Spec-aware clients see the 402 + failure payload
+     * and can reach for that retry path automatically; legacy
+     * clients see "Payment Required" and surface the same
+     * recoverable-failure semantics.
      */
-    private Object failClosed(ServletServerHttpResponse servletResp, String code, String message) {
-        servletResp.getServletResponse().setStatus(HttpStatus.BAD_GATEWAY.value());
+    private Object failClosed(ServerHttpResponse response,
+                              ServletServerHttpResponse servletResp,
+                              FacilitatorSettleResponse failure) {
+        attachSettlementHeader(response, failure);
+        servletResp.getServletResponse().setStatus(HttpStatus.PAYMENT_REQUIRED.value());
         servletResp.getHeaders().setContentType(MediaType.APPLICATION_JSON);
-        Map<String, Object> envelope = new LinkedHashMap<>();
-        envelope.put("error", code);
-        envelope.put("message", message);
-        return envelope;
+        // Empty body per x402 v2 transport spec — all settlement info
+        // travels in the PAYMENT-RESPONSE header.
+        return new LinkedHashMap<String, Object>();
     }
 
     private void attachSettlementHeader(ServerHttpResponse response, FacilitatorSettleResponse settle) {

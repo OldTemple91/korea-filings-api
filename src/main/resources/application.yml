@@ -9,17 +9,6 @@ server:
 spring:
   application:
     name: korea-filings-api
-
-# springdoc serves the OpenAPI JSON at /openapi.json (the standard
-# location every indexer / discovery CLI probes first), and the
-# Swagger UI is mounted under /swagger-ui. The legacy /v3/api-docs
-# path is kept as a 301 redirect (LegacyApiDocsController) so any
-# external doc that pinned the old URL keeps working.
-springdoc:
-  api-docs:
-    path: /openapi.json
-  swagger-ui:
-    path: /swagger-ui/index.html
   datasource:
     url: jdbc:postgresql://localhost:5432/dartintel
     username: dartintel
@@ -34,6 +23,17 @@ springdoc:
     enabled: true
     baseline-on-migrate: false
     locations: classpath:db/migration
+
+# springdoc serves the OpenAPI JSON at /openapi.json (the standard
+# location every indexer / discovery CLI probes first), and the
+# Swagger UI is mounted under /swagger-ui. The legacy /v3/api-docs
+# path is kept as a 301 redirect (LegacyApiDocsController) so any
+# external doc that pinned the old URL keeps working.
+springdoc:
+  api-docs:
+    path: /openapi.json
+  swagger-ui:
+    path: /swagger-ui/index.html
 
 management:
   endpoints:

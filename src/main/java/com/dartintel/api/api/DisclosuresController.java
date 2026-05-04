@@ -9,8 +9,6 @@ import com.dartintel.api.summarization.DisclosureSummary;
 import com.dartintel.api.summarization.DisclosureSummaryRepository;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
-import io.swagger.v3.oas.annotations.extensions.Extension;
-import io.swagger.v3.oas.annotations.extensions.ExtensionProperty;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -115,22 +113,12 @@ public class DisclosuresController {
                     Workflow: call free `/v1/companies?q=<name>` to resolve a
                     Korean company name to its six-digit KRX ticker, then pass
                     that ticker here.
-                    """,
-            extensions = {
-                    @Extension(name = "x-payment-info", properties = {
-                            @ExtensionProperty(name = "scheme", value = "exact"),
-                            @ExtensionProperty(name = "network", value = "eip155:8453"),
-                            @ExtensionProperty(name = "asset", value = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"),
-                            @ExtensionProperty(name = "payTo", value = "0x8467Be164C75824246CFd0fCa8E7F7009fB8f720"),
-                            @ExtensionProperty(name = "amount", value = "5000"),
-                            @ExtensionProperty(name = "amountMode", value = "perResult"),
-                            @ExtensionProperty(name = "countParam", value = "limit"),
-                            @ExtensionProperty(name = "defaultCount", value = "5"),
-                            @ExtensionProperty(name = "maxCount", value = "50"),
-                            @ExtensionProperty(name = "tokenName", value = "USD Coin"),
-                            @ExtensionProperty(name = "tokenVersion", value = "2")
-                    })
-            }
+                    """
+            // x-payment-info extension is injected at runtime by
+            // X402OpenApiCustomizer so the wallet, network, asset
+            // address, and EIP-712 token name/version match the
+            // currently-running x402 config rather than a hardcoded
+            // mainnet snapshot.
     )
     @ApiResponses({
             @ApiResponse(
@@ -181,19 +169,9 @@ public class DisclosuresController {
                     `/v1/disclosures/recent` feed or `/v1/disclosures/by-ticker`
                     response. They are not LLM-knowable — agents must always
                     look one up before calling this endpoint.
-                    """,
-            extensions = {
-                    @Extension(name = "x-payment-info", properties = {
-                            @ExtensionProperty(name = "scheme", value = "exact"),
-                            @ExtensionProperty(name = "network", value = "eip155:8453"),
-                            @ExtensionProperty(name = "asset", value = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"),
-                            @ExtensionProperty(name = "payTo", value = "0x8467Be164C75824246CFd0fCa8E7F7009fB8f720"),
-                            @ExtensionProperty(name = "amount", value = "5000"),
-                            @ExtensionProperty(name = "amountMode", value = "fixed"),
-                            @ExtensionProperty(name = "tokenName", value = "USD Coin"),
-                            @ExtensionProperty(name = "tokenVersion", value = "2")
-                    })
-            }
+                    """
+            // x-payment-info extension is injected at runtime by
+            // X402OpenApiCustomizer (see Operation summary above).
     )
     @ApiResponses({
             @ApiResponse(

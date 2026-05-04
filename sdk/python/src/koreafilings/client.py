@@ -247,31 +247,33 @@ class Client:
         # (settlement). The server still accepts X-PAYMENT for older clients,
         # but new SDK installs always send the v2 name.
         paid = self._http.get(url, params=params, headers={"PAYMENT-SIGNATURE": header_value})
-        if paid.status_code == 402:
-            rejection = _safe_json(paid) or {}
-            raise PaymentError(
-                reason=rejection.get("error") or "payment_rejected",
-                detail=rejection,
-            )
-        if paid.status_code == 502:
-            # 0.3.0 servers fail-close on settlement failure: payment was
-            # verified (signature is locked) but the facilitator rejected
-            # /settle, so the data was withheld. Surface the structured
-            # error so callers can sign a fresh authorisation once the
-            # facilitator is healthy.
-            rejection = _safe_json(paid) or {}
-            raise PaymentError(
-                reason=rejection.get("error") or "settle_failed",
-                detail=rejection,
-            )
-        if paid.status_code != 200:
-            raise ApiError(paid.status_code, _safe_json(paid))
 
         settlement_header = (
             paid.headers.get("PAYMENT-RESPONSE")
             or paid.headers.get("X-PAYMENT-RESPONSE")
         )
         settlement_raw = _payment.decode_settlement_header(settlement_header)
+
+        if paid.status_code == 402:
+            # Per the x402 v2 transport spec, a 402 on the retry call
+            # carries the failure outcome in PAYMENT-RESPONSE: the
+            # facilitator either rejected /verify, the signature was
+            # already used, or /settle failed after a successful
+            # verify. Either way, the body is empty and the
+            # SettlementResponse header tells the caller why so they
+            # can decide whether to re-sign.
+            if settlement_raw and settlement_raw.get("success") is False:
+                raise PaymentError(
+                    reason=settlement_raw.get("errorReason") or "settle_failed",
+                    detail=settlement_raw,
+                )
+            rejection = _safe_json(paid) or {}
+            raise PaymentError(
+                reason=rejection.get("error") or "payment_rejected",
+                detail=rejection,
+            )
+        if paid.status_code != 200:
+            raise ApiError(paid.status_code, _safe_json(paid))
         self._last_settlement = (
             SettlementProof.model_validate(settlement_raw) if settlement_raw else None
         )

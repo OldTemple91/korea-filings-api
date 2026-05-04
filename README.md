@@ -194,7 +194,9 @@ Three logical subsystems share one Spring Boot application:
    check Redis for replay, settle on a 200 response, and attach
    `PAYMENT-RESPONSE` carrying the on-chain tx hash via a
    `ResponseBodyAdvice`. If `/settle` throws or rejects, the body is
-   replaced with a 502 envelope so a facilitator outage cannot leak
+   rewritten to the x402 v2 settle-failure shape (HTTP 402 with the
+   failure SettlementResponse base64-encoded into `PAYMENT-RESPONSE`
+   and an empty body) so a facilitator outage cannot leak
    paid data unpaid. The interceptor short-circuits for handler methods
    without `@X402Paywall`, so `/v1/pricing`, `/.well-known/x402`, and
    the OpenAPI document stay unauthenticated.

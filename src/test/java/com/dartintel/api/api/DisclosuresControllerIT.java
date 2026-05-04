@@ -180,7 +180,13 @@ class DisclosuresControllerIT {
     }
 
     @Test
-    void settlementFailureReturns502AndDoesNotLeakBody() throws Exception {
+    void settlementFailureReturns402WithPaymentResponseHeader() throws Exception {
+        // Per the x402 v2 transport spec, a settle-time failure is
+        // surfaced as HTTP 402 with the failure SettlementResponse
+        // base64-encoded into the PAYMENT-RESPONSE header and an
+        // empty JSON body. The original controller payload (the AI
+        // summary) MUST NOT leak — that would be a revenue leak any
+        // time the facilitator has an outage.
         wireMock.stubFor(post(urlPathEqualTo("/verify"))
                 .willReturn(aResponse().withStatus(200)
                         .withHeader("Content-Type", "application/json")
@@ -190,15 +196,26 @@ class DisclosuresControllerIT {
                         .withHeader("Content-Type", "application/json")
                         .withBody("{\"success\":false,\"errorReason\":\"insufficient_funds\"}")));
 
-        mockMvc.perform(get("/v1/disclosures/summary?rcptNo=20260423000001")
+        var result = mockMvc.perform(get("/v1/disclosures/summary?rcptNo=20260423000001")
                         .header("PAYMENT-SIGNATURE", validPaymentPayloadBase64("sig-fail")))
-                .andExpect(status().isBadGateway())
-                .andExpect(jsonPath("$.error").value("settle_rejected"))
-                .andExpect(jsonPath("$.message").value(containsString("insufficient_funds")))
-                // Critical: the AI summary body MUST NOT leak when settlement fails.
+                .andExpect(status().isPaymentRequired())
+                .andExpect(header().exists("PAYMENT-RESPONSE"))
+                .andExpect(header().exists("X-PAYMENT-RESPONSE"))
+                // Empty body per v2 transport spec — settlement info is in the header.
                 .andExpect(jsonPath("$.summaryEn").doesNotExist())
                 .andExpect(jsonPath("$.importanceScore").doesNotExist())
-                .andExpect(header().doesNotExist("PAYMENT-RESPONSE"));
+                .andExpect(jsonPath("$.error").doesNotExist())
+                .andReturn();
+
+        // Decode the PAYMENT-RESPONSE header and confirm the failure
+        // payload carries the facilitator's reason verbatim.
+        String headerValue = result.getResponse().getHeader("PAYMENT-RESPONSE");
+        org.assertj.core.api.Assertions.assertThat(headerValue).isNotBlank();
+        byte[] decoded = java.util.Base64.getDecoder().decode(headerValue);
+        java.util.Map<?, ?> proof = objectMapper.readValue(decoded, java.util.Map.class);
+        org.assertj.core.api.Assertions.assertThat(proof.get("success")).isEqualTo(false);
+        org.assertj.core.api.Assertions.assertThat(proof.get("errorReason"))
+                .isEqualTo("insufficient_funds");
     }
 
     @Test

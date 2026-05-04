@@ -81,5 +81,5 @@ uv run testclient/payer.py 20260423000001       # overrides
 3. Builds an EIP-3009 `TransferWithAuthorization` struct with a random 32-byte nonce and a short `validBefore` window.
 4. Signs it via EIP-712 with `PAYER_PRIVATE_KEY` — domain uses the USDC contract name/version from `accepts[0].extra`.
 5. Wraps the signed authorization in a `PaymentPayload` JSON object and base64-encodes it into the `PAYMENT-SIGNATURE` header (the legacy `X-PAYMENT` header still works for older clients).
-6. Re-issues the `GET` with the header — server verifies with the facilitator, returns the summary body, settles on-chain, and attaches the proof to `PAYMENT-RESPONSE` (with `X-PAYMENT-RESPONSE` echoed for v1 clients). If the facilitator rejects `/settle`, the server fails closed with a 502 and the data is withheld.
+6. Re-issues the `GET` with the header — server verifies with the facilitator, returns the summary body, settles on-chain, and attaches the proof to `PAYMENT-RESPONSE` (with `X-PAYMENT-RESPONSE` echoed for v1 clients). If the facilitator rejects `/settle`, the server fails closed per the x402 v2 spec — HTTP 402 with the failure payload base64-encoded into `PAYMENT-RESPONSE` and an empty body — and the AI summary is withheld.
 7. Decodes and prints the settlement info (including the on-chain transaction hash you can look up on https://sepolia.basescan.org).

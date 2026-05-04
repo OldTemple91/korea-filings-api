@@ -171,7 +171,8 @@ Under the hood, each paid call:
 4. Server verifies the signature via the x402 facilitator, submits it
    on-chain, streams the JSON body back, and attaches the settlement
    proof to the `PAYMENT-RESPONSE` header. If the facilitator's
-   `/settle` call rejects, the server fails closed with a 502 so the
+   `/settle` call rejects, the server fails closed per the x402 v2
+   spec (HTTP 402 + `PAYMENT-RESPONSE` failure header + empty body) so the
    data is never delivered unpaid; the SDK surfaces that as a
    `PaymentError`.
 
