@@ -23,6 +23,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -75,7 +76,13 @@ public class DisclosuresController {
                 .stream()
                 .map(RecentFilingDto::from)
                 .toList();
-        return ResponseEntity.ok(new RecentFilingsResponse(filings));
+        // Public market-wide feed — same shape per `(limit, sinceHours)`
+        // tuple for any caller. A 30-second TTL matches the DART poll
+        // interval, so a Cloudflare cache rule on this path absorbs
+        // repeat polling at the edge instead of waking up Tomcat.
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.maxAge(java.time.Duration.ofSeconds(30)).cachePublic())
+                .body(new RecentFilingsResponse(filings));
     }
 
     /**

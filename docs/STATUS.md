@@ -3,6 +3,14 @@
 Read this first when picking up on a different machine. Summarises what is
 live, what's next, and the minimum setup to keep moving.
 
+## Operator essentials
+
+**Incident playbook** → [`docs/RUNBOOK.md`](RUNBOOK.md) — every scenario (API down, Postgres outage, Flyway migration error, secret rotation, VM rebuild, double-charge reconciliation) has exact commands.
+
+**Service objectives** → [`docs/SLO.md`](SLO.md) — what we promise, how it's measured.
+
+**Backups** → `scripts/pg-backup.sh` runs encrypted Postgres dumps. Configure cron on the VM (`0 */6 * * *`) and an off-site copy via rclone before treating MVP as production-ready.
+
 ## TL;DR
 
 - **Weeks 1–5 complete.** Ingestion, summarisation, x402 paywall, public

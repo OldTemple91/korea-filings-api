@@ -130,7 +130,7 @@ class DisclosuresControllerIT {
                 List.of("Information Technology"), List.of("005930"),
                 List.of("traders", "long_term_investors"),
                 "gemini-2.5-flash-lite", 142, 89,
-                new BigDecimal("0.00004980")
+                new BigDecimal("0.00004980"), (short) 1
         ));
     }
 

@@ -58,7 +58,7 @@ class DisclosureSummaryRepositoryIT {
                 "gemini-2.5-flash-lite",
                 142,
                 89,
-                new BigDecimal("0.00005000")
+                new BigDecimal("0.00005000"), (short) 1
         );
         summaryRepository.saveAndFlush(s);
 
@@ -92,7 +92,7 @@ class DisclosureSummaryRepositoryIT {
                 "Samsung announced an IR briefing.",
                 3, "IR_EVENT",
                 List.of("Information Technology"), List.of("005930"), List.of("long_term_investors"),
-                "gemini-2.5-flash-lite", 80, 30, new BigDecimal("0.00002000")
+                "gemini-2.5-flash-lite", 80, 30, new BigDecimal("0.00002000"), (short) 1
         ));
 
         disclosureRepository.deleteById("20260423001000");
@@ -123,7 +123,7 @@ class DisclosureSummaryRepositoryIT {
         summaryRepository.saveAndFlush(new DisclosureSummary(
                 "20260423002001", "summary", 3, "IR_EVENT",
                 List.of(), List.of(), List.of(),
-                "gemini-2.5-flash-lite", 10, 10, new BigDecimal("0.00000500")
+                "gemini-2.5-flash-lite", 10, 10, new BigDecimal("0.00000500"), (short) 1
         ));
 
         List<String> orphans = disclosureRepository

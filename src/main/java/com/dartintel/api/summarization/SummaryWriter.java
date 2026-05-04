@@ -69,6 +69,19 @@ public class SummaryWriter {
      *  agent-friendly. */
     private static final int SUMMARY_EN_MAX = 800;
 
+    /**
+     * Monotonic version of the LLM prompt. Bump when the prompt body
+     * changes in a way that should invalidate previously-generated
+     * summaries (new fields, schema change, materially different
+     * tone). The retry scheduler can scope re-summarisation to rows
+     * with {@code prompt_version < current} without nuking the whole
+     * cache.
+     *
+     * <p>1 — original v1.1 prompt (filing metadata only).
+     * <p>Future: 2 — v1.2 prompt with keyFacts extraction.
+     */
+    static final short PROMPT_VERSION = 1;
+
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void recordSummary(String rcptNo, SummaryEnvelope env) {
         SummaryResult r = env.result();
@@ -83,7 +96,8 @@ public class SummaryWriter {
                 env.model(),
                 env.inputTokens(),
                 env.outputTokens(),
-                env.costUsd()
+                env.costUsd(),
+                PROMPT_VERSION
         ));
     }
 

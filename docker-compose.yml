@@ -1,3 +1,14 @@
+x-logging: &default-logging
+  # Cap container stdout logs so a chatty service can't fill the VPS
+  # disk. 50MB × 5 files = 250MB per container max. Spring Boot
+  # INFO + ~30s DART polling fits in a single 50MB rotation for
+  # several days at typical volume; the operator runbook has the
+  # `du -sh /var/lib/docker/containers/.../-json.log` check anyway.
+  driver: "json-file"
+  options:
+    max-size: "50m"
+    max-file: "5"
+
 services:
   postgres:
     # Pin a concrete patch version (not just `16-alpine`) so a
@@ -7,6 +18,7 @@ services:
     image: postgres:16.8-alpine
     container_name: dartintel-postgres
     restart: unless-stopped
+    logging: *default-logging
     environment:
       POSTGRES_DB: dartintel
       POSTGRES_USER: dartintel
@@ -31,6 +43,7 @@ services:
     image: redis:7.4-alpine
     container_name: dartintel-redis
     restart: unless-stopped
+    logging: *default-logging
     # Bind to localhost only — Spring app reaches Redis through the
     # docker compose network (`redis:6379`). An open Redis with no
     # password (the default config) lets any attacker read/write/delete
@@ -71,6 +84,7 @@ services:
       dockerfile: Dockerfile
     container_name: dartintel-app
     restart: unless-stopped
+    logging: *default-logging
     depends_on:
       postgres:
         condition: service_healthy
@@ -119,6 +133,7 @@ services:
     image: cloudflare/cloudflared:2026.3.0
     container_name: dartintel-tunnel
     restart: unless-stopped
+    logging: *default-logging
     depends_on:
       - app
     command: tunnel --no-autoupdate run

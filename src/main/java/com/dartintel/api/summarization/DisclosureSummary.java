@@ -58,6 +58,16 @@ public class DisclosureSummary {
     @Column(name = "cost_usd", nullable = false, updatable = false, precision = 10, scale = 8)
     private BigDecimal costUsd;
 
+    /**
+     * Version of the LLM prompt that produced this row. Bumped in code
+     * (`SummaryWriter.PROMPT_VERSION`) whenever the prompt changes
+     * meaningfully — e.g. v1.2's keyFacts addition, or a quality-tuning
+     * pass. The retry scheduler can scope re-summarisation to rows
+     * below the current version without invalidating the whole cache.
+     */
+    @Column(name = "prompt_version", nullable = false, updatable = false)
+    private short promptVersion;
+
     @CreationTimestamp
     @Column(name = "generated_at", nullable = false, updatable = false)
     private Instant generatedAt;
@@ -76,7 +86,8 @@ public class DisclosureSummary {
             String modelUsed,
             int inputTokens,
             int outputTokens,
-            BigDecimal costUsd
+            BigDecimal costUsd,
+            short promptVersion
     ) {
         this.rcptNo = rcptNo;
         this.summaryEn = summaryEn;
@@ -86,6 +97,7 @@ public class DisclosureSummary {
         this.tickerTags = tickerTags;
         this.actionableFor = actionableFor;
         this.modelUsed = modelUsed;
+        this.promptVersion = promptVersion;
         this.inputTokens = inputTokens;
         this.outputTokens = outputTokens;
         this.costUsd = costUsd;
