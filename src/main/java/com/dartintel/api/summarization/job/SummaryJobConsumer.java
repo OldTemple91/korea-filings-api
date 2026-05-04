@@ -23,7 +23,13 @@ public class SummaryJobConsumer {
     private final SummaryService summaryService;
 
     private volatile boolean running;
-    private Thread worker;
+    /**
+     * Volatile so the {@code @PreDestroy} shutdown thread is
+     * guaranteed to see the reference written by {@code @PostConstruct}
+     * on the bootstrap thread. Without volatile the JMM admits a
+     * formal race even though HotSpot publishes the write in practice.
+     */
+    private volatile Thread worker;
 
     @PostConstruct
     void start() {

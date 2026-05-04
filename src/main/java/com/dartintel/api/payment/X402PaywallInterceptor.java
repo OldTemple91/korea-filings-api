@@ -93,6 +93,25 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
     private final X402Properties props;
     private final ObjectMapper objectMapper;
 
+    /**
+     * Cache the bazaar extension shape per {@link X402Paywall} mode
+     * — the structure is fully determined by the annotation, so a
+     * single instance is reused for every 402 challenge of a given
+     * pricing mode. Eliminates seven nested {@code Map.of} / {@code
+     * List.of} allocations on every uncached challenge.
+     *
+     * <p>Keys: {@link X402Paywall.Mode#FIXED} or
+     * {@link X402Paywall.Mode#PER_RESULT}. Built lazily by
+     * {@link #buildBazaarExtension(X402Paywall)} on first use; this
+     * works because the annotation values for a given mode are
+     * config-time constants in our codebase (the only fields that
+     * matter are the mode itself, the count param name, the default
+     * count, the max count, and the unit price — all stable per
+     * controller method, all stable across the JVM lifetime).
+     */
+    private final java.util.concurrent.ConcurrentMap<X402Paywall.Mode, Map<String, Object>>
+            cachedBazaarByMode = new java.util.concurrent.ConcurrentHashMap<>();
+
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler)
             throws Exception {
@@ -341,7 +360,8 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
                         description == null || description.isBlank() ? null : description,
                         MediaType.APPLICATION_JSON_VALUE),
                 List.of(requirement),
-                Map.of("bazaar", buildBazaarExtension(paywall))
+                Map.of("bazaar", cachedBazaarByMode.computeIfAbsent(
+                        paywall.pricingMode(), m -> buildBazaarExtension(paywall)))
         );
         response.setStatus(HttpStatus.PAYMENT_REQUIRED.value());
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
@@ -405,7 +425,16 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
                                     "Max filings to return (1–" + paywall.maxCount()
                                     + ", default " + paywall.defaultCount() + "). "
                                     + "Final price is " + paywall.priceUsdc()
-                                    + " × " + paywall.countQueryParam() + " USDC."));
+                                    + " × " + paywall.countQueryParam() + " USDC. "
+                                    + "Note: the agent is charged for "
+                                    + paywall.countQueryParam() + ", not for the actual "
+                                    + "row count returned. A ticker with fewer recent "
+                                    + "filings than " + paywall.countQueryParam()
+                                    + " still costs the full amount; pre-filter via the "
+                                    + "free /v1/disclosures/recent feed if budget is "
+                                    + "tight. The response body's `delivered` field "
+                                    + "shows the actual count and `chargedFor` echoes "
+                                    + "the price multiplier."));
         } else {
             // FIXED — summary shape. Selector is `rcptNo`.
             queryParams = Map.of(

@@ -191,13 +191,15 @@ resilience4j:
 
 logging:
   level:
-    # com.dartintel stays at DEBUG so our own structured logs (payment
-    # interceptor, summary pipeline, scheduler) keep tracing detail.
-    com.dartintel: DEBUG
+    # com.dartintel at INFO for production. DEBUG triggers per-request
+    # log lines that include the resource URL + a partial signature
+    # hash on every paid call — useful in dev, log-volume-heavy in
+    # prod. Override to DEBUG via SPRING_PROFILES_ACTIVE=local +
+    # application-local.yml for deeper tracing without redeploying.
+    com.dartintel: INFO
     org.flywaydb: INFO
-    # Hibernate SQL was DEBUG, which logs every JPA query — including
-    # the per-request SELECT/INSERT against payment_log with payer
-    # wallet + signature_hash inline. Promoted to WARN for production
-    # to drop log volume + avoid that minor info echo on every call.
-    # Local dev can override via application-local.yml or `--logging…`.
+    # Hibernate SQL stays at WARN for production: the DEBUG setting
+    # logged every JPA query (incl. per-request payment_log INSERTs
+    # with payer wallet + signature_hash inline) on every call. WARN
+    # surfaces real query-level errors without the per-request noise.
     org.hibernate.SQL: WARN

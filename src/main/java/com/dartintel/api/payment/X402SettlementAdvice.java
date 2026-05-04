@@ -211,6 +211,17 @@ public class X402SettlementAdvice implements ResponseBodyAdvice<Object> {
         String rcptNo = X402PaywallInterceptor.extractRcptNo(verified.endpoint());
         BigDecimal amountHuman = new BigDecimal(verified.requirement().amount())
                 .divide(X402PaywallInterceptor.USDC_ATOMIC, 6, RoundingMode.HALF_UP);
+        // Defence: the facilitator returned success, but if `transaction`
+        // is null the on-chain hash is unrecoverable from this row alone.
+        // Log loudly so an operator can reconcile against the CDP
+        // facilitator's own ledger before persisting the partial row.
+        if (settle.transaction() == null || settle.transaction().isBlank()) {
+            log.error("x402 settle returned success but no transaction hash — "
+                    + "manual reconciliation required: payer={} amount={} sigHash={} "
+                    + "endpoint={}. Will persist payment_log with null tx.",
+                    verified.payer(), amountHuman,
+                    shortHash(verified.signatureHash()), verified.endpoint());
+        }
         try {
             paymentLogRepository.save(new PaymentLog(
                     rcptNo,
@@ -234,6 +245,21 @@ public class X402SettlementAdvice implements ResponseBodyAdvice<Object> {
             // 500 with the response body half-flushed.
             log.warn("payment_log duplicate row swallowed: sigHash={} tx={} (idempotent)",
                     shortHash(verified.signatureHash()), settle.transaction());
+        } catch (org.springframework.dao.DataAccessException dbDown) {
+            // Postgres is unreachable / over capacity / mid-failover.
+            // The on-chain settlement already happened — funds moved.
+            // Log everything an operator needs to reconcile manually
+            // (payer wallet, amount, network, tx hash, signature hash)
+            // and let the response body still flush to the client. The
+            // alternative is to throw, which would surface as a 500 on
+            // a request that already paid — strictly worse since the
+            // client also won't get the data they paid for.
+            log.error("payment_log persist FAILED but settlement landed on-chain: "
+                    + "payer={} amount={} network={} tx={} sigHash={} endpoint={} reason={}",
+                    verified.payer(), amountHuman, verified.requirement().network(),
+                    settle.transaction(), shortHash(verified.signatureHash()),
+                    verified.endpoint(),
+                    X402PaywallInterceptor.sanitiseLogValue(dbDown.getMessage()));
         }
     }
 

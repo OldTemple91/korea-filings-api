@@ -9,6 +9,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -35,6 +36,15 @@ public class PublicController {
 
     private final X402Properties x402Properties;
     private final RequestMappingHandlerMapping handlerMapping;
+    /**
+     * Pre-built pricing response cached at boot. The set of paid
+     * endpoints, their prices, and the wallet config are all
+     * configuration-time constants — there's no need to reflect over
+     * the handler mapping on every {@code /v1/pricing} hit (this
+     * endpoint is publicly free, frequently crawled by indexers, and
+     * was the hottest free-endpoint allocation source).
+     */
+    private volatile PricingResponse cachedPricing;
 
     public PublicController(
             X402Properties x402Properties,
@@ -44,6 +54,25 @@ public class PublicController {
     ) {
         this.x402Properties = x402Properties;
         this.handlerMapping = handlerMapping;
+    }
+
+    @PostConstruct
+    void buildPricingCache() {
+        List<PricingResponse.PaidEndpoint> paid = handlerMapping.getHandlerMethods().entrySet()
+                .stream()
+                .filter(e -> e.getValue().hasMethodAnnotation(X402Paywall.class))
+                .map(PublicController::toPaidEndpoint)
+                .sorted(Comparator.comparing(PricingResponse.PaidEndpoint::path)
+                        .thenComparing(PricingResponse.PaidEndpoint::method))
+                .toList();
+        this.cachedPricing = new PricingResponse(
+                x402Properties.network(),
+                x402Properties.asset(),
+                x402Properties.recipientAddress(),
+                buildPaymentHeaders(),
+                buildWorkflow(),
+                paid
+        );
     }
 
     @GetMapping("/pricing")
@@ -67,22 +96,7 @@ public class PublicController {
                     content = @Content(schema = @Schema(implementation = PricingResponse.class)))
     )
     public ResponseEntity<PricingResponse> pricing() {
-        List<PricingResponse.PaidEndpoint> paid = handlerMapping.getHandlerMethods().entrySet()
-                .stream()
-                .filter(e -> e.getValue().hasMethodAnnotation(X402Paywall.class))
-                .map(PublicController::toPaidEndpoint)
-                .sorted(Comparator.comparing(PricingResponse.PaidEndpoint::path)
-                        .thenComparing(PricingResponse.PaidEndpoint::method))
-                .toList();
-
-        return ResponseEntity.ok(new PricingResponse(
-                x402Properties.network(),
-                x402Properties.asset(),
-                x402Properties.recipientAddress(),
-                buildPaymentHeaders(),
-                buildWorkflow(),
-                paid
-        ));
+        return ResponseEntity.ok(cachedPricing);
     }
 
     /**

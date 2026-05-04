@@ -21,7 +21,11 @@ public class DisclosureSummary {
     @Column(name = "rcpt_no", length = 14, nullable = false, updatable = false)
     private String rcptNo;
 
-    @Column(name = "summary_en", length = 500, nullable = false)
+    // Backed by TEXT in V8 — Gemini's COMPLEX-tier summaries
+    // occasionally exceed 500 chars and were silently rejected with a
+    // constraint violation. SummaryWriter still truncates defensively
+    // at 800 chars to honour the prompt's soft contract.
+    @Column(name = "summary_en", columnDefinition = "TEXT", nullable = false)
     private String summaryEn;
 
     @Column(name = "importance_score", nullable = false)

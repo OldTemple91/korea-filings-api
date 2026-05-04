@@ -62,12 +62,19 @@ public class SummaryWriter {
         auditRepository.save(LlmAudit.failure(rcptNo, model, promptHash, latencyMs, error));
     }
 
+    /** Soft cap for {@code summary_en} — column is TEXT (V8) but the
+     *  prompt asks for ≤ 400 chars, so a model that ignores the
+     *  instruction lands here as a hard ceiling. 800 leaves room for
+     *  legitimate complex filings while keeping the response body
+     *  agent-friendly. */
+    private static final int SUMMARY_EN_MAX = 800;
+
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void recordSummary(String rcptNo, SummaryEnvelope env) {
         SummaryResult r = env.result();
         summaryRepository.save(new DisclosureSummary(
                 rcptNo,
-                r.summaryEn(),
+                truncate(r.summaryEn(), SUMMARY_EN_MAX),
                 r.importanceScore(),
                 r.eventType(),
                 nullSafe(r.sectorTags()),
@@ -78,6 +85,11 @@ public class SummaryWriter {
                 env.outputTokens(),
                 env.costUsd()
         ));
+    }
+
+    private static String truncate(String s, int max) {
+        if (s == null) return "";
+        return s.length() <= max ? s : s.substring(0, max - 1) + "…";
     }
 
     private static List<String> nullSafe(List<String> in) {

@@ -5,6 +5,7 @@ import com.dartintel.api.payment.X402Properties;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -61,6 +62,12 @@ public class WellKnownController {
 
     private final X402Properties x402Properties;
     private final RequestMappingHandlerMapping handlerMapping;
+    /**
+     * Pre-built well-known document cached at boot. Same rationale as
+     * {@link PublicController#cachedPricing}: free endpoint that
+     * indexers re-crawl, contents are configuration-time constants.
+     */
+    private volatile Map<String, Object> cachedDocument;
 
     public WellKnownController(
             X402Properties x402Properties,
@@ -68,6 +75,11 @@ public class WellKnownController {
     ) {
         this.x402Properties = x402Properties;
         this.handlerMapping = handlerMapping;
+    }
+
+    @PostConstruct
+    void buildDiscoveryCache() {
+        this.cachedDocument = buildDiscoveryDocument();
     }
 
     @GetMapping(value = "/.well-known/x402", produces = MediaType.APPLICATION_JSON_VALUE)
@@ -82,6 +94,10 @@ public class WellKnownController {
                     """
     )
     public Map<String, Object> discoveryDocument() {
+        return cachedDocument;
+    }
+
+    private Map<String, Object> buildDiscoveryDocument() {
         List<Map<String, Object>> resourceObjects = handlerMapping.getHandlerMethods().entrySet().stream()
                 .filter(e -> e.getValue().hasMethodAnnotation(X402Paywall.class))
                 .sorted(Comparator.comparing(e -> pathPattern(e.getKey())))
