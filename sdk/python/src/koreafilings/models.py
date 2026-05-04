@@ -35,7 +35,8 @@ class Summary(BaseModel):
 
 
 class SettlementProof(BaseModel):
-    """On-chain settlement proof the API returns via ``X-PAYMENT-RESPONSE``.
+    """On-chain settlement proof the API returns in the ``PAYMENT-RESPONSE``
+    header (or the legacy ``X-PAYMENT-RESPONSE`` alias for older servers).
 
     ``tx_hash`` is the Base transaction hash you can look up on
     basescan.org. ``network`` is the CAIP-2 network identifier (e.g.

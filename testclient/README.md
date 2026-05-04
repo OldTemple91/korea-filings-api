@@ -1,6 +1,6 @@
 # x402 Test Client
 
-Standalone Python script that exercises the paid `GET /v1/disclosures/{rcptNo}/summary` endpoint end-to-end: fetches the 402 payment requirements, signs an EIP-3009 `TransferWithAuthorization` with the payer's private key, retries with the base64 `X-PAYMENT` header, and decodes the `X-PAYMENT-RESPONSE` settlement proof.
+Standalone Python script that exercises the paid `GET /v1/disclosures/summary?rcptNo=…` endpoint end-to-end: fetches the 402 payment requirements, signs an EIP-3009 `TransferWithAuthorization` with the payer's private key, retries with the base64 payload in the `PAYMENT-SIGNATURE` header (x402 v2 transport spec), and decodes the `PAYMENT-RESPONSE` settlement proof.
 
 ## One-time setup
 
@@ -43,7 +43,7 @@ Expected output:
 
 ```
 Payer address : 0x...
-Target        : http://localhost:8080/v1/disclosures/20260423000001/summary
+Target        : http://localhost:8080/v1/disclosures/summary?rcptNo=20260423000001
 
 [402] Payment required:
 { "x402Version": 2, "accepts": [ { ... } ] }
@@ -76,10 +76,10 @@ uv run testclient/payer.py 20260423000001       # overrides
 
 ## What the script does under the hood
 
-1. `GET /v1/disclosures/{rcpt_no}/summary` without any header — expects `402 Payment Required`.
+1. `GET /v1/disclosures/summary?rcptNo={rcpt_no}` without any header — expects `402 Payment Required` with the base64 payload in the `PAYMENT-REQUIRED` response header (and a v1-compatible JSON copy in the body).
 2. Parses `body.accepts[0]` for scheme (`exact`), network (`eip155:84532` for Base Sepolia), USDC asset address, recipient, and atomic amount.
 3. Builds an EIP-3009 `TransferWithAuthorization` struct with a random 32-byte nonce and a short `validBefore` window.
 4. Signs it via EIP-712 with `PAYER_PRIVATE_KEY` — domain uses the USDC contract name/version from `accepts[0].extra`.
-5. Wraps the signed authorization in a `PaymentPayload` JSON object and base64-encodes it into the `X-PAYMENT` header.
-6. Re-issues the `GET` with the header — server verifies with the facilitator, returns the summary body, settles on-chain, and attaches the proof to `X-PAYMENT-RESPONSE`.
+5. Wraps the signed authorization in a `PaymentPayload` JSON object and base64-encodes it into the `PAYMENT-SIGNATURE` header (the legacy `X-PAYMENT` header still works for older clients).
+6. Re-issues the `GET` with the header — server verifies with the facilitator, returns the summary body, settles on-chain, and attaches the proof to `PAYMENT-RESPONSE` (with `X-PAYMENT-RESPONSE` echoed for v1 clients). If the facilitator rejects `/settle`, the server fails closed with a 502 and the data is withheld.
 7. Decodes and prints the settlement info (including the on-chain transaction hash you can look up on https://sepolia.basescan.org).

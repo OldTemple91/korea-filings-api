@@ -167,7 +167,7 @@ internal layout.
 
 Index on `(rcept_dt DESC, rcpt_no DESC)` for `/v1/disclosures/recent`.
 Partial index on `ticker WHERE ticker IS NOT NULL` for
-`/v1/disclosures/by-ticker/{ticker}` (V6).
+`/v1/disclosures/by-ticker?ticker=…` (V6).
 
 ### `company` (KRX directory, v1.1)
 
@@ -218,17 +218,20 @@ on-chain reconciliation and tax prep.
 
 ## Request Lifecycle — Paid endpoint, fixed price
 
-`GET /v1/disclosures/{rcptNo}/summary` (annotated
+`GET /v1/disclosures/summary?rcptNo=…` (annotated
 `@X402Paywall(priceUsdc = "0.005")`):
 
 1. Spring dispatches to `DisclosuresController#getSummary`.
 2. `X402PaywallInterceptor#preHandle` reads `@X402Paywall` →
    fixed price 0.005 USDC.
-3. Reads `X-PAYMENT` header.
+3. Reads the `PAYMENT-SIGNATURE` header (v2 transport spec),
+   falling back to the legacy `X-PAYMENT` header for 0.2.x SDK
+   / MCP clients still in the wild.
    - Missing → emit 402 with base64-encoded `PaymentRequired` in
      the `PAYMENT-REQUIRED` response header (x402 v2 transport)
      plus a v1-compatible JSON copy in the body. Includes the
-     `bazaar` extension declaring input/output schema.
+     `bazaar` extension declaring input/output schema (with the
+     `rcptNo` query param marked required).
 4. SHA-256 hash the payload, `paymentStore.registerIfAbsent(hash)`
    via Redis `SET payment_sig:{hash} 1 NX EX 3600`.
    - Already registered → 402 "signature reused".
@@ -238,16 +241,20 @@ on-chain reconciliation and tax prep.
    - Valid → attach `VerifiedPayment` to request as an attribute.
 6. Controller runs. Reads summary from Redis, falls back to
    Postgres, serialises.
-7. `X402SettlementAdvice#afterCompletion` fires.
-   - 2xx → `facilitatorClient.settle(verifiedPayment)`, write
-     base64 settlement proof to `X-PAYMENT-RESPONSE`, append to
-     `payment_log`.
-   - non-2xx → release the Redis signature so the client can
-     retry without paying twice. **No settlement on 5xx.**
+7. `X402SettlementAdvice#beforeBodyWrite` fires before the
+   response body lands on the wire.
+   - 2xx + settle success → write base64 settlement proof to
+     `PAYMENT-RESPONSE` (with `X-PAYMENT-RESPONSE` echoed for v1
+     clients), append a row to `payment_log`.
+   - 2xx + settle throws / `success: false` → **fail-close**: status
+     is rewritten to 502 and the body is replaced with an error
+     envelope so a facilitator outage cannot leak paid data unpaid.
+   - non-2xx → settlement skipped; `afterCompletion` releases the
+     Redis signature so the client can retry without paying twice.
 
 ## Request Lifecycle — Paid endpoint, per-result price
 
-`GET /v1/disclosures/by-ticker/{ticker}?limit=N` (annotated
+`GET /v1/disclosures/by-ticker?ticker=…&limit=N` (annotated
 `@X402Paywall(priceUsdc = "0.005", pricingMode = PER_RESULT,
 countQueryParam = "limit", defaultCount = 5, maxCount = 50)`):
 
@@ -362,7 +369,7 @@ deltas to this architecture are:
   XBRL parsers extract amount, dilution %, counterparty, dates.
 - New `SummaryResult.keyFacts` field carrying the extracted
   numbers as a structured JSON blob.
-- New paid endpoint `/v1/disclosures/{rcptNo}/deep` priced at
+- New paid endpoint `/v1/disclosures/deep?rcptNo=…` priced at
   ~0.020 USDC. Existing endpoints stay metadata-only at 0.005
   USDC so callers pick depth at call time.
 - New `dart` rate-limiter for the `/document.xml` endpoint

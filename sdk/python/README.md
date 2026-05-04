@@ -128,7 +128,7 @@ returns `RecentFiling` records (`rcpt_no`, `ticker`, `corp_name`,
 > type / importance / sector / ticker reliably — first-pass
 > screening — but the LLM honestly says "details are in the filing
 > body" for quantitative events instead of fabricating numbers.
-> v1.2 (planned) introduces a `/v1/disclosures/{rcptNo}/deep`
+> v1.2 (planned) introduces a `/v1/disclosures/deep?rcptNo=…`
 > endpoint at ~0.020 USDC that pulls the per-filing XBRL via DART's
 > `/document.xml` and template-extracts amounts, dilution %,
 > counterparty, and dates into a structured `keyFacts` field. See
@@ -166,11 +166,14 @@ Under the hood, each paid call:
 2. SDK signs an
    [EIP-3009 `TransferWithAuthorization`](https://eips.ethereum.org/EIPS/eip-3009)
    message locally — your private key never leaves the process.
-3. SDK base64-encodes the signed payload into `X-PAYMENT` and retries
-   the GET.
+3. SDK base64-encodes the signed payload into the `PAYMENT-SIGNATURE`
+   header (x402 v2 transport spec) and retries the GET.
 4. Server verifies the signature via the x402 facilitator, submits it
    on-chain, streams the JSON body back, and attaches the settlement
-   proof as `X-PAYMENT-RESPONSE`.
+   proof to the `PAYMENT-RESPONSE` header. If the facilitator's
+   `/settle` call rejects, the server fails closed with a 502 so the
+   data is never delivered unpaid; the SDK surfaces that as a
+   `PaymentError`.
 
 The SDK exposes the proof as `client.last_settlement` so you can log
 transaction hashes for your accounting system.

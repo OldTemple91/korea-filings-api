@@ -33,7 +33,7 @@ live, what's next, and the minimum setup to keep moving.
 | OpenAPI spec | https://api.koreafilings.com/v3/api-docs | Machine-readable JSON. |
 | Pricing | https://api.koreafilings.com/v1/pricing | Free, lists paid endpoints + x402 wallet. |
 | Health | https://api.koreafilings.com/actuator/health | Liveness/readiness. |
-| Paid summary | `GET /v1/disclosures/{rcptNo}/summary` | 0.005 USDC on Base mainnet via Coinbase CDP facilitator. |
+| Paid summary | `GET /v1/disclosures/summary?rcptNo=…` | 0.005 USDC on Base mainnet via Coinbase CDP facilitator. |
 | Python SDK | https://pypi.org/project/koreafilings/ | `pip install koreafilings` |
 | MCP server | https://pypi.org/project/koreafilings-mcp/ | `uv tool install koreafilings-mcp` |
 | Source | https://github.com/OldTemple91/korea-filings-api | Private push via `OldTemple91`. |
@@ -69,7 +69,7 @@ live, what's next, and the minimum setup to keep moving.
    "details are in the filing body". v1.2 fixes this by pulling
    per-filing XBRL via DART's `/document.xml` API, parsing
    templated facts for the six highest-value event types, and
-   exposing them through a new `/v1/disclosures/{rcptNo}/deep`
+   exposing them through a new `/v1/disclosures/deep?rcptNo=…`
    endpoint at a higher price tier (~0.020 USDC) alongside a
    `keyFacts` field on the summary DTO. Build trigger: at least a
    week of v1.1 traffic showing which filing types agents actually

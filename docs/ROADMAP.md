@@ -56,12 +56,12 @@ Goal: a paid endpoint works end-to-end on localhost. A test client can pay USDC 
 - Register the interceptor in `WebMvcConfigurer`.
 
 **Day 2**
-- Annotate `GET /v1/disclosures/{rcptNo}/summary` with `@X402Paywall(priceUsdc = "0.005", network = "base-sepolia")`.
-- Implement the controller.
+- Annotate `GET /v1/disclosures/summary` with `@X402Paywall(priceUsdc = "0.005", network = "base-sepolia")`.
+- Implement the controller (input via `?rcptNo=…` query param so the bazaar v1 schema can declare it).
 - Write a test client in Python or TypeScript that:
    1. Calls the endpoint without payment → receives 402 with requirements.
    2. Signs a USDC transfer with ethers.js.
-   3. Retries with `X-PAYMENT` header → receives 200 with summary.
+   3. Retries with `PAYMENT-SIGNATURE` header → receives 200 with summary.
 - Debug until the flow works end-to-end.
 
 Deliverable: a demo video-able payment flow on localhost against testnet USDC.
@@ -152,8 +152,8 @@ What ships:
 - `GET /v1/companies?q=…`            — fuzzy name + ticker search (free)
 - `GET /v1/companies/{ticker}`        — single lookup (free)
 - `GET /v1/disclosures/recent`        — metadata feed across the market (free)
-- `GET /v1/disclosures/by-ticker/{ticker}?limit=N` — batch summaries for one company (paid 0.005 × N USDC)
-- `GET /v1/disclosures/{rcptNo}/summary` — kept for direct receipt lookup (paid 0.005 USDC)
+- `GET /v1/disclosures/by-ticker?ticker=…&limit=N` — batch summaries for one company (paid 0.005 × N USDC)
+- `GET /v1/disclosures/summary?rcptNo=…` — kept for direct receipt lookup (paid 0.005 USDC)
 - `@X402Paywall(pricingMode = PER_RESULT)` — declarative dynamic pricing
 - DART corpCode.xml sync on bootstrap + daily 09:30 KST refresh
 - Python SDK 0.2 + MCP server 0.2 expose all four flows
@@ -188,7 +188,7 @@ contracts — exactly the events agents most want numbers for.
    `summary_en` paragraph cites them inline; agents that want
    strict typing read `keyFacts` directly.
 
-4. **New paid endpoint** — `GET /v1/disclosures/{rcptNo}/deep`
+4. **New paid endpoint** — `GET /v1/disclosures/deep?rcptNo=…`
    priced higher (~0.020 USDC) to reflect the body fetch + extra
    LLM tokens. The existing `summary` endpoint stays at
    0.005 USDC and stays metadata-only — customers pick depth at

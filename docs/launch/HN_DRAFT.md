@@ -63,7 +63,7 @@ Why: raw DART data is free but in Korean and structured for filing clerks, not L
 Honest scope:
 
 - Today's summaries are generated from filing metadata only — title, date, filer, DART flag. That gives event type / importance score / sector / ticker reliably (first-pass screening) but the LLM honestly says "details are in the filing body" for quantitative events instead of fabricating numbers. Whether to extract the actual amounts is the v1.2 question.
-- v1.2 plan, on the roadmap: pull the per-filing XBRL via DART's /document.xml and template-extract numbers (issuance amount, dilution %, contract value, …) for the six highest-value event types into a structured keyFacts field. New paid endpoint /v1/disclosures/{rcptNo}/deep at ~0.020 USDC; existing endpoints stay metadata-only at 0.005 USDC so callers pick depth at call time.
+- v1.2 plan, on the roadmap: pull the per-filing XBRL via DART's /document.xml and template-extract numbers (issuance amount, dilution %, contract value, …) for the six highest-value event types into a structured keyFacts field. New paid endpoint /v1/disclosures/deep?rcptNo=… at ~0.020 USDC; existing endpoints stay metadata-only at 0.005 USDC so callers pick depth at call time.
 
 Repo (MIT, Java backend + Python SDK + Python MCP + landing): https://github.com/OldTemple91/korea-filings-api
 
@@ -122,7 +122,7 @@ Resilience4j RateLimiter (10 RPM, conservative below the 15 RPM free-tier ceilin
 
 **Q: Pricing roadmap?**
 
-0.005 USDC per metadata summary stays flat — marginal cost on a cache hit is near-zero, so per-call flat pricing made more sense than tokens or subscriptions. The next pricing tier is v1.2 deep analysis at ~0.020 USDC (new /v1/disclosures/{rcptNo}/deep endpoint pulling the filing body for quantitative facts), which lets agents pick depth at call time. Volume tiers would land only if data shows high-frequency agents repeatedly hitting the same handful of tickers — but the cache moat already covers that case for free.
+0.005 USDC per metadata summary stays flat — marginal cost on a cache hit is near-zero, so per-call flat pricing made more sense than tokens or subscriptions. The next pricing tier is v1.2 deep analysis at ~0.020 USDC (new /v1/disclosures/deep?rcptNo=… endpoint pulling the filing body for quantitative facts), which lets agents pick depth at call time. Volume tiers would land only if data shows high-frequency agents repeatedly hitting the same handful of tickers — but the cache moat already covers that case for free.
 
 **Q: Korean text in console?**
 

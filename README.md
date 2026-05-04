@@ -46,7 +46,7 @@ USDC payment. Margins compound as adoption grows.
 ## How to use it
 
 Pick whichever surface fits your stack. All three speak the same x402
-flow under the hood; the wallet that signs the `X-PAYMENT` header *is*
+flow under the hood; the wallet that signs the `PAYMENT-SIGNATURE` header *is*
 the identity. No API keys. No signup.
 
 ### Python SDK
@@ -123,7 +123,7 @@ curl 'https://api.koreafilings.com/v1/companies?q=Samsung+Electronics&limit=1'
 
 # 2) Probe the paid endpoint without payment — server tells you the
 #    exact USDC amount it wants for `limit=N` summaries.
-curl -i 'https://api.koreafilings.com/v1/disclosures/by-ticker/005930?limit=3'
+curl -i 'https://api.koreafilings.com/v1/disclosures/by-ticker?ticker=005930&limit=3'
 #   HTTP/2 402
 #   payment-required: <base64 PaymentRequired payload, amount = 15000>
 #   { "x402Version": 2, "accepts": [{ "scheme": "exact",
@@ -132,12 +132,12 @@ curl -i 'https://api.koreafilings.com/v1/disclosures/by-ticker/005930?limit=3'
 
 # 3) Sign an EIP-3009 TransferWithAuthorization for one of the entries
 #    in `accepts`, base64-encode the signed PaymentPayload, and resend
-#    with the X-PAYMENT header. See testclient/payer.py for a 90-line
-#    reference implementation.
-curl -H "X-PAYMENT: $SIGNED" \
-     'https://api.koreafilings.com/v1/disclosures/by-ticker/005930?limit=3'
+#    with the PAYMENT-SIGNATURE header (x402 v2 transport spec).
+#    See testclient/payer.py for a ~150-line reference implementation.
+curl -H "PAYMENT-SIGNATURE: $SIGNED" \
+     'https://api.koreafilings.com/v1/disclosures/by-ticker?ticker=005930&limit=3'
 #   HTTP/2 200
-#   x-payment-response: <base64 SettlementResponse with tx hash>
+#   payment-response: <base64 SettlementResponse with tx hash>
 #   [ { "rcptNo": "...", "summaryEn": "...", "importanceScore": 7, ... },
 #     { ... }, { ... } ]
 ```
@@ -189,12 +189,15 @@ Three logical subsystems share one Spring Boot application:
    rate-limiting + circuit-breaking + retries), persists English
    summary + ticker / sector tags + audit row to `llm_audit`.
 3. **Paid API** — Spring MVC controller behind an `X402PaywallInterceptor`.
-   Every request: check `X-PAYMENT`, verify the signature with the
-   facilitator, check Redis for replay, settle on a 200 response, and
-   attach `X-PAYMENT-RESPONSE` carrying the on-chain tx hash via a
-   `ResponseBodyAdvice`. The interceptor short-circuits for handler
-   methods without `@X402Paywall`, so `/v1/pricing`, `/.well-known/x402`,
-   and the OpenAPI document stay unauthenticated.
+   Every request: read `PAYMENT-SIGNATURE` (or the legacy `X-PAYMENT`
+   alias for 0.2.x clients), verify the signature with the facilitator,
+   check Redis for replay, settle on a 200 response, and attach
+   `PAYMENT-RESPONSE` carrying the on-chain tx hash via a
+   `ResponseBodyAdvice`. If `/settle` throws or rejects, the body is
+   replaced with a 502 envelope so a facilitator outage cannot leak
+   paid data unpaid. The interceptor short-circuits for handler methods
+   without `@X402Paywall`, so `/v1/pricing`, `/.well-known/x402`, and
+   the OpenAPI document stay unauthenticated.
 
 The 402 challenge follows the
 [x402 v2 transport spec](https://github.com/coinbase/x402/blob/main/specs/transports-v2/http.md):
@@ -288,7 +291,7 @@ Coming next:
   SUPPLY_CONTRACT_SIGNED, MAJOR_SHAREHOLDER_FILING), and extract
   amounts, dilution %, counterparty, and dates into a structured
   `keyFacts` field. New paid endpoint
-  `/v1/disclosures/{rcptNo}/deep` at a higher price tier (~0.020
+  `/v1/disclosures/deep?rcptNo=…` at a higher price tier (~0.020
   USDC) — existing endpoints stay metadata-only at 0.005 USDC so
   callers pick depth at call time. Roadmap detail in
   [`docs/ROADMAP.md`](docs/ROADMAP.md#v12--deep-filing-analysis-planned).

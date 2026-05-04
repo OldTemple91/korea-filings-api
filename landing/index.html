@@ -148,14 +148,14 @@ Agent → <span class="label">GET /v1/companies?q=Samsung+Electronics</span><br>
        ← <span class="arrow">200 OK</span> &nbsp; { matches: [{ ticker: "005930", nameKr: "삼성전자", ... }] }<br>
 <br>
 <span style="color:var(--text);">2. Fetch recent filings for that ticker (paid)</span><br>
-Agent → <span class="label">GET /v1/disclosures/by-ticker/005930?limit=5</span><br>
+Agent → <span class="label">GET /v1/disclosures/by-ticker?ticker=005930&amp;limit=5</span><br>
        ← <span class="arrow">402 Payment Required</span> &nbsp; { amount: 25000, asset: USDC, payTo: 0x8467…, ... }<br>
 <br>
 Sign the EIP-3009 authorisation with your wallet (0.005 × limit USDC)<br>
 <br>
-Agent → <span class="label">GET /v1/disclosures/by-ticker/005930?limit=5</span><br>
-       &nbsp;&nbsp;&nbsp;&nbsp;<span class="arrow">X-PAYMENT: &lt;base64 signed payload&gt;</span><br>
-       ← <span class="arrow">200 OK</span> + X-PAYMENT-RESPONSE (settlement tx hash)<br>
+Agent → <span class="label">GET /v1/disclosures/by-ticker?ticker=005930&amp;limit=5</span><br>
+       &nbsp;&nbsp;&nbsp;&nbsp;<span class="arrow">PAYMENT-SIGNATURE: &lt;base64 signed payload&gt;</span><br>
+       ← <span class="arrow">200 OK</span> + PAYMENT-RESPONSE (settlement tx hash)<br>
        ← &nbsp;&nbsp;[ { summaryEn, importanceScore, eventType, ... }, &times; 5 ]
 </div>
 
@@ -163,7 +163,7 @@ Agent → <span class="label">GET /v1/disclosures/by-ticker/005930?limit=5</span
   The <a href="https://x402.org">x402 protocol</a> routes the payment through Coinbase's facilitator, which validates your signature on-chain and settles USDC in a single transaction. The server never holds your private key. You never hold an API key. Every call is audited on-chain.
 </p>
 <p>
-  The price for batched endpoints is <strong>declared dynamically</strong> in the 402 response — for <code>by-ticker?limit=N</code>, the server signs <code>0.005 × N</code> USDC into the challenge, so an agent always sees the exact charge before authorising the wallet. Direct receipt-number lookup at <code>/v1/disclosures/{rcptNo}/summary</code> stays at a flat 0.005 USDC.
+  The price for batched endpoints is <strong>declared dynamically</strong> in the 402 response — for <code>by-ticker?ticker=…&amp;limit=N</code>, the server signs <code>0.005 × N</code> USDC into the challenge, so an agent always sees the exact charge before authorising the wallet. Direct receipt-number lookup at <code>/v1/disclosures/summary?rcptNo=…</code> stays at a flat 0.005 USDC.
 </p>
 
 <h2>What you get</h2>
@@ -200,12 +200,12 @@ Agent → <span class="label">GET /v1/disclosures/by-ticker/005930?limit=5</span
   </thead>
   <tbody id="pricing-rows">
     <tr>
-      <td class="mono">/v1/disclosures/by-ticker/{ticker}?limit=N</td>
+      <td class="mono">/v1/disclosures/by-ticker?ticker=…&amp;limit=N</td>
       <td class="mono">GET</td>
       <td class="price">0.005 × N</td>
     </tr>
     <tr>
-      <td class="mono">/v1/disclosures/{rcptNo}/summary</td>
+      <td class="mono">/v1/disclosures/summary?rcptNo=…</td>
       <td class="mono">GET</td>
       <td class="price">0.005</td>
     </tr>
@@ -265,7 +265,7 @@ with Client(private_key="0x...", network="base") as client:
   Live on <strong>Base mainnet</strong> — payments settle in real USDC via the Coinbase CDP facilitator. v1.1 (name-based agent flow) is shipped: <a href="https://pypi.org/project/koreafilings/">Python SDK 0.2</a> and <a href="https://pypi.org/project/koreafilings-mcp/">MCP server 0.2</a> are on PyPI, and the service is indexed at <a href="https://www.x402scan.com">x402scan</a>.
 </p>
 <p>
-  <strong>What's next — v1.2 deep filing analysis.</strong> Today's summaries come from filing metadata only (title, filer, date, DART flag), so quantitative events ("rights offering size", "supply contract value") come back as "details are in the filing body". v1.2 pulls the per-filing XBRL via DART's <code>/document.xml</code> and template-extracts the actual numbers for the six highest-value event types — RIGHTS_OFFERING, CONVERTIBLE_BOND_ISSUANCE, DEBT_ISSUANCE, ACQUISITION, SUPPLY_CONTRACT_SIGNED, MAJOR_SHAREHOLDER_FILING — into a structured <code>keyFacts</code> field. New paid endpoint <code>/v1/disclosures/{rcptNo}/deep</code> at ~0.020 USDC; existing endpoints stay metadata-only at 0.005 USDC so callers pick depth at call time. See the <a href="https://github.com/OldTemple91/korea-filings-api/blob/main/docs/ROADMAP.md#v12--deep-filing-analysis-planned">roadmap</a> for the full plan.
+  <strong>What's next — v1.2 deep filing analysis.</strong> Today's summaries come from filing metadata only (title, filer, date, DART flag), so quantitative events ("rights offering size", "supply contract value") come back as "details are in the filing body". v1.2 pulls the per-filing XBRL via DART's <code>/document.xml</code> and template-extracts the actual numbers for the six highest-value event types — RIGHTS_OFFERING, CONVERTIBLE_BOND_ISSUANCE, DEBT_ISSUANCE, ACQUISITION, SUPPLY_CONTRACT_SIGNED, MAJOR_SHAREHOLDER_FILING — into a structured <code>keyFacts</code> field. New paid endpoint <code>/v1/disclosures/deep?rcptNo=…</code> at ~0.020 USDC; existing endpoints stay metadata-only at 0.005 USDC so callers pick depth at call time. See the <a href="https://github.com/OldTemple91/korea-filings-api/blob/main/docs/ROADMAP.md#v12--deep-filing-analysis-planned">roadmap</a> for the full plan.
 </p>
 
 <footer>
