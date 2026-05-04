@@ -7,8 +7,9 @@ import org.springframework.stereotype.Component;
 import java.time.Duration;
 
 /**
- * Replay guard for x402 payment signatures. Each verified X-PAYMENT
- * header is hashed (SHA-256 hex) and registered here with a short TTL;
+ * Replay guard for x402 payment signatures. Each verified payment
+ * header (v2 {@code PAYMENT-SIGNATURE} or legacy {@code X-PAYMENT})
+ * is hashed (SHA-256 hex) and registered here with a short TTL;
  * a second request carrying the same signature is rejected before the
  * facilitator is ever called. The store also offers release() so a
  * non-2xx controller outcome does not double-charge a client that

@@ -7,6 +7,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.MethodParameter;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.converter.HttpMessageConverter;
 import org.springframework.http.server.ServerHttpRequest;
@@ -19,28 +20,46 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyAdvice;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.Base64;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
- * Settles verified x402 payments and attaches the X-PAYMENT-RESPONSE
- * header to the outbound response before the body is written. Runs
- * only for controller methods annotated with {@link X402Paywall};
- * other responses pass through untouched.
+ * Settles verified x402 payments and attaches the {@code PAYMENT-RESPONSE}
+ * header (plus the legacy {@code X-PAYMENT-RESPONSE} alias) to the
+ * outbound response before the body is written. Runs only for
+ * controller methods annotated with {@link X402Paywall}; other
+ * responses pass through untouched.
  *
- * Running at {@link ResponseBodyAdvice#beforeBodyWrite} (rather than
+ * <p>Running at {@link ResponseBodyAdvice#beforeBodyWrite} (rather
+ * than
  * {@link org.springframework.web.servlet.HandlerInterceptor#afterCompletion})
  * is what makes the settlement header land on the wire — once Spring
  * has started streaming the @ResponseBody, headers are frozen.
  *
- * PaymentLog persistence lives here too: it belongs with the
- * settlement transaction, and the request's VerifiedPayment attribute
- * gives us every field we need.
+ * <p>PaymentLog persistence lives here too: it belongs with the
+ * settlement transaction, and the request's {@link VerifiedPayment}
+ * attribute gives every field needed.
+ *
+ * <h3>Fail-closed on settlement failure</h3>
+ *
+ * <p>If the facilitator's {@code /settle} call throws or returns a
+ * non-success result, the controller's response body is replaced with
+ * a 502 error envelope and the original payload is dropped. Returning
+ * the bought data while the merchant is unpaid would be a
+ * non-revocable revenue leak — verify is binding, but settle is what
+ * actually transfers funds, and a server that delivers data on a
+ * failed settle is effectively giving it away whenever the
+ * facilitator has an outage.
  */
 @ControllerAdvice
 @RequiredArgsConstructor
 @Slf4j
 public class X402SettlementAdvice implements ResponseBodyAdvice<Object> {
 
-    static final String X_PAYMENT_RESPONSE_HEADER = "X-PAYMENT-RESPONSE";
+    /** v2 transport — preferred server-to-client settlement header. */
+    static final String PAYMENT_RESPONSE_HEADER = "PAYMENT-RESPONSE";
+    /** v1 compat — emitted alongside the v2 header until 0.3.x SDK adoption is observable. */
+    static final String LEGACY_X_PAYMENT_RESPONSE_HEADER = "X-PAYMENT-RESPONSE";
 
     private final FacilitatorClient facilitatorClient;
     private final PaymentLogRepository paymentLogRepository;
@@ -80,14 +99,18 @@ public class X402SettlementAdvice implements ResponseBodyAdvice<Object> {
                     verified.payload(),
                     verified.requirement()));
         } catch (Exception e) {
-            log.error("x402 settle exception for endpoint={}: {}", verified.endpoint(), e.getMessage(), e);
-            return body;
+            log.error("x402 settle exception for endpoint={}: {}",
+                    verified.endpoint(), e.getMessage(), e);
+            return failClosed(servletResp, "settle_unavailable",
+                    "x402 facilitator unreachable; payment not captured");
         }
 
         if (!settle.success()) {
+            String reason = settle.errorReason() != null ? settle.errorReason() : "unknown";
             log.error("x402 settle rejected: reason={} endpoint={}",
-                    settle.errorReason(), verified.endpoint());
-            return body;
+                    reason, verified.endpoint());
+            return failClosed(servletResp, "settle_rejected",
+                    "x402 facilitator rejected the payment: " + reason);
         }
 
         attachSettlementHeader(response, settle);
@@ -99,13 +122,30 @@ public class X402SettlementAdvice implements ResponseBodyAdvice<Object> {
         return body;
     }
 
+    /**
+     * Replace the controller's body with a 502 error envelope so a
+     * failed settlement does not deliver paid data unpaid. The
+     * payment signature stays locked in Redis for its 1-hour TTL —
+     * the client cannot retry the same signature, but they can sign
+     * a fresh one once the facilitator is healthy.
+     */
+    private Object failClosed(ServletServerHttpResponse servletResp, String code, String message) {
+        servletResp.getServletResponse().setStatus(HttpStatus.BAD_GATEWAY.value());
+        servletResp.getHeaders().setContentType(MediaType.APPLICATION_JSON);
+        Map<String, Object> envelope = new LinkedHashMap<>();
+        envelope.put("error", code);
+        envelope.put("message", message);
+        return envelope;
+    }
+
     private void attachSettlementHeader(ServerHttpResponse response, FacilitatorSettleResponse settle) {
         try {
             byte[] proofBytes = objectMapper.writeValueAsBytes(settle);
             String proof = Base64.getEncoder().encodeToString(proofBytes);
-            response.getHeaders().add(X_PAYMENT_RESPONSE_HEADER, proof);
+            response.getHeaders().add(PAYMENT_RESPONSE_HEADER, proof);
+            response.getHeaders().add(LEGACY_X_PAYMENT_RESPONSE_HEADER, proof);
         } catch (Exception e) {
-            log.error("Failed to encode X-PAYMENT-RESPONSE header: {}", e.getMessage());
+            log.error("Failed to encode PAYMENT-RESPONSE header: {}", e.getMessage());
         }
     }
 

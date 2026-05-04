@@ -9,8 +9,8 @@ What lives here:
 - parsing the 402 "accepts" block the API returns,
 - building the EIP-3009 TransferWithAuthorization message,
 - signing it with the caller's private key (EIP-712),
-- serialising the signed ``PaymentPayload`` as the base64 ``X-PAYMENT``
-  header the x402 protocol expects.
+- serialising the signed ``PaymentPayload`` as the base64
+  ``PAYMENT-SIGNATURE`` header the x402 v2 transport spec expects.
 
 We deliberately do not talk to the facilitator from the client. The
 server's interceptor submits the signed payment to the facilitator,
@@ -110,13 +110,17 @@ def sign_eip3009(account: Account, requirement: Mapping[str, Any], authorization
     return hex_sig if hex_sig.startswith("0x") else f"0x{hex_sig}"
 
 
-def build_x_payment_header(
+def build_payment_signature_header(
     resource_url: str,
     requirement: Mapping[str, Any],
     authorization: Mapping[str, Any],
     signature: str,
 ) -> str:
-    """Base64-encode the signed payload into the ``X-PAYMENT`` header value."""
+    """Base64-encode the signed payload into the ``PAYMENT-SIGNATURE`` header value.
+
+    Wire format is identical to the v1 ``X-PAYMENT`` header — only the
+    HTTP header name changed in the x402 v2 transport spec.
+    """
     payload = {
         "x402Version": X402_VERSION,
         "resource": {
@@ -131,8 +135,19 @@ def build_x_payment_header(
     return base64.b64encode(raw).decode("ascii")
 
 
+# Backwards-compatible alias for any external code that imported the
+# v0.2.x name. New call sites use ``build_payment_signature_header``.
+build_x_payment_header = build_payment_signature_header
+
+
 def decode_settlement_header(value: str | None) -> dict | None:
-    """Decode the ``X-PAYMENT-RESPONSE`` settlement proof, or return None."""
+    """Decode the settlement proof header, or return None.
+
+    Servers running x402 v2 transport spec emit ``PAYMENT-RESPONSE``;
+    older servers emit ``X-PAYMENT-RESPONSE``. Either header carries
+    the same base64-encoded JSON payload, so this function does not
+    care which one the caller pulled off the response.
+    """
     if not value:
         return None
     try:

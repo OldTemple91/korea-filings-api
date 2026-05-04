@@ -20,17 +20,21 @@ import java.util.List;
  * (SDK codegen, Postman collections, registrars like x402scan) expect real
  * metadata: title, licence, contact, servers.
  *
- * <p>The {@code X-PAYMENT} security scheme documents that paid endpoints
- * expect a base64-encoded signed payload. It is intentionally declared as a
+ * <p>The {@code x402Payment} security scheme documents that paid endpoints
+ * expect a base64-encoded signed payload in the {@code PAYMENT-SIGNATURE}
+ * header (v2 transport spec). It is intentionally declared as a
  * {@link SecurityScheme.Type#APIKEY} scheme because OpenAPI has no native
  * notion of an EIP-712-signed wallet authorisation; calling it "apiKey in
  * header" lets Swagger UI surface the field while the narrative description
- * points readers to the x402 spec for the real shape.
+ * points readers to the x402 spec for the real shape. A second
+ * {@code x402PaymentLegacy} scheme advertises the {@code X-PAYMENT} header
+ * accepted for backward compatibility with 0.2.x SDK / MCP releases.
  */
 @Configuration
 public class OpenApiConfig {
 
     private static final String X402_SCHEME = "x402Payment";
+    private static final String X402_LEGACY_SCHEME = "x402PaymentLegacy";
 
     @Bean
     public OpenAPI openAPI(
@@ -53,7 +57,7 @@ public class OpenApiConfig {
                                 operator approaches zero as adoption grows.
 
                                 **No API keys. No signup. No monthly fees.** The wallet
-                                that signs an `X-PAYMENT` header *is* the identity.
+                                that signs the `PAYMENT-SIGNATURE` header *is* the identity.
                                 """
                         )
                         .version(appVersion)
@@ -71,20 +75,40 @@ public class OpenApiConfig {
                         .addSecuritySchemes(X402_SCHEME, new SecurityScheme()
                                 .type(SecurityScheme.Type.APIKEY)
                                 .in(SecurityScheme.In.HEADER)
+                                .name("PAYMENT-SIGNATURE")
+                                .description(
+                                        """
+                                        Base64-encoded signed x402 payment payload (v2 transport
+                                        spec). When this header is absent the server replies
+                                        with HTTP 402: the `PAYMENT-REQUIRED` response header
+                                        carries the base64-encoded `PaymentRequired` payload,
+                                        and a JSON-encoded copy of the same payload is in the
+                                        body for v1-era clients. Sign an EIP-3009
+                                        TransferWithAuthorization for the declared amount and
+                                        re-send the same request with this header set.
+
+                                        On a successful 2xx response, the server attaches a
+                                        `PAYMENT-RESPONSE` header carrying the base64-encoded
+                                        settlement proof (transaction hash, network, payer).
+
+                                        See https://github.com/coinbase/x402/blob/main/specs/transports-v2/http.md
+                                        for the canonical spec and
+                                        https://github.com/OldTemple91/korea-filings-api for
+                                        the reference Python SDK.
+                                        """
+                                ))
+                        .addSecuritySchemes(X402_LEGACY_SCHEME, new SecurityScheme()
+                                .type(SecurityScheme.Type.APIKEY)
+                                .in(SecurityScheme.In.HEADER)
                                 .name("X-PAYMENT")
                                 .description(
                                         """
-                                        Base64-encoded signed x402 payment payload. When the
-                                        header is absent or invalid, the server replies 402
-                                        with an `accepts` block describing the required
-                                        amount, USDC contract, network, recipient, and
-                                        expiry. Sign an EIP-3009 TransferWithAuthorization
-                                        for those parameters and re-send the same request
-                                        with this header set.
-
-                                        See https://www.x402.org/ for the protocol spec and
-                                        https://github.com/OldTemple91/korea-filings-api for
-                                        the reference Python SDK.
+                                        Legacy v1 transport header. Accepted for backward
+                                        compatibility with `koreafilings` 0.2.x SDK and
+                                        `koreafilings-mcp` 0.2.x clients that send the v1
+                                        header name. New integrations should use
+                                        `PAYMENT-SIGNATURE` instead. Either header is
+                                        acceptable; do not send both.
                                         """
                                 )))
                 .addSecurityItem(new SecurityRequirement().addList(X402_SCHEME));

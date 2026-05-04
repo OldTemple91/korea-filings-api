@@ -78,26 +78,37 @@ class PublicControllerIT {
 
     @Test
     void pricingReturnsAllPaidEndpointsAndX402Config() throws Exception {
-        // Paths are sorted alphabetically. After v1.1 added by-ticker, the
-        // payable list is two entries deep: by-ticker (cheaper letter, comes
-        // first) then the original /{rcptNo}/summary route. Assert by path
-        // pattern rather than index to keep the test stable as future paid
-        // endpoints land.
+        // Paths are sorted alphabetically. The payable list is two entries
+        // deep: /v1/disclosures/by-ticker (cheaper letter, comes first) and
+        // /v1/disclosures/summary. Assert by path pattern rather than index
+        // to keep the test stable as future paid endpoints land.
         mockMvc.perform(get("/v1/pricing"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.x402Network").value("eip155:84532"))
                 .andExpect(jsonPath("$.x402Asset").value("0x036CbD53842c5426634e7929541eC2318f3dCF7e"))
                 .andExpect(jsonPath("$.x402Recipient").value("0x209693Bc6afc0C5328bA36FaF03C514EF312287C"))
                 .andExpect(jsonPath("$.endpoints").isArray())
-                .andExpect(jsonPath("$.endpoints[?(@.path == '/v1/disclosures/{rcptNo}/summary')].priceUsdc")
+                .andExpect(jsonPath("$.endpoints[?(@.path == '/v1/disclosures/summary')].priceUsdc")
                         .value("0.005"))
-                .andExpect(jsonPath("$.endpoints[?(@.path == '/v1/disclosures/by-ticker/{ticker}')].priceUsdc")
-                        .value("0.005"));
+                .andExpect(jsonPath("$.endpoints[?(@.path == '/v1/disclosures/by-ticker')].priceUsdc")
+                        .value("0.005"))
+                // Header convention block must advertise PAYMENT-SIGNATURE as preferred.
+                .andExpect(jsonPath("$.paymentHeaders.preferred").value("PAYMENT-SIGNATURE"))
+                .andExpect(jsonPath("$.paymentHeaders.accepted[*]").value(
+                        org.hamcrest.Matchers.hasItem("X-PAYMENT")))
+                .andExpect(jsonPath("$.paymentHeaders.settlement").value("PAYMENT-RESPONSE"))
+                // Workflow block must list at least three steps (free → paid → optional re-fetch).
+                .andExpect(jsonPath("$.workflow.steps.length()").value(
+                        org.hamcrest.Matchers.greaterThanOrEqualTo(3)))
+                // Required params: by-ticker must declare ticker as required.
+                .andExpect(jsonPath(
+                        "$.endpoints[?(@.path == '/v1/disclosures/by-ticker')].requiredParams[?(@.name == 'ticker')].required")
+                        .value(true));
     }
 
     @Test
-    void pricingIsFreeAndDoesNotRequireXPaymentHeader() throws Exception {
-        // Deliberately no X-PAYMENT header — must still return 200.
+    void pricingIsFreeAndDoesNotRequireAnyPaymentHeader() throws Exception {
+        // Deliberately no payment header — must still return 200.
         mockMvc.perform(get("/v1/pricing"))
                 .andExpect(status().isOk());
     }

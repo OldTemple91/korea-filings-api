@@ -122,11 +122,20 @@ public class WellKnownController {
         body.put("resources", resources);
         body.put("description", SERVICE_DESCRIPTION);
         body.put("instructions",
-                "Free company directory + recent feed at /v1/companies and " +
-                "/v1/disclosures/recent for cold-start discovery; paid " +
-                "summaries at /v1/disclosures/by-ticker/{ticker}?limit=N " +
-                "(0.005 × N USDC, dynamic price in 402) and " +
-                "/v1/disclosures/{rcptNo}/summary (0.005 USDC fixed).");
+                "Cold-start agent flow (free → paid, no API key, no signup): " +
+                "(1) GET /v1/companies?q={koreanOrEnglishName} resolves a " +
+                "Korean company name to a six-digit KRX ticker (free, fuzzy). " +
+                "(2) GET /v1/disclosures/by-ticker?ticker={ticker}&limit={n} " +
+                "returns up to n AI-summarised English filings, newest first " +
+                "(paid, 0.005 USDC × n on Base). " +
+                "(3) Optional re-fetch of a single summary by 14-digit DART " +
+                "receipt number: GET /v1/disclosures/summary?rcptNo={rcptNo} " +
+                "(paid, 0.005 USDC fixed). " +
+                "Send the signed payment in the PAYMENT-SIGNATURE header " +
+                "(v2 transport spec). The legacy X-PAYMENT header is also " +
+                "accepted for older 0.2.x SDK / MCP releases. " +
+                "GET /v1/pricing returns the canonical machine-readable " +
+                "descriptor including required params and example calls.");
 
         // === Optional sibling extensions (validator-tolerated) ===
         body.put("service", service);

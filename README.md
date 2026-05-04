@@ -142,7 +142,7 @@ curl -H "X-PAYMENT: $SIGNED" \
 #     { ... }, { ... } ]
 ```
 
-The flat 0.005 USDC `/v1/disclosures/{rcptNo}/summary` endpoint is
+The flat 0.005 USDC `/v1/disclosures/summary?rcptNo=…` endpoint is
 still there for callers that already have a 14-digit receipt number
 — same x402 flow, just `amount = 5000` and a single-summary body.
 
@@ -154,8 +154,8 @@ challenge so an agent can browse before paying.
 
 | Endpoint | Method | Price (USDC) |
 |---|---|---|
-| `/v1/disclosures/by-ticker/{ticker}?limit=N` | GET | 0.005 × N |
-| `/v1/disclosures/{rcptNo}/summary` | GET | 0.005 |
+| `/v1/disclosures/by-ticker?ticker=…&limit=N` | GET | 0.005 × N |
+| `/v1/disclosures/summary?rcptNo=…` | GET | 0.005 |
 
 Per-result pricing on the by-ticker endpoint is declared dynamically
 in the 402 challenge — for `limit=N`, the server signs `0.005 × N`
@@ -266,7 +266,7 @@ MVP feature set:
 - OpenAPI 3 spec at [`/v3/api-docs`](https://api.koreafilings.com/v3/api-docs) + interactive Swagger UI
 - Python SDK ([`koreafilings` 0.2.1](https://pypi.org/project/koreafilings/)) and MCP server ([`koreafilings-mcp` 0.2.1](https://pypi.org/project/koreafilings-mcp/)) on PyPI
 - Free name → ticker resolution (`find_company`) + free recent feed (`list_recent_filings`) so agents can browse before paying
-- Per-result paid batch endpoint (`/v1/disclosures/by-ticker/{ticker}?limit=N`) with 0.005 × N USDC declared dynamically in the 402
+- Per-result paid batch endpoint (`/v1/disclosures/by-ticker?ticker=…&limit=N`) with 0.005 × N USDC declared dynamically in the 402
 - Indexed by [x402scan](https://www.x402scan.com)
 - Production deploy on a Linux VPS via Cloudflare Tunnel
 - Coinbase CDP facilitator (Ed25519 JWT auth) for mainnet settlement

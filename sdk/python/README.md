@@ -90,8 +90,8 @@ for r in recent:
 | `client.find_company(q)` | `GET /v1/companies` | free |
 | `client.get_company(ticker)` | `GET /v1/companies/{ticker}` | free |
 | `client.list_recent_filings(limit)` | `GET /v1/disclosures/recent` | free |
-| `client.get_recent_filings(ticker, limit)` | `GET /v1/disclosures/by-ticker/{ticker}` | **0.005 × limit** |
-| `client.get_summary(rcpt_no)` | `GET /v1/disclosures/{rcptNo}/summary` | **0.005** |
+| `client.get_recent_filings(ticker, limit)` | `GET /v1/disclosures/by-ticker?ticker=…&limit=…` | **0.005 × limit** |
+| `client.get_summary(rcpt_no)` | `GET /v1/disclosures/summary?rcptNo=…` | **0.005** |
 
 Per-result pricing on the by-ticker endpoint is declared dynamically
 in the 402 response: the SDK reads `accepts[0].amount` from the

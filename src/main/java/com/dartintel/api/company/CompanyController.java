@@ -27,7 +27,7 @@ import java.util.Map;
  * service. Their job is to translate whatever identifier an agent or
  * user provides — a Korean name, an English name, a partial substring,
  * or a six-digit ticker — into the canonical {@code ticker} that the
- * paid {@code /v1/disclosures/by-ticker/{ticker}} endpoint expects.
+ * paid {@code /v1/disclosures/by-ticker?ticker=...} endpoint expects.
  *
  * <p>Both routes are unauthenticated and not paywalled. The values
  * they return (ticker, corp_code, names, market) are public on the

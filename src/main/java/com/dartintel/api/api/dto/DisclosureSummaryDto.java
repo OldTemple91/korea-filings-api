@@ -8,7 +8,7 @@ import java.time.Instant;
 import java.util.List;
 
 /**
- * Paid API response shape for {@code GET /v1/disclosures/{rcptNo}/summary}.
+ * Paid API response shape for {@code GET /v1/disclosures/summary?rcptNo=...}.
  * Exposes a subset of DisclosureSummary — operational fields like
  * model_used / token counts / cost_usd stay server-side.
  */

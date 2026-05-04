@@ -19,11 +19,12 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -37,6 +38,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/v1/disclosures")
 @RequiredArgsConstructor
+@Validated
 @Tag(name = "Disclosures", description = "DART disclosure intelligence — free metadata browsing and paid AI summaries.")
 public class DisclosuresController {
 
@@ -81,8 +83,16 @@ public class DisclosuresController {
      * linearly with {@code limit} via the {@link X402Paywall} per-result
      * mode — agents declare their batch size up front and the 402
      * response advertises {@code limit × 0.005 USDC}.
+     *
+     * <p>Inputs use query parameters (not path parameters) so the bazaar
+     * v1 input schema, which only has buckets for {@code queryParams},
+     * {@code bodyFields}, and {@code headerFields}, can faithfully
+     * declare the {@code ticker} requirement to autonomous x402 agents.
+     * Path parameters silently dropped through the OpenAPI → bazaar
+     * translation in earlier versions, leaving the endpoint discoverable
+     * but un-callable from raw discovery.
      */
-    @GetMapping("/by-ticker/{ticker}")
+    @GetMapping("/by-ticker")
     @X402Paywall(
             priceUsdc = "0.005",
             pricingMode = X402Paywall.Mode.PER_RESULT,
@@ -101,6 +111,10 @@ public class DisclosuresController {
                     response is shorter and the agent has overpaid for the
                     missing slots — pre-filter with {@code /v1/disclosures/recent}
                     if budget is tight.
+
+                    Workflow: call free `/v1/companies?q=<name>` to resolve a
+                    Korean company name to its six-digit KRX ticker, then pass
+                    that ticker here.
                     """,
             extensions = {
                     @Extension(name = "x-payment-info", properties = {
@@ -129,9 +143,10 @@ public class DisclosuresController {
                     content = @Content(mediaType = "application/json"))
     })
     public ResponseEntity<Map<String, Object>> getByTicker(
-            @Parameter(description = "Six-digit KRX ticker, e.g. `005930` for Samsung Electronics.",
+            @Parameter(description = "Six-digit KRX ticker, e.g. `005930` for Samsung Electronics. " +
+                    "Use the free `/v1/companies?q=<name>` endpoint first to resolve a company name.",
                     example = "005930", required = true)
-            @PathVariable String ticker,
+            @RequestParam("ticker") @NotBlank String ticker,
             @Parameter(description = "Max filings to return (1-50, default 5). Each costs 0.005 USDC.")
             @RequestParam(value = "limit", defaultValue = "5") @Min(1) @Max(50) int limit
     ) {
@@ -149,7 +164,7 @@ public class DisclosuresController {
         return ResponseEntity.ok(body);
     }
 
-    @GetMapping("/{rcptNo}/summary")
+    @GetMapping("/summary")
     @X402Paywall(priceUsdc = "0.005", description = "AI-generated English summary of a Korean DART disclosure")
     @Operation(
             summary = "Get an AI-generated English summary of a DART disclosure",
@@ -161,6 +176,11 @@ public class DisclosuresController {
                     and served from cache thereafter — the price does not
                     change between cold and warm calls, but the LLM cost is
                     only paid by the first caller globally.
+
+                    Receipt numbers (`rcptNo`) come from the free
+                    `/v1/disclosures/recent` feed or `/v1/disclosures/by-ticker`
+                    response. They are not LLM-knowable — agents must always
+                    look one up before calling this endpoint.
                     """,
             extensions = {
                     @Extension(name = "x-payment-info", properties = {
@@ -191,11 +211,12 @@ public class DisclosuresController {
     })
     public ResponseEntity<DisclosureSummaryDto> getSummary(
             @Parameter(
-                    description = "14-digit DART receipt number, e.g. `20260424900874`",
+                    description = "14-digit DART receipt number, e.g. `20260424900874`. " +
+                            "Obtain from `/v1/disclosures/recent` or `/v1/disclosures/by-ticker`.",
                     example = "20260424900874",
                     required = true
             )
-            @PathVariable String rcptNo) {
+            @RequestParam("rcptNo") @NotBlank String rcptNo) {
         return summaryRepository.findById(rcptNo)
                 .map(DisclosureSummaryDto::from)
                 .map(ResponseEntity::ok)

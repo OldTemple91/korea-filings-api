@@ -139,9 +139,10 @@ class DisclosuresControllerIT {
     }
 
     @Test
-    void missingXPaymentHeaderReturns402WithPaymentRequirements() throws Exception {
-        mockMvc.perform(get("/v1/disclosures/20260423000001/summary"))
+    void missingPaymentHeaderReturns402WithPaymentRequirements() throws Exception {
+        mockMvc.perform(get("/v1/disclosures/summary?rcptNo=20260423000001"))
                 .andExpect(status().isPaymentRequired())
+                .andExpect(header().exists("PAYMENT-REQUIRED"))
                 .andExpect(jsonPath("$.x402Version").value(2))
                 .andExpect(jsonPath("$.error").value("Payment required"))
                 .andExpect(jsonPath("$.accepts[0].scheme").value("exact"))
@@ -155,8 +156,75 @@ class DisclosuresControllerIT {
     }
 
     @Test
+    void v2PaymentSignatureHeaderIsAcceptedAlongsideLegacyXPayment() throws Exception {
+        wireMock.stubFor(post(urlPathEqualTo("/verify"))
+                .willReturn(aResponse().withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"isValid\":true,\"payer\":\"0x857b06519E91e3A54538791bDbb0E22373e36b66\"}")));
+        wireMock.stubFor(post(urlPathEqualTo("/settle"))
+                .willReturn(aResponse().withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("""
+                                {"success":true,"transaction":"0xV2","network":"eip155:84532","payer":"0x857b06519E91e3A54538791bDbb0E22373e36b66"}
+                                """)));
+
+        // Send the v2 PAYMENT-SIGNATURE header (not X-PAYMENT) — must be accepted.
+        mockMvc.perform(get("/v1/disclosures/summary?rcptNo=20260423000001")
+                        .header("PAYMENT-SIGNATURE", validPaymentPayloadBase64("sig-v2")))
+                .andExpect(status().isOk())
+                .andExpect(header().exists("PAYMENT-RESPONSE"))
+                .andExpect(header().exists("X-PAYMENT-RESPONSE"))
+                .andExpect(jsonPath("$.rcptNo").value("20260423000001"));
+
+        wireMock.verify(postRequestedFor(urlPathEqualTo("/settle")));
+    }
+
+    @Test
+    void settlementFailureReturns502AndDoesNotLeakBody() throws Exception {
+        wireMock.stubFor(post(urlPathEqualTo("/verify"))
+                .willReturn(aResponse().withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"isValid\":true,\"payer\":\"0x857b06519E91e3A54538791bDbb0E22373e36b66\"}")));
+        wireMock.stubFor(post(urlPathEqualTo("/settle"))
+                .willReturn(aResponse().withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"success\":false,\"errorReason\":\"insufficient_funds\"}")));
+
+        mockMvc.perform(get("/v1/disclosures/summary?rcptNo=20260423000001")
+                        .header("PAYMENT-SIGNATURE", validPaymentPayloadBase64("sig-fail")))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.error").value("settle_rejected"))
+                .andExpect(jsonPath("$.message").value(containsString("insufficient_funds")))
+                // Critical: the AI summary body MUST NOT leak when settlement fails.
+                .andExpect(jsonPath("$.summaryEn").doesNotExist())
+                .andExpect(jsonPath("$.importanceScore").doesNotExist())
+                .andExpect(header().doesNotExist("PAYMENT-RESPONSE"));
+    }
+
+    @Test
+    void byTickerQueryParamReturnsSummariesAndCharges() throws Exception {
+        wireMock.stubFor(post(urlPathEqualTo("/verify"))
+                .willReturn(aResponse().withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"isValid\":true,\"payer\":\"0x857b06519E91e3A54538791bDbb0E22373e36b66\"}")));
+        wireMock.stubFor(post(urlPathEqualTo("/settle"))
+                .willReturn(aResponse().withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("""
+                                {"success":true,"transaction":"0xT","network":"eip155:84532","payer":"0x857b06519E91e3A54538791bDbb0E22373e36b66"}
+                                """)));
+
+        mockMvc.perform(get("/v1/disclosures/by-ticker?ticker=005930&limit=3")
+                        .header("PAYMENT-SIGNATURE", validPaymentPayloadBase64("sig-bt")))
+                .andExpect(status().isOk())
+                .andExpect(header().exists("PAYMENT-RESPONSE"))
+                .andExpect(jsonPath("$.ticker").value("005930"))
+                .andExpect(jsonPath("$.summaries").isArray());
+    }
+
+    @Test
     void malformedXPaymentHeaderReturns402() throws Exception {
-        mockMvc.perform(get("/v1/disclosures/20260423000001/summary")
+        mockMvc.perform(get("/v1/disclosures/summary?rcptNo=20260423000001")
                         .header("X-PAYMENT", "not-valid-base64!@#"))
                 .andExpect(status().isPaymentRequired())
                 .andExpect(jsonPath("$.error").value(containsString("Malformed")));
@@ -169,7 +237,7 @@ class DisclosuresControllerIT {
                         .withHeader("Content-Type", "application/json")
                         .withBody("{\"isValid\":false,\"invalidReason\":\"invalid_signature\"}")));
 
-        mockMvc.perform(get("/v1/disclosures/20260423000001/summary")
+        mockMvc.perform(get("/v1/disclosures/summary?rcptNo=20260423000001")
                         .header("X-PAYMENT", validPaymentPayloadBase64("sig-a")))
                 .andExpect(status().isPaymentRequired())
                 .andExpect(jsonPath("$.error").value(containsString("invalid_signature")));
@@ -188,7 +256,7 @@ class DisclosuresControllerIT {
                                 {"success":true,"transaction":"0xABC123","network":"eip155:84532","payer":"0x857b06519E91e3A54538791bDbb0E22373e36b66"}
                                 """)));
 
-        mockMvc.perform(get("/v1/disclosures/20260423000001/summary")
+        mockMvc.perform(get("/v1/disclosures/summary?rcptNo=20260423000001")
                         .header("X-PAYMENT", validPaymentPayloadBase64("sig-b")))
                 .andExpect(status().isOk())
                 .andExpect(header().exists("X-PAYMENT-RESPONSE"))
@@ -214,10 +282,10 @@ class DisclosuresControllerIT {
                         .withBody("{\"success\":true,\"transaction\":\"0xFIRST\",\"network\":\"eip155:84532\",\"payer\":\"0x857\"}")));
 
         String sameHeader = validPaymentPayloadBase64("sig-replay");
-        mockMvc.perform(get("/v1/disclosures/20260423000001/summary").header("X-PAYMENT", sameHeader))
+        mockMvc.perform(get("/v1/disclosures/summary?rcptNo=20260423000001").header("X-PAYMENT", sameHeader))
                 .andExpect(status().isOk());
 
-        mockMvc.perform(get("/v1/disclosures/20260423000001/summary").header("X-PAYMENT", sameHeader))
+        mockMvc.perform(get("/v1/disclosures/summary?rcptNo=20260423000001").header("X-PAYMENT", sameHeader))
                 .andExpect(status().isPaymentRequired())
                 .andExpect(jsonPath("$.error").value(containsString("reused")));
     }
@@ -226,7 +294,7 @@ class DisclosuresControllerIT {
         PaymentPayload payload = new PaymentPayload(
                 2,
                 new ResourceInfo(
-                        "http://localhost/v1/disclosures/20260423000001/summary",
+                        "http://localhost/v1/disclosures/summary?rcptNo=20260423000001",
                         "DART summary",
                         "application/json"
                 ),

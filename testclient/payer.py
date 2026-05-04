@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-x402 test client for korea-filings-api.
+x402 test client for korea-filings-api (v2 transport spec).
 
 Usage (from repo root):
     uv run testclient/payer.py
@@ -11,11 +11,13 @@ Reads PAYER_PRIVATE_KEY, API_BASE_URL, TARGET_RCPT_NO from
 testclient/.env.testclient (copy .env.testclient.example and fill in).
 
 Flow:
-    1. GET /v1/disclosures/{rcpt_no}/summary  (no X-PAYMENT)  -> 402 with accepts[]
+    1. GET /v1/disclosures/summary?rcptNo={rcpt_no}  (no payment header)
+       -> 402 with accepts[] (and PAYMENT-REQUIRED header per v2 spec)
     2. Build an EIP-3009 TransferWithAuthorization for accepts[0]
     3. Sign via EIP-712 with PAYER_PRIVATE_KEY
-    4. Base64-encode the signed PaymentPayload into X-PAYMENT
-    5. Retry the same GET -> 200 + summary body + X-PAYMENT-RESPONSE header
+    4. Base64-encode the signed PaymentPayload into PAYMENT-SIGNATURE
+    5. Retry the same GET -> 200 + summary body + PAYMENT-RESPONSE header
+       (X-PAYMENT-RESPONSE alias also still emitted for v1 clients)
     6. Decode and print the settlement proof
 
 Real Gemini summaries get paid for with real Base-Sepolia USDC from
@@ -122,13 +124,18 @@ def sign_eip3009(account: Account, requirement: dict, authorization: dict) -> st
     return hex_sig if hex_sig.startswith("0x") else f"0x{hex_sig}"
 
 
-def build_x_payment_header(
-    rcpt_no: str, base_url: str, requirement: dict, authorization: dict, signature: str
+def build_payment_signature_header(
+    resource_url: str, requirement: dict, authorization: dict, signature: str
 ) -> str:
+    """Base64-encode the signed PaymentPayload for the PAYMENT-SIGNATURE header.
+
+    The wire format is unchanged from v1; only the HTTP header name
+    moved from X-PAYMENT to PAYMENT-SIGNATURE in the v2 transport spec.
+    """
     payload = {
         "x402Version": 2,
         "resource": {
-            "url": f"{base_url}/v1/disclosures/{rcpt_no}/summary",
+            "url": resource_url,
             "description": "DART summary",
             "mimeType": "application/json",
         },
@@ -142,7 +149,7 @@ def build_x_payment_header(
 def main() -> None:
     env = load_env()
     rcpt_no = sys.argv[1] if len(sys.argv) > 1 else env["rcpt_no"]
-    summary_url = f"{env['base_url']}/v1/disclosures/{rcpt_no}/summary"
+    summary_url = f"{env['base_url']}/v1/disclosures/summary?rcptNo={rcpt_no}"
 
     account = Account.from_key(env["pk"])
     print(f"Payer address : {account.address}")
@@ -155,31 +162,42 @@ def main() -> None:
 
     authorization = build_authorization(account.address, requirement)
     signature = sign_eip3009(account, requirement, authorization)
-    x_payment = build_x_payment_header(
-        rcpt_no, env["base_url"], requirement, authorization, signature
+    payment_header = build_payment_signature_header(
+        summary_url, requirement, authorization, signature
     )
     print(
         f"[SIGNED] nonce={authorization['nonce'][:14]}…  "
         f"value={requirement['amount']}  sig_len={len(signature)}\n"
     )
 
-    resp = requests.get(summary_url, headers={"X-PAYMENT": x_payment}, timeout=60)
+    resp = requests.get(
+        summary_url,
+        headers={"PAYMENT-SIGNATURE": payment_header},
+        timeout=60,
+    )
     print(f"[RETRY] status={resp.status_code}")
 
-    x_resp = resp.headers.get("X-PAYMENT-RESPONSE")
-    if x_resp:
+    settlement_header = resp.headers.get("PAYMENT-RESPONSE") or resp.headers.get(
+        "X-PAYMENT-RESPONSE"
+    )
+    if settlement_header:
         try:
-            decoded = json.loads(base64.b64decode(x_resp))
+            decoded = json.loads(base64.b64decode(settlement_header))
             print(f"[SETTLED]\n{json.dumps(decoded, indent=2)}\n")
         except Exception as e:
-            print(f"[WARN] X-PAYMENT-RESPONSE present but failed to decode: {e}\n")
+            print(f"[WARN] settlement header present but failed to decode: {e}\n")
     else:
-        print("[WARN] No X-PAYMENT-RESPONSE header — settlement unconfirmed.\n")
+        print("[WARN] No PAYMENT-RESPONSE header — settlement unconfirmed.\n")
 
     if resp.status_code == 200:
         print(
             "[SUMMARY]\n"
             + json.dumps(resp.json(), indent=2, ensure_ascii=False)
+        )
+    elif resp.status_code == 502:
+        print(
+            "[FAIL-CLOSED] settlement rejected; data was withheld:\n"
+            + resp.text
         )
     else:
         print(f"[ERROR] {resp.status_code} body:\n{resp.text}")

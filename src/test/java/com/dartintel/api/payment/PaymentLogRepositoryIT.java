@@ -31,7 +31,7 @@ class PaymentLogRepositoryIT {
     void persistsPaymentLogWithTxHashAndSettledTimestamp() {
         PaymentLog log = new PaymentLog(
                 "20260423000001",
-                "/v1/disclosures/20260423000001/summary",
+                "/v1/disclosures/summary?rcptNo=20260423000001",
                 new BigDecimal("0.005000"),
                 "0x857b06519E91e3A54538791bDbb0E22373e36b66",
                 "eip155:84532",

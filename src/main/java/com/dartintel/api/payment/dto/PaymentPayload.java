@@ -3,7 +3,8 @@ package com.dartintel.api.payment.dto;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 /**
- * Body encoded in the client's {@code X-PAYMENT} header (base64 of JSON).
+ * Body encoded in the client's {@code PAYMENT-SIGNATURE} header
+ * (or the legacy {@code X-PAYMENT} alias) as base64 of JSON.
  * "accepted" is the single requirement the client chose out of the
  * server's {@code accepts} list, echoed back so the facilitator can
  * match signature scope against server-declared scope.

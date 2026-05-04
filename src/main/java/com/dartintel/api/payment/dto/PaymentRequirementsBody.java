@@ -10,7 +10,10 @@ import java.util.Map;
  * Body returned by a protected endpoint when it responds with HTTP 402.
  * Clients pick a {@link PaymentRequirement} from {@code accepts}, sign
  * authorisation for it, and retry the original request with the base64
- * payload in the {@code X-PAYMENT} header.
+ * payload in the {@code PAYMENT-SIGNATURE} header (or the legacy
+ * {@code X-PAYMENT} alias). The same payload is also emitted in the
+ * {@code PAYMENT-REQUIRED} response header per x402 v2 transport spec
+ * for header-only consumers (x402scan and similar indexers).
  *
  * <p>{@code extensions} is a map keyed by extension identifier (per the
  * x402 v2 spec, e.g. {@code "bazaar"}) — kept as a free-form

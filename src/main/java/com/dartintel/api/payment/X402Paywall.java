@@ -7,10 +7,11 @@ import java.lang.annotation.Target;
 
 /**
  * Marks a controller method as requiring x402 payment. The interceptor
- * checks for a valid {@code X-PAYMENT} header, verifies it with the
- * configured facilitator, and on a successful 2xx response triggers
- * settlement. Price is denominated in USDC as a decimal string so
- * humans can read it (e.g. {@code "0.005"}).
+ * reads the v2 {@code PAYMENT-SIGNATURE} header (falling back to the
+ * legacy {@code X-PAYMENT} header for backward compatibility), verifies
+ * it with the configured facilitator, and on a successful 2xx response
+ * triggers settlement. Price is denominated in USDC as a decimal string
+ * so humans can read it (e.g. {@code "0.005"}).
  */
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)

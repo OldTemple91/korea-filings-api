@@ -34,26 +34,44 @@ import java.util.Map;
  * replay guard, facilitator verify) and writes a 402 body whenever it
  * rejects. Settlement + PaymentLog persistence live in
  * {@link X402SettlementAdvice}, which needs to fire BEFORE the
- * response body is written so it can attach X-PAYMENT-RESPONSE.
- * afterCompletion only runs one side-effect: release the Redis
+ * response body is written so it can attach the settlement proof
+ * header. afterCompletion only runs one side-effect: release the Redis
  * signature when the controller produced a non-2xx so the client can
  * retry without double-paying.
+ *
+ * <h3>Header naming</h3>
+ *
+ * <p>The x402 v2 transport spec
+ * (<a href="https://github.com/coinbase/x402/blob/main/specs/transports-v2/http.md">
+ * specs/transports-v2/http.md</a>) moved away from the legacy
+ * {@code X-*} prefix:
+ * <ul>
+ *   <li>Server → client challenge: {@code PAYMENT-REQUIRED} (was
+ *       carried in the body as JSON in v1).</li>
+ *   <li>Client → server payment: {@code PAYMENT-SIGNATURE} (was
+ *       {@code X-PAYMENT}).</li>
+ *   <li>Server → client settlement: {@code PAYMENT-RESPONSE} (was
+ *       {@code X-PAYMENT-RESPONSE}; emitted by
+ *       {@link X402SettlementAdvice}).</li>
+ * </ul>
+ *
+ * <p>The interceptor reads the v2 header first and falls back to the
+ * legacy {@code X-PAYMENT} header so existing SDK / MCP releases
+ * (koreafilings 0.2.x, koreafilings-mcp 0.2.x) keep working during
+ * transition. The 402 body still carries the JSON requirements for
+ * the same reason. Both shapes will be re-evaluated for removal once
+ * 0.3.x adoption is observable.
  */
 @Component
 @RequiredArgsConstructor
 @Slf4j
 public class X402PaywallInterceptor implements HandlerInterceptor {
 
-    static final String X_PAYMENT_HEADER = "X-PAYMENT";
-    /**
-     * x402 v2 transport spec
-     * (specs/transports-v2/http.md) moves the payment requirements off
-     * the body into a base64-encoded {@code PAYMENT-REQUIRED} response
-     * header. We continue to emit the JSON body so v1 clients (our own
-     * Python SDK, the public x402.org facilitator) keep working, but
-     * v2 indexers like x402scan only inspect the header — without it
-     * they reject the resource as "No valid x402 response found".
-     */
+    /** v2 transport — preferred client-to-server payment header. */
+    static final String PAYMENT_SIGNATURE_HEADER = "PAYMENT-SIGNATURE";
+    /** v1 compat — accepted but not advertised. */
+    static final String LEGACY_X_PAYMENT_HEADER = "X-PAYMENT";
+    /** v2 transport — server-to-client 402 challenge header. */
     static final String PAYMENT_REQUIRED_HEADER = "PAYMENT-REQUIRED";
     static final String REQUEST_ATTR_VERIFIED = "x402.verifiedPayment";
     static final int X402_VERSION = 2;
@@ -75,17 +93,24 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
             return true;
         }
 
-        String resourceUrl = request.getRequestURL().toString();
+        String resourceUrl = buildResourceUrl(request);
         String effectivePriceUsdc = computeEffectivePrice(paywall, request);
         PaymentRequirement requirement = buildRequirement(effectivePriceUsdc);
 
-        String xPayment = request.getHeader(X_PAYMENT_HEADER);
-        if (xPayment == null || xPayment.isBlank()) {
+        // v2 spec uses PAYMENT-SIGNATURE; X-PAYMENT is v1 legacy that
+        // we keep accepting until 0.3.x SDK / MCP fully replaces 0.2.x
+        // in the wild. Read v2 first so a client that sends both wins
+        // on the spec-compliant value.
+        String paymentHeader = request.getHeader(PAYMENT_SIGNATURE_HEADER);
+        if (paymentHeader == null || paymentHeader.isBlank()) {
+            paymentHeader = request.getHeader(LEGACY_X_PAYMENT_HEADER);
+        }
+        if (paymentHeader == null || paymentHeader.isBlank()) {
             writePaymentRequired(response, resourceUrl, requirement, paywall.description(), "Payment required");
             return false;
         }
 
-        String sigHash = sha256Hex(xPayment);
+        String sigHash = sha256Hex(paymentHeader);
         if (!paymentStore.registerIfAbsent(sigHash)) {
             writePaymentRequired(response, resourceUrl, requirement, paywall.description(), "Payment signature reused");
             return false;
@@ -93,12 +118,12 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
 
         PaymentPayload paymentPayload;
         try {
-            byte[] decoded = Base64.getDecoder().decode(xPayment);
+            byte[] decoded = Base64.getDecoder().decode(paymentHeader);
             paymentPayload = objectMapper.readValue(decoded, PaymentPayload.class);
         } catch (Exception e) {
             paymentStore.release(sigHash);
             writePaymentRequired(response, resourceUrl, requirement, paywall.description(),
-                    "Malformed X-PAYMENT header");
+                    "Malformed payment header");
             return false;
         }
 
@@ -122,9 +147,19 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
             return false;
         }
 
+        // Endpoint stored on the verified payment includes the query
+        // string so payment_log rows preserve the request shape (e.g.
+        // `?rcptNo=...`, `?ticker=...&limit=...`) and so
+        // extractRcptNo can pull the rcpt_no out for per-filing
+        // settlements.
+        String endpointForLog = request.getRequestURI();
+        String query = request.getQueryString();
+        if (query != null && !query.isEmpty()) {
+            endpointForLog = endpointForLog + "?" + query;
+        }
         request.setAttribute(REQUEST_ATTR_VERIFIED,
                 new VerifiedPayment(sigHash, paymentPayload, requirement,
-                        verifyResp.payer(), request.getRequestURI()));
+                        verifyResp.payer(), endpointForLog));
         return true;
     }
 
@@ -176,6 +211,26 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
                 .toPlainString();
     }
 
+    /**
+     * Build the canonical resource URL for the 402 challenge so the
+     * payment signature commits to a deterministic resource string.
+     * {@link HttpServletRequest#getRequestURL()} drops the query, but
+     * for query-param-driven endpoints (where {@code ?ticker=…} or
+     * {@code ?rcptNo=…} carries the input) the query string is part
+     * of the resource and must be in the signed payload — otherwise
+     * the same signature would be valid for {@code ?ticker=A} and
+     * {@code ?ticker=B}, breaking the per-resource binding x402
+     * relies on.
+     */
+    private static String buildResourceUrl(HttpServletRequest request) {
+        StringBuilder url = new StringBuilder(request.getRequestURL());
+        String query = request.getQueryString();
+        if (query != null && !query.isEmpty()) {
+            url.append('?').append(query);
+        }
+        return url.toString();
+    }
+
     private PaymentRequirement buildRequirement(String priceUsdc) {
         BigDecimal human = new BigDecimal(priceUsdc);
         BigDecimal atomic = human.multiply(USDC_ATOMIC).setScale(0, RoundingMode.HALF_UP);
@@ -225,19 +280,46 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
      * output so AI agents can call the endpoint without prior schema
      * negotiation.
      *
-     * <p>Our paid summary endpoint takes a path parameter (rcptNo) and
-     * no query string or body. Path parameters are not first-class in
-     * the bazaar spec — the canonical way to communicate them is to
-     * publish a concrete sample URL in the resources list (the
-     * {@code /.well-known/x402} document already does this) so an agent
-     * can probe a real 402 with a real path. The {@code queryParams}
-     * field stays empty.
+     * <p>Both paid endpoints take their inputs as query parameters
+     * ({@code rcptNo} for summary, {@code ticker} + {@code limit} for
+     * by-ticker). The bazaar v1 input schema only has buckets for
+     * {@code queryParams}, {@code bodyFields}, and {@code headerFields}
+     * — path parameters are silently dropped by x402scan's
+     * OpenAPI → bazaar translation, leaving the endpoint discoverable
+     * but un-callable from raw discovery. Declaring real query params
+     * here is what makes the endpoint actually usable from a
+     * cold-start agent.
      */
     private Map<String, Object> buildBazaarExtension(String resourceUrl) {
+        boolean isByTicker = resourceUrl.contains("/by-ticker");
+        Map<String, Object> queryParams = isByTicker
+                ? Map.of(
+                        "ticker", Map.of(
+                                "type", "string",
+                                "required", true,
+                                "description",
+                                        "Six-digit KRX ticker (e.g. 005930 for Samsung Electronics). " +
+                                        "Resolve from a company name first via the free " +
+                                        "/v1/companies?q={name} endpoint."),
+                        "limit", Map.of(
+                                "type", "integer",
+                                "required", false,
+                                "description",
+                                        "Max filings to return (1–50, default 5). " +
+                                        "Final price is 0.005 × limit USDC."))
+                : Map.of(
+                        "rcptNo", Map.of(
+                                "type", "string",
+                                "required", true,
+                                "description",
+                                        "14-digit DART receipt number (e.g. 20260424900874). " +
+                                        "Obtain from the free /v1/disclosures/recent feed or " +
+                                        "from the by-ticker response. Receipt numbers are " +
+                                        "not LLM-knowable and must always be looked up first."));
         Map<String, Object> input = Map.of(
                 "type", "http",
                 "method", "GET",
-                "queryParams", Map.of()
+                "queryParams", queryParams
         );
         Map<String, Object> output = Map.of(
                 "type", "json",
@@ -287,20 +369,44 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
     }
 
     /**
-     * Pulls the 14-digit rcpt_no out of a URI like
-     * {@code /v1/disclosures/20260423000001/summary}. Returns null for
-     * endpoints that are not per-filing (e.g. {@code /v1/disclosures/latest}).
+     * Pulls the 14-digit {@code rcptNo} out of a paid-endpoint URL,
+     * accepting either a query-param form
+     * ({@code /v1/disclosures/summary?rcptNo=20260423000001}, the
+     * current shape) or the legacy path-param form
+     * ({@code /v1/disclosures/20260423000001/summary}, which earlier
+     * 0.2.x SDK / MCP releases sent). Used by
+     * {@link X402SettlementAdvice#persistPaymentLog} to denormalise
+     * the receipt number alongside the settlement row. Returns null
+     * for endpoints that are not per-filing (e.g. by-ticker batches).
      */
     static String extractRcptNo(String uri) {
-        int idx = uri.indexOf("/disclosures/");
+        int q = uri.indexOf('?');
+        String pathPart = q >= 0 ? uri.substring(0, q) : uri;
+        String queryPart = q >= 0 ? uri.substring(q + 1) : "";
+
+        if (!queryPart.isEmpty()) {
+            for (String pair : queryPart.split("&")) {
+                int eq = pair.indexOf('=');
+                if (eq <= 0) continue;
+                if ("rcptNo".equals(pair.substring(0, eq))) {
+                    String value = pair.substring(eq + 1);
+                    return isFourteenDigit(value) ? value : null;
+                }
+            }
+        }
+
+        int idx = pathPart.indexOf("/disclosures/");
         if (idx < 0) {
             return null;
         }
-        String tail = uri.substring(idx + "/disclosures/".length());
+        String tail = pathPart.substring(idx + "/disclosures/".length());
         int slash = tail.indexOf('/');
         String candidate = slash >= 0 ? tail.substring(0, slash) : tail;
-        return candidate.length() == 14 && candidate.chars().allMatch(Character::isDigit)
-                ? candidate : null;
+        return isFourteenDigit(candidate) ? candidate : null;
+    }
+
+    private static boolean isFourteenDigit(String s) {
+        return s != null && s.length() == 14 && s.chars().allMatch(Character::isDigit);
     }
 
     private static String sha256Hex(String input) {
