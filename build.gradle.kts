@@ -1,6 +1,6 @@
 plugins {
     java
-    id("org.springframework.boot") version "3.4.0"
+    id("org.springframework.boot") version "3.4.7"
     id("io.spring.dependency-management") version "1.1.6"
 }
 
@@ -98,7 +98,7 @@ tasks.withType<Test> {
     // Forward optional vendor credentials from the host shell to live
     // integration tests gated by @EnabledIfEnvironmentVariable. Tests stay
     // skipped when the variable is absent.
-    listOf("GEMINI_API_KEY", "OPENAI_API_KEY", "DART_API_KEY").forEach { name ->
+    listOf("GEMINI_API_KEY", "DART_API_KEY").forEach { name ->
         System.getenv(name)?.also { environment(name, it) }
     }
 }
@@ -107,10 +107,16 @@ tasks.named<org.springframework.boot.gradle.tasks.bundling.BootJar>("bootJar") {
     archiveFileName.set("dartintel-api.jar")
 }
 
-// Populate /actuator/info with build metadata — version, group, build time.
+// Populate /actuator/info with build metadata — version, group, name.
 // The Spring Boot Gradle plugin supplies the task; we just enable it.
+//
+// `time.set(null)` suppresses the wall-clock build timestamp so two
+// builds from the same source tree produce byte-for-byte identical
+// JARs. Without this the build is non-deterministic, which defeats
+// Docker layer caching and digest-based image verification.
 springBoot {
     buildInfo {
+        excludes.add("time")
         properties {
             additional.set(
                 mapOf(

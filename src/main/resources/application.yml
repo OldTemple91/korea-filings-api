@@ -60,7 +60,14 @@ management:
   endpoints:
     web:
       exposure:
-        include: health, info, ratelimiters, circuitbreakers, retries
+        # `prometheus` exposes Micrometer's full meter registry so an
+        # external Prometheus / Grafana scraper can pull JVM, Hikari,
+        # Lettuce, Tomcat, Resilience4j (circuit breakers / retries /
+        # rate limiters), and our custom counters (settle success /
+        # failure / replay rejections) without writing extra code —
+        # the dependency was already on the classpath via
+        # micrometer-registry-prometheus, just needed activation.
+        include: health, info, ratelimiters, circuitbreakers, retries, prometheus, metrics
   endpoint:
     health:
       show-details: when_authorized

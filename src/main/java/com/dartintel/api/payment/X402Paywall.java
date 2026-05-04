@@ -58,6 +58,22 @@ public @interface X402Paywall {
      */
     int maxCount() default 50;
 
+    /**
+     * Names of query parameters that MUST be present (and non-blank)
+     * for the request to even reach the 402 challenge. The paywall
+     * interceptor checks them in {@code preHandle} BEFORE issuing a
+     * 402 — without this, a missing required param produces a 402,
+     * the agent signs an EIP-3009 authorisation against the default
+     * price, retries with that signature, and only THEN does the
+     * controller's {@code @RequestParam} binding throw
+     * {@code MissingServletRequestParameterException} and return 400.
+     * The on-chain settle is skipped (status was 4xx), but the agent
+     * has burned an EIP-3009 nonce for nothing. Declaring required
+     * params here lets the interceptor short-circuit to a 400 before
+     * the agent commits to signing.
+     */
+    String[] requiredQueryParams() default {};
+
     enum Mode {
         FIXED,
         PER_RESULT

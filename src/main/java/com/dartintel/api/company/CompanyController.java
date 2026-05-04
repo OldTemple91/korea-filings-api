@@ -22,7 +22,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
-import java.util.Map;
 
 /**
  * Free company-directory endpoints.
@@ -62,7 +61,7 @@ public class CompanyController {
                     responseCode = "200",
                     content = @Content(schema = @Schema(implementation = CompanyDto.class)))
     )
-    public ResponseEntity<Map<String, Object>> search(
+    public ResponseEntity<CompanySearchResponse> search(
             @Parameter(
                     description = "Free-text query: company name (Korean or English) or six-digit ticker.",
                     example = "Samsung Electronics",
@@ -76,9 +75,9 @@ public class CompanyController {
             @RequestParam(value = "limit", defaultValue = "20") @Min(1) @Max(50) int limit
     ) {
         List<CompanyDto> matches = service.search(q, limit).stream()
-                .map(CompanyDto::from)
+                .map(c -> CompanyDto.fromSearchHit(c, q))
                 .toList();
-        return ResponseEntity.ok(Map.of("matches", matches));
+        return ResponseEntity.ok(new CompanySearchResponse(matches));
     }
 
     @GetMapping("/{ticker}")

@@ -3,6 +3,7 @@ package com.dartintel.api.api;
 import com.dartintel.api.api.dto.ByTickerResponse;
 import com.dartintel.api.api.dto.DisclosureSummaryDto;
 import com.dartintel.api.api.dto.RecentFilingDto;
+import com.dartintel.api.api.dto.RecentFilingsResponse;
 import com.dartintel.api.ingestion.Disclosure;
 import com.dartintel.api.ingestion.DisclosureRepository;
 import com.dartintel.api.payment.X402Paywall;
@@ -62,7 +63,7 @@ public class DisclosuresController {
                     paid summary call.
                     """
     )
-    public ResponseEntity<Map<String, Object>> getRecent(
+    public ResponseEntity<RecentFilingsResponse> getRecent(
             @Parameter(description = "Max filings to return (1-100, default 20).")
             @RequestParam(value = "limit", defaultValue = "20") @Min(1) @Max(100) int limit,
             @Parameter(description = "Look back this many hours (1-168, default 24).")
@@ -74,7 +75,7 @@ public class DisclosuresController {
                 .stream()
                 .map(RecentFilingDto::from)
                 .toList();
-        return ResponseEntity.ok(Map.of("filings", filings));
+        return ResponseEntity.ok(new RecentFilingsResponse(filings));
     }
 
     /**
@@ -98,6 +99,7 @@ public class DisclosuresController {
             countQueryParam = "limit",
             defaultCount = 5,
             maxCount = 50,
+            requiredQueryParams = {"ticker"},
             description = "AI summaries for the most recent DART filings of a Korean ticker"
     )
     @Operation(
@@ -174,7 +176,11 @@ public class DisclosuresController {
     }
 
     @GetMapping("/summary")
-    @X402Paywall(priceUsdc = "0.005", description = "AI-generated English summary of a Korean DART disclosure")
+    @X402Paywall(
+            priceUsdc = "0.005",
+            requiredQueryParams = {"rcptNo"},
+            description = "AI-generated English summary of a Korean DART disclosure"
+    )
     @Operation(
             summary = "Get an AI-generated English summary of a DART disclosure",
             description = """

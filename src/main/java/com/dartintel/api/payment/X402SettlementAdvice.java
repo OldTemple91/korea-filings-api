@@ -79,6 +79,7 @@ public class X402SettlementAdvice implements ResponseBodyAdvice<Object> {
     private final PaymentLogRepository paymentLogRepository;
     private final PaymentStore paymentStore;
     private final ObjectMapper objectMapper;
+    private final PaymentNotifier paymentNotifier;
 
     @Override
     public boolean supports(MethodParameter returnType,
@@ -222,6 +223,7 @@ public class X402SettlementAdvice implements ResponseBodyAdvice<Object> {
                     verified.payer(), amountHuman,
                     shortHash(verified.signatureHash()), verified.endpoint());
         }
+        boolean reconciliationFailure = false;
         try {
             paymentLogRepository.save(new PaymentLog(
                     rcptNo,
@@ -260,7 +262,12 @@ public class X402SettlementAdvice implements ResponseBodyAdvice<Object> {
                     settle.transaction(), shortHash(verified.signatureHash()),
                     verified.endpoint(),
                     X402PaywallInterceptor.sanitiseLogValue(dbDown.getMessage()));
+            reconciliationFailure = true;
         }
+        // Notify operator (Slack / Discord webhook). Best-effort,
+        // never blocks the request thread, never throws. Driven by
+        // X402_NOTIFY_WEBHOOK_URL — empty/unset disables.
+        paymentNotifier.notifySettlement(verified, settle, amountHuman, reconciliationFailure);
     }
 
     private static String shortHash(String hash) {

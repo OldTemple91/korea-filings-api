@@ -1,12 +1,16 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    # Pin a concrete patch version (not just `16-alpine`) so a
+    # `docker compose pull` doesn't silently take a different
+    # patch release. Bump deliberately after reading the upstream
+    # changelog.
+    image: postgres:16.8-alpine
     container_name: dartintel-postgres
     restart: unless-stopped
     environment:
       POSTGRES_DB: dartintel
       POSTGRES_USER: dartintel
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme_in_env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
     # Bind to localhost only — Spring app reaches Postgres through the
     # docker compose network (`postgres:5432`). Exposing 5432 on the
     # public interface gives attackers direct DB access; binding to
@@ -23,7 +27,8 @@ services:
       retries: 5
 
   redis:
-    image: redis:7-alpine
+    # Same rationale as postgres — pin a concrete patch version.
+    image: redis:7.4-alpine
     container_name: dartintel-redis
     restart: unless-stopped
     # Bind to localhost only — Spring app reaches Redis through the
@@ -43,13 +48,13 @@ services:
       # already substituted at parse time so the container starts with
       # auth enabled even when the env var is missing — but the
       # healthcheck would silently fail without this block.
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-changeme_in_env}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}
     # `requirepass` blocks any other container on the same docker
     # network from reading/writing payment-replay keys or the summary
     # job queue. The password is supplied via REDIS_PASSWORD; the app
     # service reads the same env var as SPRING_DATA_REDIS_PASSWORD.
     command: ["redis-server", "--appendonly", "yes",
-              "--requirepass", "${REDIS_PASSWORD:-changeme_in_env}"]
+              "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}"]
     healthcheck:
       test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
       interval: 10s
@@ -78,7 +83,7 @@ services:
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: "6379"
-      SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD:-changeme_in_env}
+      SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}
       DART_API_KEY: ${DART_API_KEY}
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       X402_FACILITATOR_URL: ${X402_FACILITATOR_URL}
@@ -106,7 +111,12 @@ services:
 
   cloudflared:
     profiles: ["prod"]
-    image: cloudflare/cloudflared:latest
+    # `latest` was being silently re-resolved on every `docker compose
+    # pull`. Pin to a known release; bump after reviewing the
+    # cloudflared release notes. Production tunnel token routes all
+    # inbound traffic, so a backdoored upstream image would be high
+    # impact.
+    image: cloudflare/cloudflared:2026.3.0
     container_name: dartintel-tunnel
     restart: unless-stopped
     depends_on:

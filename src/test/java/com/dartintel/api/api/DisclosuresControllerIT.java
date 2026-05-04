@@ -255,6 +255,87 @@ class DisclosuresControllerIT {
     }
 
     @Test
+    void byTickerWithoutTickerParamReturns400BeforePaywall() throws Exception {
+        // Pre-paywall validation: a required query param missing from
+        // the request must produce a 400 BEFORE the 402 fires. Without
+        // this the agent would sign an EIP-3009 authorisation against
+        // the default-count price and only then see 400 from
+        // @RequestParam binding — burning a nonce for nothing.
+        mockMvc.perform(get("/v1/disclosures/by-ticker?limit=3"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value(containsString("ticker")));
+    }
+
+    @Test
+    void summaryWithoutRcptNoReturns400BeforePaywall() throws Exception {
+        mockMvc.perform(get("/v1/disclosures/summary"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value(containsString("rcptNo")));
+    }
+
+    @Test
+    void cacheControlNoStoreOnAll402And200And400() throws Exception {
+        wireMock.stubFor(post(urlPathEqualTo("/verify"))
+                .willReturn(aResponse().withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"isValid\":true,\"payer\":\"0x857b06519E91e3A54538791bDbb0E22373e36b66\"}")));
+        wireMock.stubFor(post(urlPathEqualTo("/settle"))
+                .willReturn(aResponse().withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"success\":true,\"transaction\":\"0xCC\",\"network\":\"eip155:84532\",\"payer\":\"0x857\"}")));
+
+        // 402 (no header)
+        mockMvc.perform(get("/v1/disclosures/summary?rcptNo=20260423000001"))
+                .andExpect(status().isPaymentRequired())
+                .andExpect(header().string("Cache-Control", "no-store"));
+
+        // 400 (malformed)
+        mockMvc.perform(get("/v1/disclosures/summary?rcptNo=20260423000001")
+                        .header("PAYMENT-SIGNATURE", "garbage"))
+                .andExpect(status().isBadRequest())
+                .andExpect(header().string("Cache-Control", "no-store"));
+
+        // 200 (paid + Vary). Spring's CORS filter sets `Vary: Origin`
+        // ahead of us, and our advice appends `Vary: PAYMENT-SIGNATURE`.
+        // MockMvc returns Vary as a multi-valued header — assert the
+        // payment-header value is among them rather than reading just
+        // the first value (which would be `Origin`).
+        var result = mockMvc.perform(get("/v1/disclosures/summary?rcptNo=20260423000001")
+                        .header("PAYMENT-SIGNATURE", validPaymentPayloadBase64("sig-cc")))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andReturn();
+        org.assertj.core.api.Assertions.assertThat(result.getResponse().getHeaderValues("Vary"))
+                .anySatisfy(v -> org.assertj.core.api.Assertions.assertThat(v.toString())
+                        .contains("PAYMENT-SIGNATURE"));
+    }
+
+    @Test
+    void byTickerWithFewerFilingsThanLimitReportsChargedForVsDelivered() throws Exception {
+        wireMock.stubFor(post(urlPathEqualTo("/verify"))
+                .willReturn(aResponse().withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"isValid\":true,\"payer\":\"0x857\"}")));
+        wireMock.stubFor(post(urlPathEqualTo("/settle"))
+                .willReturn(aResponse().withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"success\":true,\"transaction\":\"0xRR\",\"network\":\"eip155:84532\",\"payer\":\"0x857\"}")));
+
+        // Seed only one disclosure for ticker 005930 in @BeforeEach;
+        // request limit=10 — agent paid for 10, only 1 delivered.
+        String byTickerUrl = "http://localhost/v1/disclosures/by-ticker?ticker=005930&limit=10";
+        mockMvc.perform(get("/v1/disclosures/by-ticker?ticker=005930&limit=10")
+                        .header("PAYMENT-SIGNATURE",
+                                validPaymentPayloadBase64("sig-fewer", byTickerUrl)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ticker").value("005930"))
+                .andExpect(jsonPath("$.chargedFor").value(10))
+                .andExpect(jsonPath("$.delivered").value(1))
+                .andExpect(jsonPath("$.count").value(1))
+                .andExpect(jsonPath("$.summaries.length()").value(1));
+    }
+
+    @Test
     void byTickerMalformedPaymentHeaderAlsoReturns400() throws Exception {
         // Same spec rule for per-result endpoints — a future change
         // that adds PER_RESULT-mode-specific header parsing must not

@@ -123,6 +123,23 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
             return true;
         }
 
+        // Pre-paywall required-param check. Without this, a missing
+        // required query param (e.g. /v1/disclosures/by-ticker without
+        // `ticker`) produces a 402 at the default price, the agent
+        // signs an EIP-3009 authorisation against it, retries — and
+        // only then does the controller's @RequestParam binding fail
+        // with 400. The on-chain settle is skipped, but the agent has
+        // burned an EIP-3009 nonce for nothing. Short-circuit here so
+        // the agent gets a 400 BEFORE committing to signing.
+        for (String required : paywall.requiredQueryParams()) {
+            String value = request.getParameter(required);
+            if (value == null || value.isBlank()) {
+                writeBadRequest(response,
+                        "Missing required query parameter: " + required);
+                return false;
+            }
+        }
+
         String resourceUrl = buildResourceUrl(request);
         String effectivePriceUsdc = computeEffectivePrice(paywall, request);
         PaymentRequirement requirement = buildRequirement(effectivePriceUsdc);
@@ -452,18 +469,34 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
                 "method", "GET",
                 "queryParams", queryParams
         );
+        // The 200-response example must match the actual body shape.
+        // PER_RESULT (by-ticker) wraps the summaries in a batch
+        // envelope with chargedFor / delivered / count; FIXED
+        // (summary) returns the bare DisclosureSummaryDto. An agent
+        // parsing the bazaar example must see the same field
+        // structure as what arrives in the 200, otherwise they read
+        // top-level `summaryEn` and miss the wrapper.
+        Map<String, Object> singleSummary = Map.of(
+                "rcptNo", "20260424900874",
+                "summaryEn", "AI-generated English summary of the disclosure.",
+                "importanceScore", 7,
+                "eventType", "OTHER",
+                "sectorTags", List.of("Capital Goods"),
+                "tickerTags", List.of("095440"),
+                "actionableFor", List.of("traders"),
+                "generatedAt", "2026-04-24T09:00:00Z"
+        );
+        Map<String, Object> outputExample = paywall.pricingMode() == X402Paywall.Mode.PER_RESULT
+                ? Map.of(
+                        "ticker", "005930",
+                        "chargedFor", paywall.defaultCount(),
+                        "delivered", 1,
+                        "count", 1,
+                        "summaries", List.of(singleSummary))
+                : singleSummary;
         Map<String, Object> output = Map.of(
                 "type", "json",
-                "example", Map.of(
-                        "rcptNo", "20260424900874",
-                        "summaryEn", "AI-generated English summary of the disclosure.",
-                        "importanceScore", 7,
-                        "eventType", "OTHER",
-                        "sectorTags", List.of("Capital Goods"),
-                        "tickerTags", List.of("095440"),
-                        "actionableFor", List.of("traders"),
-                        "generatedAt", "2026-04-24T09:00:00Z"
-                )
+                "example", outputExample
         );
         Map<String, Object> info = Map.of(
                 "input", input,
