@@ -7,6 +7,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.MethodParameter;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.converter.HttpMessageConverter;
@@ -123,18 +124,28 @@ public class X402SettlementAdvice implements ResponseBodyAdvice<Object> {
             FacilitatorSettleResponse synthesised = new FacilitatorSettleResponse(
                     false, "settle_unavailable", "",
                     verified.requirement().network(), verified.payer());
-            return failClosed(response, servletResp, synthesised, verified);
+            return failClosed(response, servletReq, servletResp, synthesised, verified);
         }
 
         if (!settle.success()) {
-            String reason = settle.errorReason() != null ? settle.errorReason() : "unknown";
+            // Strip CR/LF before logging — the `errorReason` is
+            // facilitator-supplied so a compromised or hostile
+            // facilitator could otherwise inject forged log lines.
+            String reason = X402PaywallInterceptor.sanitiseLogValue(settle.errorReason());
             log.error("x402 settle rejected: reason={} endpoint={}",
                     reason, verified.endpoint());
-            return failClosed(response, servletResp, settle, verified);
+            return failClosed(response, servletReq, servletResp, settle, verified);
         }
 
         attachSettlementHeader(response, settle);
         persistPaymentLog(verified, settle);
+        // Paid 200 responses are per-payer (different signatures may
+        // produce the same body, but a cache that ignores headers
+        // could serve A's response to B). Mark them never-cacheable
+        // and Vary on the payment header so any cache that still
+        // wants to honour cacheability keys correctly.
+        response.getHeaders().set("Cache-Control", "no-store");
+        response.getHeaders().add("Vary", X402PaywallInterceptor.PAYMENT_SIGNATURE_HEADER);
         log.info("x402 settled: endpoint={} payer={} amount={} tx={}",
                 verified.endpoint(), verified.payer(),
                 verified.requirement().amount(), settle.transaction());
@@ -163,13 +174,23 @@ public class X402SettlementAdvice implements ResponseBodyAdvice<Object> {
      * {@link X402PaywallInterceptor#afterCompletion}.
      */
     private Object failClosed(ServerHttpResponse response,
+                              ServletServerHttpRequest servletReq,
                               ServletServerHttpResponse servletResp,
                               FacilitatorSettleResponse failure,
                               VerifiedPayment verified) {
         paymentStore.release(verified.signatureHash());
+        // Mark the request so X402PaywallInterceptor.afterCompletion
+        // knows the lock has already been released — keeps the
+        // release responsibility unambiguous (otherwise both the
+        // advice and the interceptor would re-release on every
+        // settlement failure, which is idempotent but obscures intent).
+        servletReq.getServletRequest().setAttribute(
+                X402PaywallInterceptor.REQUEST_ATTR_LOCK_RELEASED, Boolean.TRUE);
         attachSettlementHeader(response, failure);
         servletResp.getServletResponse().setStatus(HttpStatus.PAYMENT_REQUIRED.value());
         servletResp.getHeaders().setContentType(MediaType.APPLICATION_JSON);
+        // Per-request settlement-failure response — never cache.
+        servletResp.getHeaders().set("Cache-Control", "no-store");
         // Empty body per x402 v2 transport spec — all settlement info
         // travels in the PAYMENT-RESPONSE header.
         return new LinkedHashMap<String, Object>();
@@ -190,14 +211,33 @@ public class X402SettlementAdvice implements ResponseBodyAdvice<Object> {
         String rcptNo = X402PaywallInterceptor.extractRcptNo(verified.endpoint());
         BigDecimal amountHuman = new BigDecimal(verified.requirement().amount())
                 .divide(X402PaywallInterceptor.USDC_ATOMIC, 6, RoundingMode.HALF_UP);
-        paymentLogRepository.save(new PaymentLog(
-                rcptNo,
-                verified.endpoint(),
-                amountHuman,
-                verified.payer(),
-                verified.requirement().network(),
-                settle.transaction(),
-                verified.signatureHash()
-        ));
+        try {
+            paymentLogRepository.save(new PaymentLog(
+                    rcptNo,
+                    verified.endpoint(),
+                    amountHuman,
+                    verified.payer(),
+                    verified.requirement().network(),
+                    settle.transaction(),
+                    verified.signatureHash()
+            ));
+        } catch (DataIntegrityViolationException duplicate) {
+            // signature_hash has a UNIQUE constraint (V4 migration:
+            // uq_payment_log_sig). A duplicate hits this only when two
+            // settlements landed for the same signature — which the
+            // SETNX replay guard plus our explicit-release-on-failure
+            // pattern should normally prevent, but a tight race after
+            // a transient facilitator outage could in theory get here.
+            // The first row is already on disk so the merchant ledger
+            // is intact; swallowing the duplicate keeps Spring from
+            // turning what is effectively idempotent success into a
+            // 500 with the response body half-flushed.
+            log.warn("payment_log duplicate row swallowed: sigHash={} tx={} (idempotent)",
+                    shortHash(verified.signatureHash()), settle.transaction());
+        }
+    }
+
+    private static String shortHash(String hash) {
+        return hash != null && hash.length() >= 8 ? hash.substring(0, 8) + "…" : String.valueOf(hash);
     }
 }

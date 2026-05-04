@@ -75,6 +75,16 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
     /** v2 transport — server-to-client 402 challenge header. */
     static final String PAYMENT_REQUIRED_HEADER = "PAYMENT-REQUIRED";
     static final String REQUEST_ATTR_VERIFIED = "x402.verifiedPayment";
+    /**
+     * Marker attribute set by {@link X402SettlementAdvice#failClosed}
+     * after it has explicitly released the Redis signature lock.
+     * {@link #afterCompletion} reads this and skips the redundant
+     * release. Pure cleanliness — the underlying Redis DEL is
+     * idempotent so the second call is a no-op either way, but
+     * leaving the implicit double-release in place obscures the
+     * intent ("who is responsible for releasing the lock here?").
+     */
+    static final String REQUEST_ATTR_LOCK_RELEASED = "x402.lockReleased";
     static final int X402_VERSION = 2;
     static final BigDecimal USDC_ATOMIC = new BigDecimal(1_000_000);
 
@@ -111,12 +121,17 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
             return false;
         }
 
-        String sigHash = sha256Hex(paymentHeader);
-        if (!paymentStore.registerIfAbsent(sigHash)) {
-            writePaymentRequired(response, resourceUrl, requirement, paywall, "Payment signature reused");
-            return false;
-        }
-
+        // Decode FIRST so the replay key can be the EIP-3009
+        // authorisation nonce — the canonical replay anchor per x402
+        // v2 §10.1 ("EIP-3009 contracts inherently prevent nonce
+        // reuse at the smart contract level"). A raw-header SHA-256
+        // would also work but is sensitive to base64 padding /
+        // whitespace / JSON key ordering, so two functionally
+        // identical payloads could pass the SETNX guard and both go
+        // to the facilitator (the on-chain layer rejects the second
+        // one anyway, but we waste a verify round-trip). Anchoring
+        // on the nonce keeps replay protection idempotent across
+        // encoding variation.
         PaymentPayload paymentPayload;
         try {
             byte[] decoded = Base64.getDecoder().decode(paymentHeader);
@@ -128,8 +143,16 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
             // for "no payment provided" or "payment required after a settle
             // failure" — using it for garbage input prevents spec-aware
             // clients from branching on the malformed-payload code path.
-            paymentStore.release(sigHash);
             writeBadRequest(response, "Malformed payment payload");
+            return false;
+        }
+
+        // Replay key: EIP-3009 nonce when available (canonical), with
+        // a fallback to the SHA-256 of the raw header for malformed-
+        // but-not-rejected payloads (defence in depth).
+        String sigHash = replayKey(paymentPayload, paymentHeader);
+        if (!paymentStore.registerIfAbsent(sigHash)) {
+            writePaymentRequired(response, resourceUrl, requirement, paywall, "Payment signature reused");
             return false;
         }
 
@@ -169,7 +192,7 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
 
         if (!verifyResp.isValid()) {
             paymentStore.release(sigHash);
-            String reason = verifyResp.invalidReason() != null ? verifyResp.invalidReason() : "unknown";
+            String reason = sanitiseLogValue(verifyResp.invalidReason());
             writePaymentRequired(response, resourceUrl, requirement, paywall,
                     "Payment rejected: " + reason);
             return false;
@@ -199,13 +222,22 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
             return;
         }
 
+        // X402SettlementAdvice.failClosed flips the response to 402
+        // and explicitly releases the Redis signature itself; we
+        // skip the redundant release here so the locking
+        // responsibility is unambiguous.
+        if (Boolean.TRUE.equals(request.getAttribute(REQUEST_ATTR_LOCK_RELEASED))) {
+            return;
+        }
+
         int status = response.getStatus();
         if (status < 200 || status >= 300) {
             paymentStore.release(verified.signatureHash());
             log.info("x402 release: status={} sigHash={}", status, shortHash(verified.signatureHash()));
         }
-        // 2xx settlement is handled by X402SettlementAdvice so X-PAYMENT-RESPONSE
-        // can reach the client before the body is committed.
+        // 2xx settlement is handled by X402SettlementAdvice so the
+        // PAYMENT-RESPONSE header can reach the client before the
+        // body is committed.
     }
 
     /**
@@ -287,6 +319,8 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
         response.setStatus(HttpStatus.BAD_REQUEST.value());
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        // Per-request error envelope — never cache.
+        response.setHeader("Cache-Control", "no-store");
         try {
             byte[] body = objectMapper.writeValueAsBytes(Map.of("error", error));
             response.getOutputStream().write(body);
@@ -312,6 +346,11 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
         response.setStatus(HttpStatus.PAYMENT_REQUIRED.value());
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        // Per-request challenge — error string and effective amount
+        // both depend on the request shape, so an intermediate cache
+        // (Cloudflare, agent-side proxy) re-serving a stale 402 would
+        // surface a misleading reason or amount.
+        response.setHeader("Cache-Control", "no-store");
         // Dual-emit: v2 transport spec puts the payment requirements in
         // a base64-encoded header, while v1 clients keep reading the
         // JSON body. Both contain the same PaymentRequired object so
@@ -478,6 +517,36 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
 
     private static boolean isFourteenDigit(String s) {
         return s != null && s.length() == 14 && s.chars().allMatch(Character::isDigit);
+    }
+
+    /**
+     * Pick the replay-protection key for a parsed payment payload.
+     * Prefers the EIP-3009 authorisation {@code nonce} (32-byte
+     * hex string, on-chain-canonical) when present; falls back to
+     * a SHA-256 of the raw base64 header when the payload's
+     * payment-method shape doesn't expose a nonce.
+     */
+    /**
+     * Strip CR/LF / control chars from a string before it lands in a
+     * structured log line — defends against log forging where a
+     * malicious or compromised facilitator returns a multi-line
+     * `invalidReason` that appears as forged log entries downstream.
+     */
+    static String sanitiseLogValue(String value) {
+        if (value == null || value.isEmpty()) {
+            return "unknown";
+        }
+        return value.replaceAll("[\\r\\n\\t]", " ");
+    }
+
+    static String replayKey(PaymentPayload payload, String rawHeader) {
+        if (payload != null && payload.payload() != null
+                && payload.payload().authorization() != null
+                && payload.payload().authorization().nonce() != null
+                && !payload.payload().authorization().nonce().isBlank()) {
+            return "nonce:" + payload.payload().authorization().nonce();
+        }
+        return "raw:" + sha256Hex(rawHeader);
     }
 
     private static String sha256Hex(String input) {

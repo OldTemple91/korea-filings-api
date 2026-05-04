@@ -114,7 +114,13 @@ x402:
   # with `invalid_payload`. Sepolia USDC: "USDC"/"2"; mainnet USDC: "USD Coin"/"2".
   token-name: ${X402_TOKEN_NAME:USDC}
   token-version: ${X402_TOKEN_VERSION:2}
-  max-timeout-seconds: 300
+  # Window during which the EIP-3009 authorisation is valid. The
+  # x402 v2 spec example uses 60 s; reference servers and the
+  # Coinbase facilitator default to the same. 60 s is plenty for an
+  # honest agent (sign + retry round-trip is < 1 s) and a tighter
+  # window reduces the chance a stolen signature can still be
+  # replayed before its on-chain validBefore expires.
+  max-timeout-seconds: 60
   timeout:
     connect-ms: 5000
     read-ms: 10000
@@ -185,6 +191,13 @@ resilience4j:
 
 logging:
   level:
+    # com.dartintel stays at DEBUG so our own structured logs (payment
+    # interceptor, summary pipeline, scheduler) keep tracing detail.
     com.dartintel: DEBUG
     org.flywaydb: INFO
-    org.hibernate.SQL: DEBUG
+    # Hibernate SQL was DEBUG, which logs every JPA query — including
+    # the per-request SELECT/INSERT against payment_log with payer
+    # wallet + signature_hash inline. Promoted to WARN for production
+    # to drop log volume + avoid that minor info echo on every call.
+    # Local dev can override via application-local.yml or `--logging…`.
+    org.hibernate.SQL: WARN

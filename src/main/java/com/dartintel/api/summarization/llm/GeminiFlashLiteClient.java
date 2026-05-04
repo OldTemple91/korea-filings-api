@@ -247,7 +247,13 @@ public class GeminiFlashLiteClient implements LlmClient {
         try {
             result = objectMapper.readValue(json, SummaryResult.class);
         } catch (JsonProcessingException e) {
-            log.error("Failed to parse Gemini JSON for {}: {}", context.rcptNo(), json);
+            // Truncate the logged blob — full Gemini output can be
+            // many KB and may, in adversarial cases, contain
+            // prompt-injected content that we don't want flooding
+            // the operator log channel verbatim.
+            String truncated = json == null ? "(null)"
+                    : (json.length() > 500 ? json.substring(0, 500) + "…[truncated " + (json.length() - 500) + " chars]" : json);
+            log.error("Failed to parse Gemini JSON for {}: {}", context.rcptNo(), truncated);
             throw new IllegalStateException("Gemini produced invalid JSON for " + context.rcptNo(), e);
         }
 

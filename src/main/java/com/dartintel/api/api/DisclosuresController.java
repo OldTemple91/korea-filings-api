@@ -1,5 +1,6 @@
 package com.dartintel.api.api;
 
+import com.dartintel.api.api.dto.ByTickerResponse;
 import com.dartintel.api.api.dto.DisclosureSummaryDto;
 import com.dartintel.api.api.dto.RecentFilingDto;
 import com.dartintel.api.ingestion.Disclosure;
@@ -30,7 +31,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -125,13 +125,13 @@ public class DisclosuresController {
             @ApiResponse(
                     responseCode = "200",
                     description = "Payment accepted; up to `limit` summaries returned, newest first.",
-                    content = @Content(schema = @Schema(implementation = DisclosureSummaryDto.class))),
+                    content = @Content(schema = @Schema(implementation = ByTickerResponse.class))),
             @ApiResponse(
                     responseCode = "402",
                     description = "Payment required — body carries the x402 `accepts` block with the limit-scaled amount.",
                     content = @Content(mediaType = "application/json"))
     })
-    public ResponseEntity<Map<String, Object>> getByTicker(
+    public ResponseEntity<ByTickerResponse> getByTicker(
             @Parameter(description = "Six-digit KRX ticker, e.g. `005930` for Samsung Electronics. " +
                     "Use the free `/v1/companies?q=<name>` endpoint first to resolve a company name.",
                     example = "005930", required = true)
@@ -160,19 +160,17 @@ public class DisclosuresController {
                 .filter(java.util.Objects::nonNull)
                 .map(DisclosureSummaryDto::from)
                 .toList();
-        Map<String, Object> body = new HashMap<>();
-        body.put("ticker", ticker);
-        // chargedFor: the limit the agent paid for. delivered: how many
-        // summaries we actually returned. The two diverge when a ticker
-        // has fewer recent filings than `limit`, or when one of those
-        // filings does not yet have an AI summary in cache. Surfacing
-        // both lets agents reconcile what they paid against what they
-        // got without comparing raw tx amount to body length.
-        body.put("count", summaries.size());
-        body.put("chargedFor", limit);
-        body.put("delivered", summaries.size());
-        body.put("summaries", summaries);
-        return ResponseEntity.ok(body);
+        // chargedFor / delivered diverge when a ticker has fewer recent
+        // filings than `limit`, or when one of those filings does not
+        // yet have an AI summary in cache. `count` is the legacy alias
+        // of `delivered` retained for v0.2.x SDK shape compatibility.
+        return ResponseEntity.ok(new ByTickerResponse(
+                ticker,
+                summaries.size(),
+                limit,
+                summaries.size(),
+                summaries
+        ));
     }
 
     @GetMapping("/summary")

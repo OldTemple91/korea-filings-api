@@ -54,6 +54,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "summary.consumer.enabled=false",
         "summary.retry.enabled=false",
         "summary.backfill.enabled=false",
+        "company.sync.enabled=false",
         "dart.api.key=test-dart-key",
         "gemini.key=test-gemini-key",
         "x402.recipient-address=0x209693Bc6afc0C5328bA36FaF03C514EF312287C",
@@ -249,6 +250,17 @@ class DisclosuresControllerIT {
         // a distinguishable code path.
         mockMvc.perform(get("/v1/disclosures/summary?rcptNo=20260423000001")
                         .header("X-PAYMENT", "not-valid-base64!@#"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value(containsString("Malformed")));
+    }
+
+    @Test
+    void byTickerMalformedPaymentHeaderAlsoReturns400() throws Exception {
+        // Same spec rule for per-result endpoints — a future change
+        // that adds PER_RESULT-mode-specific header parsing must not
+        // accidentally regress this branch on the by-ticker endpoint.
+        mockMvc.perform(get("/v1/disclosures/by-ticker?ticker=005930&limit=3")
+                        .header("PAYMENT-SIGNATURE", "not-valid-base64!@#"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value(containsString("Malformed")));
     }

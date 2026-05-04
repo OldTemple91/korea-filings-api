@@ -68,9 +68,33 @@ def build_authorization(payer_address: str, requirement: Mapping[str, Any]) -> d
 
 
 def sign_eip3009(account: Account, requirement: Mapping[str, Any], authorization: Mapping[str, Any]) -> str:
-    """Produce the 65-byte EIP-712 signature over the authorization."""
+    """Produce the 65-byte EIP-712 signature over the authorization.
+
+    The EIP-712 domain ``name`` and ``version`` come from the server's
+    402 response (``requirement.extra``). A wrong domain causes the
+    on-chain ``transferWithAuthorization`` to revert with an opaque
+    error and consumes the signature's nonce, so a malicious or
+    misconfigured server could trick the SDK into burning nonces by
+    sending a domain that doesn't match any deployed USDC contract.
+
+    To make this visible, warn (not hard-fail, to avoid breaking
+    forward compat with future networks) when the declared
+    ``extra.name`` is not one of the two USDC values we know:
+    ``"USD Coin"`` (Base mainnet) or ``"USDC"`` (Base Sepolia).
+    """
     chain_id = int(requirement["network"].split(":")[1])
     extra = requirement.get("extra") or {}
+    domain_name = extra.get("name", "USDC")
+    domain_version = extra.get("version", "2")
+    if domain_name not in ("USD Coin", "USDC"):
+        import warnings
+        warnings.warn(
+            f"x402: server-declared EIP-712 token name {domain_name!r} is not "
+            "the canonical 'USD Coin' (Base mainnet) or 'USDC' (Base Sepolia). "
+            "If the server is genuine, verify the asset contract; if not, the "
+            "wrong domain will burn the EIP-3009 nonce on-chain.",
+            stacklevel=2,
+        )
     typed = {
         "types": {
             "EIP712Domain": [
@@ -90,8 +114,8 @@ def sign_eip3009(account: Account, requirement: Mapping[str, Any], authorization
         },
         "primaryType": "TransferWithAuthorization",
         "domain": {
-            "name": extra.get("name", "USDC"),
-            "version": extra.get("version", "2"),
+            "name": domain_name,
+            "version": domain_version,
             "chainId": chain_id,
             "verifyingContract": requirement["asset"],
         },

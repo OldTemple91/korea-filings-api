@@ -123,9 +123,18 @@ public class CdpJwtSigner {
         }
     }
 
+    /**
+     * Single shared SecureRandom — `new SecureRandom()` per call wastes
+     * an allocation and on some JVMs occasionally blocks on the
+     * initial entropy collection. The instance is thread-safe and we
+     * only need 16 bytes per JWT (128-bit nonce, well above any
+     * collision-of-concern threshold).
+     */
+    private static final java.security.SecureRandom NONCE_RNG = new java.security.SecureRandom();
+
     private static String randomNonce() {
         byte[] bytes = new byte[16];
-        new java.security.SecureRandom().nextBytes(bytes);
+        NONCE_RNG.nextBytes(bytes);
         return HexFormat.of().formatHex(bytes);
     }
 

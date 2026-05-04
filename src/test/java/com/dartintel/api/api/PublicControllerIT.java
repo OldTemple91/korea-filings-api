@@ -30,6 +30,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "summary.consumer.enabled=false",
         "summary.retry.enabled=false",
         "summary.backfill.enabled=false",
+        "company.sync.enabled=false",
         "dart.api.key=test-dart-key",
         "gemini.key=test-gemini-key",
         "x402.recipient-address=0x209693Bc6afc0C5328bA36FaF03C514EF312287C",

@@ -118,6 +118,27 @@ class SummaryServiceTest {
     }
 
     @Test
+    void auditSuccessExistsButSummaryRowMissingShortCircuitsBeforeLlmCall() {
+        // Partial-write recovery path: a previous run committed the
+        // audit success row (REQUIRES_NEW) but the disclosure_summary
+        // insert that followed it failed. The retry scheduler later
+        // re-enqueues the rcptNo. Without the audit-success short
+        // circuit, the LLM would be called again — burning Gemini cost
+        // for a row already marked successful. The short-circuit logs
+        // a warn for operator attention and returns without paying.
+        when(disclosureRepository.findById("20260423000001")).thenReturn(Optional.of(sampleDisclosure));
+        when(writer.summaryExists("20260423000001")).thenReturn(false);
+        when(writer.auditSuccessExists("20260423000001")).thenReturn(true);
+
+        service.summarize("20260423000001");
+
+        verifyNoInteractions(llmClient, classifier);
+        verify(writer, never()).recordAuditSuccess(anyString(), any(), anyString());
+        verify(writer, never()).recordSummary(anyString(), any());
+        verify(writer, never()).recordAuditFailure(anyString(), anyString(), anyString(), anyInt(), anyString());
+    }
+
+    @Test
     void llmExceptionRecordsFailureAuditOnly() {
         when(disclosureRepository.findById("20260423000001")).thenReturn(Optional.of(sampleDisclosure));
         when(writer.summaryExists("20260423000001")).thenReturn(false);
