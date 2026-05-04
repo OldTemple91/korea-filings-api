@@ -18,7 +18,10 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -112,5 +115,35 @@ class PublicControllerIT {
         // Deliberately no payment header — must still return 200.
         mockMvc.perform(get("/v1/pricing"))
                 .andExpect(status().isOk());
+    }
+
+    /**
+     * Production traffic shows agents POSTing to our paid GET endpoints
+     * (most x402 examples on the public web are LLM-inference services
+     * that POST). Spring's default 405 envelope is empty, which gives
+     * the agent no recovery hint. Verify our advice replaces it with a
+     * structured body that names the supported verb, points at the
+     * discovery doc, and ships the {@code Allow} header per HTTP/1.1.
+     */
+    @Test
+    void postToGetOnlyEndpointReturns405WithMachineReadableHint() throws Exception {
+        mockMvc.perform(post("/v1/disclosures/summary").contentType("application/json"))
+                .andExpect(status().isMethodNotAllowed())
+                .andExpect(header().string("Allow", containsString("GET")))
+                .andExpect(header().string("Cache-Control", containsString("no-store")))
+                .andExpect(jsonPath("$.error").value("method_not_allowed"))
+                .andExpect(jsonPath("$.method").value("POST"))
+                .andExpect(jsonPath("$.supported[0]").value("GET"))
+                .andExpect(jsonPath("$.hint").value(containsString("GET /v1/disclosures/summary")))
+                .andExpect(jsonPath("$.discovery").value("/.well-known/x402"));
+    }
+
+    @Test
+    void postToFreeGetEndpointAlsoReceivesEnrichedHint() throws Exception {
+        // The advice is path-agnostic — same envelope on a free path.
+        mockMvc.perform(post("/v1/pricing"))
+                .andExpect(status().isMethodNotAllowed())
+                .andExpect(jsonPath("$.error").value("method_not_allowed"))
+                .andExpect(jsonPath("$.hint").value(containsString("GET /v1/pricing")));
     }
 }

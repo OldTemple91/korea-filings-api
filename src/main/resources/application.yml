@@ -196,6 +196,21 @@ resilience4j:
         # refresh window for a permit rather than failing fast.
         timeout-duration: 60s
 
+audit:
+  requests:
+    # When true, registers RequestAuditFilter, which logs one
+    # `REQ_AUDIT` line per non-GET request OR any 4xx/5xx response.
+    # Captures method, path, status, IP (CF-Connecting-IP), UA,
+    # query parameter KEY names (no values), body size,
+    # content-type, and presence (boolean) of X-PAYMENT /
+    # PAYMENT-SIGNATURE headers — never their values, since those
+    # carry signed nonces. Used to quantify how often agents call
+    # paid GET endpoints with the wrong verb and whether they
+    # attach a payment payload, which informs whether to open
+    # parallel POST handlers. Off by default; enable in prod via
+    # REQUEST_AUDIT_ENABLED=true in .env.
+    enabled: ${REQUEST_AUDIT_ENABLED:false}
+
 logging:
   level:
     # com.dartintel at INFO for production. DEBUG triggers per-request

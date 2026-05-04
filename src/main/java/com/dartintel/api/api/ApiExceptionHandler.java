@@ -1,5 +1,6 @@
 package com.dartintel.api.api;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataAccessException;
@@ -7,12 +8,14 @@ import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -79,6 +82,44 @@ public class ApiExceptionHandler {
         body.put("message", "Replay-guard / cache layer is temporarily unreachable. Retry shortly.");
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                 .header(HttpHeaders.RETRY_AFTER, "10")
+                .header(HttpHeaders.CACHE_CONTROL, "no-store")
+                .body(body);
+    }
+
+    /**
+     * Spring's default 405 envelope is empty, so an agent that calls
+     * a paid endpoint with the wrong verb (commonly POST against a
+     * GET-only endpoint, since most x402 examples on the public web
+     * are LLM-inference services that POST) gets no hint about what
+     * to do next. Replace it with a small JSON body that names the
+     * supported verb, repeats the path, and points at the discovery
+     * doc so a self-correcting client can recover without a doc dive.
+     *
+     * <p>Returns the {@code Allow} header per HTTP/1.1 §10.4.6 and
+     * disables intermediate caching with {@code Cache-Control: no-store}
+     * — a cached 405 served to a different client could mask a real
+     * future intent change.
+     */
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<Map<String, Object>> handleMethodNotSupported(
+            HttpRequestMethodNotSupportedException ex,
+            HttpServletRequest request) {
+        String[] supported = ex.getSupportedMethods();
+        String allowHeader = (supported == null || supported.length == 0)
+                ? "GET"
+                : String.join(", ", supported);
+        String hint = (supported == null || supported.length == 0)
+                ? "This path does not accept the method you used."
+                : "Use " + supported[0] + " " + request.getRequestURI()
+                  + ". See /.well-known/x402 for the full agent flow.";
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("error", "method_not_allowed");
+        body.put("method", request.getMethod());
+        body.put("supported", supported == null ? List.of() : List.of(supported));
+        body.put("hint", hint);
+        body.put("discovery", "/.well-known/x402");
+        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED)
+                .header(HttpHeaders.ALLOW, allowHeader)
                 .header(HttpHeaders.CACHE_CONTROL, "no-store")
                 .body(body);
     }
