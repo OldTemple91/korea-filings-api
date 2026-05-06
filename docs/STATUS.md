@@ -18,18 +18,16 @@ live, what's next, and the minimum setup to keep moving.
 - **Weeks 1–5 complete.** Ingestion, summarisation, x402 paywall, public
   deployment, landing page, Python SDK, MCP server, OpenAPI docs — all
   live in production at `api.koreafilings.com`.
-- **16 on-chain x402 settlements** in `payment_log` — 9 testnet
-  (Sepolia) + 7 mainnet (Base). The 2026-05-06 TS SDK live test
+- **On-chain x402 settlements verified** on both Sepolia (test) and
+  Base mainnet (production). The 2026-05-06 TS SDK live test
   confirmed every layer of the paid path end-to-end including the
   V11/V12 widening + SQLState handler. Awareness work (HN /
   Smithery / TS SDK adoption) is the next bottleneck — the paid
   surface is technically ready ahead of demand.
-- **First mainnet settlement**:
-  [`0x681c995e…`](https://basescan.org/tx/0x681c995e149d3ce5765ea8a3b0f921a45352fccefbd9fc9258bf4f6141eafd7c).
-  Facilitator: Coinbase CDP (Ed25519 JWT auth). Bug caught at flip
-  time: EIP-712 domain `name` was hard-coded to "USDC" but the Base
-  mainnet contract returns "USD Coin"; fixed via the new
-  `X402_TOKEN_NAME` / `X402_TOKEN_VERSION` config knobs.
+- **Facilitator**: Coinbase CDP (Ed25519 JWT auth). Bug caught at
+  initial mainnet flip: EIP-712 domain `name` was hard-coded to
+  "USDC" but the Base mainnet contract returns "USD Coin"; fixed
+  via the `X402_TOKEN_NAME` / `X402_TOKEN_VERSION` config knobs.
 - **Encrypted Postgres backups** — `scripts/pg-backup.sh` runs every
   6h via cron on the VM. age public key on the server, private key
   stored in iCloud-synced Apple Notes (off-VM). 7-day local
@@ -44,10 +42,10 @@ live, what's next, and the minimum setup to keep moving.
   [`docs/ANALYTICS.md`](ANALYTICS.md).
 - **AI-agent discovery surface (round-8, 2026-05-06)** — `/llms.txt`,
   `/robots.txt`, `/sitemap.xml`, `/.well-known/agent.json` (AWP 0.2),
-  root 302 to landing, favicon 204 — closes the 488 hits / 48h that
-  were 404'ing crawlers and AI-agent indexers (ClaudeBot, GPTBot,
-  Open402DirectoryCrawler, x402audit, OAI-SearchBot, Googlebot,
-  flows-crawler).
+  root 302 to landing, favicon 204 — closes a class of 404s coming
+  from common crawlers and AI-agent indexers that probe the
+  standard discovery paths (covered by the audit categorisation in
+  [`docs/ANALYTICS.md`](ANALYTICS.md)).
 - **PyPI packages published** — `koreafilings` 0.3.1 + `koreafilings-mcp` 0.3.0.
 - **npm package published — `koreafilings` 0.1.2** (TypeScript SDK,
   ESM + CJS, viem 2.21.0 exact pin, KNOWN_DOMAINS allowlist that
@@ -192,15 +190,14 @@ live, what's next, and the minimum setup to keep moving.
      plus a JSON envelope on 405 responses (`error/method/supported/
      hint/discovery` + `Allow` + `no-store`) so misbehaving agents
      get a self-correction hint instead of Spring's empty default.
-     48h of data revealed 1,054 audit lines: 0 X-PAYMENT signals,
-     153 hits to `/llms.txt`, 230 to root, 90 to robots.txt /
-     sitemap.xml, 1 to `/.well-known/agent.json` — every one a 404.
+     The first batch of audit data informed the next two pieces
+     below — concrete query / sample shapes live in
+     [`docs/ANALYTICS.md`](ANALYTICS.md).
    - **Discovery surface fill** (commit `8b7b7f9`) — `/llms.txt` (AI
      agent overview, llmstxt.org format), `/robots.txt`,
      `/sitemap.xml`, `/.well-known/agent.json` (AWP 0.2 manifest, same
      paid-action surface as `/.well-known/x402` in AWP shape), root
-     302 to `koreafilings.com`, favicon 204. Closes the 488-hit /
-     48h gap.
+     302 to `koreafilings.com`, favicon 204.
    - **Persistent audit table** (commit `89a40d2`) — V10 migration +
      `RequestAuditPersister` (async bounded-queue, batch inserts up
      to 100 rows/round-trip, 90-day retention via nightly prune at

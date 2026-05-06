@@ -309,7 +309,7 @@ INSERT INTO payment_log (
 
 After the backfill, the next gauge tick will return zero. If the underlying schema problem isn't fixed, the same failure recurs on the next paid call and the gauge climbs again.
 
-**Why this exists**: the round-9 silent-drop incident dropped multiple mainnet payments from `payment_log` over weeks before a TS SDK live test surfaced the gap. The gauge + counter make the next instance of the same class visible within 1-2 minutes; this RUNBOOK entry makes the response a checklist.
+**Why this exists**: the round-9 audit found that an over-broad `DataIntegrityViolationException` handler could silently drop `payment_log` rows on column-truncation failures (settlement still landed on-chain, but the merchant ledger row was missing). The gauge + counter make the next instance of the same class visible within 1-2 minutes; this RUNBOOK entry makes the response a checklist.
 
 ---
 

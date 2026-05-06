@@ -24,7 +24,7 @@ An x402-paid HTTP API that returns structured English summaries of Korean disclo
 - **Traditional sell-side / institutional asset managers.** They already buy Bloomberg / Refinitiv / FnGuide. Compliance and procurement won't approve a USDC wallet as a billing method, regardless of how cheap per call we make it.
 - **Foreign institutional investors with established Asia desks.** Same procurement / subscription expectation as above. The wallet model is a hard constraint, not a price-comparison decision.
 
-This narrowing is intentional and was rebalanced in 2026-05 after observing that 100% of the first 15 mainnet settlements were the maintainer's own self-test traffic — no external paying wallet had completed the 402 → sign → 200 loop yet, despite the infrastructure being end-to-end live. The bottleneck is reach into the x402-capable indie agent ecosystem (TypeScript SDK + HN + Smithery + agent-network presence), not building features for buyers who will never adopt the rail.
+This narrowing was rebalanced in 2026-05 after observing that the technical infrastructure was end-to-end live ahead of organic demand — the bottleneck is reach into the x402-capable indie agent ecosystem (TypeScript SDK + HN + Smithery + agent-network presence), not building features for buyers who will never adopt the rail.
 
 ## Functional Requirements
 
@@ -108,6 +108,6 @@ If by end of month 6:
 
 - Total lifetime revenue < $150
 - No repeat users (same wallet calling twice on different days) numbering more than 3
-- x402scan traffic dominated by the project's own self-test calls
+- Discovery-surface traffic dominated by indexers / crawlers rather than payment-capable agents
 
 ... then reassess: ship v1.2 deep analysis to lift average revenue per call (higher tier ~0.020 USDC), pivot toward a Korean address-normalisation API (higher call volume but lower margin per call), or pivot toward a Chaebol graph API (higher marginal value per call, different customer).

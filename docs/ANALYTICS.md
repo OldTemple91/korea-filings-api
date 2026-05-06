@@ -187,7 +187,7 @@ A non-empty result deserves attention. The agent has been operating for less tha
 
 ## "Stuck loop" diagnosis
 
-The bot at 104.131.41.96 (`axios/1.14.0`) hit our API thousands of times with the same broken pattern. To find similar stuck loops in the future:
+A common pattern observed early in the audit data: a single client retrying the same broken request shape (e.g. POST against a GET-only endpoint, or empty body where query parameters are required) hundreds of times without learning from the 405 / 400 response. This query surfaces such loops so an operator can decide whether to ignore (cheap), block at Cloudflare, or reach out to the implementer:
 
 ```sql
 SELECT ip,

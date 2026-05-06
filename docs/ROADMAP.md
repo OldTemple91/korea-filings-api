@@ -109,7 +109,7 @@ Deliverable: a person who has never heard of the project can find the service vi
 
 ## Week 6 — Launch
 
-Goal: first external paid call.
+Goal: organic agent traffic on the paid path.
 
 **Day 1**
 - Post the prepared Show HN draft on Hacker News on a Tuesday or Wednesday morning US time.
@@ -233,14 +233,14 @@ Cloudflare edge cache rule on `/v1/disclosures/recent` (30s TTL) so
 repeat polling lands at the edge instead of waking up Tomcat.
 
 **Round-8 observability + agent discovery (2026-05-06).**
-The 48 hours of REQ_AUDIT data collected after round-7 revealed two
-gaps the audit lenses had missed: (1) crawler / agent-discovery
-files (`/llms.txt`, `/.well-known/agent.json`, `/robots.txt`,
-`/sitemap.xml`, root, favicon) all 404'ing — 488 hits over 48h from
-ClaudeBot, GPTBot, Open402DirectoryCrawler, OAI-SearchBot, x402audit,
-Googlebot, flows-crawler — and (2) audit data only living in stdout
-logs that roll every 50 MB × 5 generations, so any cohort comparison
-older than ~a week is impossible.
+A round of REQ_AUDIT data collection after round-7 revealed two
+gaps the audit lenses had missed: (1) standard crawler / agent-
+discovery files (`/llms.txt`, `/.well-known/agent.json`,
+`/robots.txt`, `/sitemap.xml`, root, favicon) were all 404'ing
+against AI-agent indexers and search-engine crawlers, and (2)
+audit data only living in stdout logs that roll every 50 MB × 5
+generations, so any cohort comparison older than ~a week is
+impossible.
 
 Three commits resolved both:
 
@@ -276,11 +276,12 @@ Three commits resolved both:
   comparison for post-release retrospectives, new-integration
   emergence detection, stuck-loop diagnosis.
 
-The headline finding from the 48-hour audit run: **0 X-PAYMENT
-signals over 1,054 requests.** The infrastructure works end-to-end
-(internal regression coverage proves it); the bottleneck is
-awareness in the x402-capable indie agent ecosystem, not the paid
-path itself.
+The headline finding from the audit run: the paid path is
+exercised by internal regression coverage but no external payment-
+signing traffic was observed yet. The infrastructure works end-to-
+end (the regression suite proves it); the bottleneck is awareness
+in the x402-capable indie agent ecosystem, not the paid path
+itself.
 
 **TS SDK + ICP repositioning shipped 2026-05-06.** Two follow-up
 moves landed the same day the audit finding above was written.
