@@ -105,6 +105,26 @@ try {
 }
 ```
 
+## Cross-language naming differences
+
+The Python and TypeScript SDKs share the same surface, but each
+follows its host language's naming convention. If you are porting
+code line-by-line between them, watch for:
+
+| Concept | Python | TypeScript |
+|---|---|---|
+| Constructor | `Client(private_key=, network=)` | `new KoreaFilings({ privateKey, network })` |
+| Method names | `find_company`, `list_recent_filings`, `get_recent_filings`, `get_summary`, `get_pricing` | `findCompany`, `listRecentFilings`, `getRecentFilings`, `getSummary`, `getPricing` |
+| HTTP error status | `ApiError.status_code` | `ApiError.status` |
+| Settlement tx hash | `client.last_settlement.tx_hash` | `client.lastSettlement?.transaction` |
+| Settlement error reason | `last_settlement.error_reason` | `lastSettlement?.errorReason` |
+| `listRecentFilings` arguments | kwargs: `limit=20, since_hours=24` | options object: `{ limit: 20, sinceHours: 24 }` |
+
+Defaults, server caps (1–50 / 1–100 / 1–168), payment headers,
+network aliases, EIP-712 domain handling, and 402 → sign → retry
+behaviour are byte-identical between the two SDKs. Only the
+language-idiomatic surface differs.
+
 ## Discovery
 
 The same pricing / paid-endpoint catalog is also exposed at:

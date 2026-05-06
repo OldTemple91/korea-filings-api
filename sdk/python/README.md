@@ -213,6 +213,25 @@ except ConfigurationError as e:
 - For Base Sepolia testing only, a fresh wallet with faucet funds is
   the safest pattern — nothing on that wallet has production value.
 
+## TypeScript port
+
+A TypeScript SDK with the same surface ships at
+[`koreafilings`](https://www.npmjs.com/package/koreafilings) on npm.
+If you are porting code line-by-line between Python and TypeScript,
+watch for these naming differences (defaults, server caps, payment
+headers, EIP-712 domain handling, and 402 → sign → retry behaviour
+are byte-identical between the two — only the language-idiomatic
+surface differs):
+
+| Concept | Python | TypeScript |
+|---|---|---|
+| Constructor | `Client(private_key=, network=)` | `new KoreaFilings({ privateKey, network })` |
+| Method names | `find_company`, `list_recent_filings`, `get_recent_filings`, `get_summary`, `get_pricing` | `findCompany`, `listRecentFilings`, `getRecentFilings`, `getSummary`, `getPricing` |
+| HTTP error status | `ApiError.status_code` | `ApiError.status` |
+| Settlement tx hash | `client.last_settlement.tx_hash` | `client.lastSettlement?.transaction` |
+| Settlement error reason | `last_settlement.error_reason` | `lastSettlement?.errorReason` |
+| `list_recent_filings` arguments | kwargs: `limit=20, since_hours=24` | options object: `{ limit: 20, sinceHours: 24 }` |
+
 ## Source & feedback
 
 - Repo: <https://github.com/OldTemple91/korea-filings-api>
