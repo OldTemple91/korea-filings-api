@@ -137,7 +137,15 @@ com.dartintel.api
 ├── api/                             — HTTP controllers
 │   ├── DisclosuresController.java   — /v1/disclosures/* (recent free, by-ticker paid, summary paid)
 │   ├── PublicController.java        — /v1/pricing (free, machine-readable price descriptor)
-│   └── WellKnownController.java     — /.well-known/x402 (agent discovery)
+│   ├── WellKnownController.java     — /.well-known/x402 + /.well-known/agent.json (AWP 0.2)
+│   ├── DiscoveryRootController.java — / 302 to landing + /favicon.ico 204
+│   └── ApiExceptionHandler.java     — uniform 400 / 405 / 503 envelopes
+│
+├── observability/                   — REQ_AUDIT pipeline
+│   ├── RequestAuditFilter.java      — OncePerRequestFilter; structured key=value log line
+│   ├── RequestAudit.java            — entity
+│   ├── RequestAuditRepository.java  — JPA + deleteByTsBefore for nightly prune
+│   └── RequestAuditPersister.java   — async bounded-queue + batch INSERT
 │
 └── config/
     ├── OpenApiConfig.java           — springdoc with x402 security scheme
@@ -208,6 +216,26 @@ the rare bad summary.
 `endpoint`, `amount_usdc`, `payer_address`, `facilitator_tx_id`,
 `settled_at`. The single source of truth for revenue. Used for
 on-chain reconciliation and tax prep.
+
+### `request_audit` (every non-GET or 4xx/5xx request, opt-in)
+
+`id`, `ts`, `method`, `path`, `status`, `ip` (CF-Connecting-IP),
+`user_agent`, `query_keys` (sorted CSV of param **names**, never
+values), `body_bytes`, `content_type`, `has_x_payment`,
+`has_payment_sig` (booleans — header values never persisted).
+
+Populated by `RequestAuditPersister` via an async bounded queue
+when both `audit.requests.enabled` and `audit.requests.persist` are
+true. 90-day retention via a nightly prune at 04:00 UTC.
+
+The table powers the funnel / KPI / cohort SQL playbook in
+[`docs/ANALYTICS.md`](ANALYTICS.md): per-day UA category breakdown,
+discovery file probe trend, the 5-step funnel (discovery → 402 →
+signed → settled), week-over-week cohort comparison for
+post-release retrospectives, new-integration emergence detection,
+stuck-loop diagnosis. Designed to survive log rotation (50 MB × 5
+generations) so cohort comparisons across releases stay possible
+beyond ~a week of busy traffic.
 
 ### Redis keys
 

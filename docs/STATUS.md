@@ -1,4 +1,4 @@
-# STATUS — where we left off (2026-05-04)
+# STATUS — where we left off (2026-05-06)
 
 Read this first when picking up on a different machine. Summarises what is
 live, what's next, and the minimum setup to keep moving.
@@ -9,27 +9,51 @@ live, what's next, and the minimum setup to keep moving.
 
 **Service objectives** → [`docs/SLO.md`](SLO.md) — what we promise, how it's measured.
 
-**Backups** → `scripts/pg-backup.sh` runs encrypted Postgres dumps. Configure cron on the VM (`0 */6 * * *`) and an off-site copy via rclone before treating MVP as production-ready.
+**Backups** → `scripts/pg-backup.sh` runs every 6h via cron on the VM, encrypted with `age`. Local retention 7 days. Private key stored in iCloud-synced Apple Notes (off-VM by design — backups are useless if the key sits next to the data they protect). **Off-site copy via R2 + rclone is the remaining gap** before treating MVP as production-ready.
+
+**Analytics & KPIs** → [`docs/ANALYTICS.md`](ANALYTICS.md) — reusable SQL playbook over the `request_audit` table: per-day UA category breakdown, discovery file probe trend, the 5-step funnel (discovery → 402 → signed → settled), week-over-week cohort comparison for post-release retrospectives, new-integration emergence detection, stuck-loop diagnosis. Copy-paste runnable from a `psql` session on the production VM.
 
 ## TL;DR
 
 - **Weeks 1–5 complete.** Ingestion, summarisation, x402 paywall, public
   deployment, landing page, Python SDK, MCP server, OpenAPI docs — all
   live in production at `api.koreafilings.com`.
-- **10 on-chain x402 settlements** executed against Base Sepolia
-  (curl + SDK + MCP regression suite). All recorded in `payment_log`.
-- **Mainnet live since 2026-04-28**: first on-chain settlement at
+- **15 on-chain x402 settlements** in `payment_log` — 9 testnet
+  (Sepolia) + 6 mainnet (Base). Every settlement to date has been
+  the maintainer's own `testclient/payer.py` regression run; **zero
+  external paying wallets** have completed the 402 → sign → 200 loop
+  yet. The infrastructure works; awareness / TS SDK / HN are the next
+  bottlenecks.
+- **First mainnet settlement**:
   [`0x681c995e…`](https://basescan.org/tx/0x681c995e149d3ce5765ea8a3b0f921a45352fccefbd9fc9258bf4f6141eafd7c).
   Facilitator: Coinbase CDP (Ed25519 JWT auth). Bug caught at flip
   time: EIP-712 domain `name` was hard-coded to "USDC" but the Base
   mainnet contract returns "USD Coin"; fixed via the new
-  `X402_TOKEN_NAME` / `X402_TOKEN_VERSION` config knobs and committed
-  in b7af24e.
-- **PyPI packages published** — `koreafilings` 0.1.0 + `koreafilings-mcp`
-  0.1.0. Names permanently reserved.
-- **PyPI packages published** — `koreafilings` 0.1.0 + `koreafilings-mcp` 0.1.0.
-- **Directory registrations** — x402scan + Glama + mcp.so done; Smithery deferred.
+  `X402_TOKEN_NAME` / `X402_TOKEN_VERSION` config knobs.
+- **Encrypted Postgres backups** — `scripts/pg-backup.sh` runs every
+  6h via cron on the VM. age public key on the server, private key
+  stored in iCloud-synced Apple Notes (off-VM). 7-day local
+  retention. Off-site copy via R2 + rclone is the remaining gap.
+- **Observability surface (round-8, 2026-05-06)** — `RequestAuditFilter`
+  emits one structured `REQ_AUDIT` line per non-GET request or any
+  4xx/5xx response (method, path, status, IP, UA, query keys, body
+  size, content-type, presence of payment headers; **never their
+  values**). `RequestAuditPersister` writes the same data to the
+  `request_audit` Postgres table for 90-day retention, powering the
+  funnel / KPI / cohort queries in
+  [`docs/ANALYTICS.md`](ANALYTICS.md).
+- **AI-agent discovery surface (round-8, 2026-05-06)** — `/llms.txt`,
+  `/robots.txt`, `/sitemap.xml`, `/.well-known/agent.json` (AWP 0.2),
+  root 302 to landing, favicon 204 — closes the 488 hits / 48h that
+  were 404'ing crawlers and AI-agent indexers (ClaudeBot, GPTBot,
+  Open402DirectoryCrawler, x402audit, OAI-SearchBot, Googlebot,
+  flows-crawler).
+- **PyPI packages published** — `koreafilings` 0.3.1 + `koreafilings-mcp` 0.3.0.
+- **Directory registrations** — x402scan + Glama + mcp.so done;
+  Smithery deferred (site outage at submission time, retry).
 - **Next**: HN Show HN post on the next available Tue/Wed at 22:00 KST.
+  TypeScript SDK is the highest-value adjacent build — Python is
+  covered, JS/TS is the bigger agent ecosystem.
 
 ## What's live
 
@@ -97,6 +121,32 @@ live, what's next, and the minimum setup to keep moving.
    of `@Transactional` in the DART poller / `corpCode` sync.
    See commit `e5cd9ae` for the full diff.
 
+   **Round-8 observability + agent discovery (2026-05-06).** Built
+   the analytics infrastructure to answer "did the next release move
+   the needle?" with numbers instead of vibes. Three pieces:
+
+   - `RequestAuditFilter` (commits `a8b77ac` / `4870bbf`) — one
+     structured `REQ_AUDIT` log line per non-GET or 4xx/5xx response,
+     plus a JSON envelope on 405 responses (`error/method/supported/
+     hint/discovery` + `Allow` + `no-store`) so misbehaving agents
+     get a self-correction hint instead of Spring's empty default.
+     48h of data revealed 1,054 audit lines: 0 X-PAYMENT signals,
+     153 hits to `/llms.txt`, 230 to root, 90 to robots.txt /
+     sitemap.xml, 1 to `/.well-known/agent.json` — every one a 404.
+   - **Discovery surface fill** (commit `8b7b7f9`) — `/llms.txt` (AI
+     agent overview, llmstxt.org format), `/robots.txt`,
+     `/sitemap.xml`, `/.well-known/agent.json` (AWP 0.2 manifest, same
+     paid-action surface as `/.well-known/x402` in AWP shape), root
+     302 to `koreafilings.com`, favicon 204. Closes the 488-hit /
+     48h gap.
+   - **Persistent audit table** (commit `89a40d2`) — V10 migration +
+     `RequestAuditPersister` (async bounded-queue, batch inserts up
+     to 100 rows/round-trip, 90-day retention via nightly prune at
+     04:00 UTC). Header *values* never enter the DB — only the
+     boolean presence flag, since `X-PAYMENT` and `PAYMENT-SIGNATURE`
+     carry signed nonces. Powers the SQL playbook in
+     [`docs/ANALYTICS.md`](ANALYTICS.md).
+
 2. **v1.2 — planned, body-fetch + numerical extraction.** The
    single biggest honest weakness of v1.1: every summary is
    generated from filing metadata only, so quantitative events
@@ -126,10 +176,28 @@ live, what's next, and the minimum setup to keep moving.
    explicitly named as the next phase so the launch positions a
    roadmap, not a demo.
 
-5. **Operational follow-ups (post-launch)**: Slack / email alert
-   when `payment_log` gets a new row, Grafana dashboard for the
-   four metrics that matter (calls/min, cache hit ratio, mean LLM
-   cost per cache miss, payer diversity), TypeScript SDK port.
+5. **Operational follow-ups (post-launch)**:
+   - **PaymentNotifier webhook** — Slack/Discord notification on every
+     settled payment. Code is in (`PaymentNotifier`); just needs
+     `X402_NOTIFY_WEBHOOK_URL=…` set in the production `.env` and a
+     restart. Currently disabled per the boot log.
+   - **R2 off-site backup** — pg-backup.sh has a commented-out
+     `rclone copy` block waiting on a Cloudflare R2 bucket + API
+     token. Without it, a full VM loss takes the local backups with it.
+   - **Grafana dashboard** — point a Grafana Cloud free-tier scrape at
+     `/actuator/prometheus`. Four metrics that matter: calls/min,
+     cache hit ratio, mean LLM cost per cache miss, payer diversity.
+   - **TypeScript SDK** — Python is covered, JS/TS is the bigger
+     agent ecosystem.
+   - **README ICP re-positioning** — current copy targets "AI agents,
+     quant hedge funds, global investment research platforms"; honest
+     ICP today is "x402-capable indie agent developer with tangential
+     Korea interest". Narrowing the message to match reality should
+     improve top-of-funnel match rate.
+   - **Business analytics prep** — RFM SQL on `payment_log`,
+     `/actuator/prometheus` per-funnel-stage counters, pricing
+     simulation doc. ANALYTICS.md covers the audit side; payment-side
+     analytics is the next layer.
 
 ## Mainnet rollback recipe
 

@@ -212,6 +212,79 @@ contracts — exactly the events agents most want numbers for.
 we have agent traffic telling us which filing types they actually
 care about.
 
+## v0.4.x — Operations + Observability (shipped 2026-05-04 to 2026-05-06)
+
+A run of post-launch maintenance work driven by what actually shows
+up in production logs. None of it changes the product surface; all
+of it makes the next launch decisions evidence-based.
+
+**Round-7 ops hardening (2026-05-04, commit `93e6c68`).**
+[`docs/RUNBOOK.md`](RUNBOOK.md) — 12-scenario incident playbook with
+exact commands (API down, Postgres outage, Flyway migration error,
+secret rotation, VM rebuild, double-charge reconciliation).
+[`docs/SLO.md`](SLO.md) — committed targets (99.0% monthly availability,
+p95 ≤ 300 ms cached / ≤ 100 ms free / ≤ 8 s cold, 5xx < 0.5%/day).
+`scripts/pg-backup.sh` — encrypted pg_dump every 6h via cron, age
+public key on the VM, private key off-VM in iCloud-synced Apple
+Notes; 7-day local retention, R2 off-site copy block ready (commented
+out pending bucket setup). V9 migration adds
+`disclosure_summary.prompt_version` for re-summarisation tracking.
+Cloudflare edge cache rule on `/v1/disclosures/recent` (30s TTL) so
+repeat polling lands at the edge instead of waking up Tomcat.
+
+**Round-8 observability + agent discovery (2026-05-06).**
+The 48 hours of REQ_AUDIT data collected after round-7 revealed two
+gaps the audit lenses had missed: (1) crawler / agent-discovery
+files (`/llms.txt`, `/.well-known/agent.json`, `/robots.txt`,
+`/sitemap.xml`, root, favicon) all 404'ing — 488 hits over 48h from
+ClaudeBot, GPTBot, Open402DirectoryCrawler, OAI-SearchBot, x402audit,
+Googlebot, flows-crawler — and (2) audit data only living in stdout
+logs that roll every 50 MB × 5 generations, so any cohort comparison
+older than ~a week is impossible.
+
+Three commits resolved both:
+
+- **`a8b77ac` / `4870bbf` — REQ_AUDIT filter + structured 405
+  envelope.** `RequestAuditFilter` emits one key=value log line per
+  non-GET or 4xx/5xx response: method / path / status / IP
+  (CF-Connecting-IP) / UA / sorted query keys / body bytes /
+  content-type / boolean presence flags for X-PAYMENT and
+  PAYMENT-SIGNATURE (header *values* never logged). `ApiExceptionHandler`
+  now returns a JSON envelope on 405 (`error/method/supported/hint/
+  discovery` + `Allow` + `no-store`) so misbehaving agents get a
+  self-correction hint instead of Spring's empty default.
+
+- **`8b7b7f9` — `/llms.txt` + `/robots.txt` + `/sitemap.xml` + AWP
+  `agent.json` + root redirect + favicon.** Static resources for
+  llmstxt.org-style agent overview, standard crawler files, and an
+  Agent Web Protocol 0.2 manifest that lists every public action
+  (free + paid) with method / endpoint / parameters / payment
+  pointer. `robots.txt` `Disallow`s the paid endpoints — anonymous
+  crawlers can't pay, and there's no business value in indexing a
+  402 response. Root path 302-redirects to the marketing landing
+  page; favicon returns 204 to stop the access-log noise.
+
+- **`89a40d2` — `request_audit` table + analytics queries.** V10
+  migration. `RequestAuditPersister` writes audit rows to Postgres
+  via an async bounded queue (10k row capacity, batches up to 100
+  rows per round-trip, single daemon thread). 90-day retention via
+  nightly prune at 04:00 UTC, comfortably outside trading hours and
+  well after the 06:00 UTC encrypted backup. [`docs/ANALYTICS.md`](ANALYTICS.md)
+  documents the reusable SQL playbook: per-day UA category
+  breakdown, discovery file probe trend, the 5-step funnel
+  (discovery → 402 → signed → settled), week-over-week cohort
+  comparison for post-release retrospectives, new-integration
+  emergence detection, stuck-loop diagnosis.
+
+The headline finding from the 48-hour audit run: **0 X-PAYMENT
+signals over 1,054 requests.** Every settled mainnet payment in
+`payment_log` (15 rows) is the maintainer's own `testclient/payer.py`
+regression run — no external wallet has completed the 402 → sign
+→ 200 loop yet. The infrastructure works end-to-end (testclient
+proves it); the bottleneck is awareness in the x402-capable indie
+agent ecosystem. TS SDK + HN + Smithery registration are the
+highest-leverage moves now.
+
 ## Guardrails Throughout
 
 - Built on public DART data only — no proprietary or third-party code, data, or accounts referenced at any point.

@@ -177,6 +177,11 @@ USDC contract, every paid endpoint) lives at
 [`/v1/pricing`](https://api.koreafilings.com/v1/pricing); agent-driven
 discovery is at
 [`/.well-known/x402`](https://api.koreafilings.com/.well-known/x402).
+The same paid-action surface is also exposed in Agent Web Protocol
+(AWP) shape at
+[`/.well-known/agent.json`](https://api.koreafilings.com/.well-known/agent.json),
+and a plain-English overview for AI agents lives at
+[`/llms.txt`](https://api.koreafilings.com/llms.txt).
 
 Live on **Base mainnet** via the Coinbase CDP facilitator. The first
 on-chain settlement is permanent at
