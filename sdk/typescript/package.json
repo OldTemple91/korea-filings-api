@@ -1,6 +1,6 @@
 {
   "name": "koreafilings",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "TypeScript SDK for koreafilings.com — AI-summarized Korean DART disclosures, paid per call in USDC via x402.",
   "keywords": [
     "x402",
@@ -49,7 +49,7 @@
     "prepublishOnly": "npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {
-    "viem": "^2.21.0"
+    "viem": "2.21.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

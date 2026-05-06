@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { privateKeyToAccount } from 'viem/accounts';
 import { recoverTypedDataAddress } from 'viem';
 import {
@@ -113,10 +113,78 @@ describe('signEip3009', () => {
     );
   });
 
-  it('throws on unparseable network string', async () => {
-    const bad: PaymentRequirement = { ...SAMPLE_REQUIREMENT, network: 'eip155:NOT_A_NUMBER' };
+  it('rejects unparseable network strings up front', async () => {
+    const cases = [
+      'eip155:NOT_A_NUMBER',
+      'eip155',
+      'eip155:8453:extra-segment',
+      'solana:mainnet',
+      '',
+    ];
     const auth = buildAuthorization(TEST_ACCOUNT.address, SAMPLE_REQUIREMENT);
-    await expect(signEip3009(TEST_ACCOUNT, bad, auth)).rejects.toThrow(PaymentError);
+    for (const network of cases) {
+      const bad: PaymentRequirement = { ...SAMPLE_REQUIREMENT, network };
+      await expect(signEip3009(TEST_ACCOUNT, bad, auth)).rejects.toThrow(PaymentError);
+    }
+  });
+
+  it('hard-fails when server-advertised asset disagrees with the SDK allowlist for a known chain', async () => {
+    // Attacker scenario: server says "this is Base mainnet" (true) but
+    // points the asset at an arbitrary contract under their control.
+    // SDK must refuse — signing here would either burn the nonce or
+    // (worse) authorize a transfer against an unrelated contract.
+    const malicious: PaymentRequirement = {
+      ...SAMPLE_REQUIREMENT,
+      network: 'eip155:8453',
+      // Random non-USDC contract address
+      asset: '0xdeadbeefcafebabe1234567890abcdef12345678',
+      extra: { name: 'USD Coin', version: '2' },
+    };
+    const auth = buildAuthorization(TEST_ACCOUNT.address, malicious);
+    await expect(signEip3009(TEST_ACCOUNT, malicious, auth))
+      .rejects.toThrow(PaymentError);
+    await expect(signEip3009(TEST_ACCOUNT, malicious, auth))
+      .rejects.toThrow(/asset_mismatch/);
+  });
+
+  it('hard-fails on a known chain when server lies about extra.name (mainnet says USDC)', async () => {
+    // The SDK overrides server-supplied name/version with the
+    // allowlist entry for known chains, so we cannot test that path
+    // by inspecting the signature output (the SDK ignores the bad
+    // value). What we CAN verify is that the asset-allowlist check
+    // still triggers on any deviation from the canonical contract.
+    // This test pairs with the previous one to lock in: known chain
+    // = strict allowlist, no chance for the server to substitute.
+    const liedAbout: PaymentRequirement = {
+      ...SAMPLE_REQUIREMENT,
+      network: 'eip155:8453',
+      // Wrong contract, plausible but wrong name
+      asset: '0x036CbD53842c5426634e7929541eC2318f3dCF7e', // Sepolia USDC on a mainnet 402
+      extra: { name: 'USDC', version: '2' },
+    };
+    const auth = buildAuthorization(TEST_ACCOUNT.address, liedAbout);
+    await expect(signEip3009(TEST_ACCOUNT, liedAbout, auth))
+      .rejects.toThrow(/asset_mismatch/);
+  });
+
+  it('signs successfully on an unknown chain with a console.warn fallback', async () => {
+    // Forward-compat: the SDK should still sign for chains it does
+    // not know about, but should warn loudly. The test captures
+    // console.warn to verify the warning fires.
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const unknownChain: PaymentRequirement = {
+      ...SAMPLE_REQUIREMENT,
+      network: 'eip155:42161', // Arbitrum one — not in allowlist
+      asset: '0xff970a61a04b1ca14834a43f5de4533ebddb5cc8',
+      extra: { name: 'USD Coin', version: '1' },
+    };
+    const auth = buildAuthorization(TEST_ACCOUNT.address, unknownChain);
+    const sig = await signEip3009(TEST_ACCOUNT, unknownChain, auth);
+    expect(sig).toMatch(/^0x[0-9a-f]{130}$/);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('chain 42161'),
+    );
+    warnSpy.mockRestore();
   });
 });
 

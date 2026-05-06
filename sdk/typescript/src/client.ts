@@ -71,6 +71,16 @@ const DEFAULT_BASE_URL = 'https://api.koreafilings.com';
 const DEFAULT_TIMEOUT_MS = 60_000;
 
 /**
+ * Server-side `@Pattern` rules from {@code DisclosuresController.java}.
+ * Validating client-side as well keeps malformed inputs from costing
+ * a nonce slot — the server would reject after the SDK has already
+ * signed and submitted an EIP-3009 authorization, wasting one of the
+ * 60-second time-limited validity windows on a wallet.
+ */
+const RCPT_NO_PATTERN = /^\d{14}$/;
+const TICKER_PATTERN = /^[0-9A-Z]{6,7}$/;
+
+/**
  * Blocking HTTP client for the koreafilings paid API. Construct once
  * and reuse — every paid call shares the same wallet, base URL, and
  * settlement-proof slot.
@@ -96,7 +106,11 @@ export class KoreaFilings {
     }
     this.account = privateKeyToAccount(opts.privateKey);
     this.expectedChain = NETWORK_ALIASES[network];
-    this.baseUrl = (opts.baseUrl ?? DEFAULT_BASE_URL).replace(/\/$/, '');
+    // Strip ANY number of trailing slashes — a user passing
+    // `https://api.koreafilings.com//` would otherwise produce
+    // `//v1/...` URLs that some HTTP clients silently rewrite and
+    // that proxies / WAFs can reject.
+    this.baseUrl = (opts.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, '');
     this.timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   }
 
@@ -173,10 +187,19 @@ export class KoreaFilings {
    * regardless of cache state — the cache improves server margin,
    * not caller price.
    *
+   * @throws {ConfigurationError} if `rcptNo` is not 14 digits — the
+   *   server would reject with 400 anyway, but only AFTER the SDK
+   *   has already signed a fresh EIP-3009 authorization, burning
+   *   one nonce slot. Validate up front to keep nonce throughput.
    * @throws {ApiError} for HTTP failures that aren't payment prompts.
    * @throws {PaymentError} if signing/settlement is rejected.
    */
   async getSummary(rcptNo: string): Promise<Summary> {
+    if (!RCPT_NO_PATTERN.test(rcptNo)) {
+      throw new ConfigurationError(
+        `rcptNo must be exactly 14 digits, got ${JSON.stringify(rcptNo)}`,
+      );
+    }
     const params = new URLSearchParams({ rcptNo });
     const body = await this.paidGet(`/v1/disclosures/summary?${params.toString()}`);
     return body as Summary;
@@ -192,9 +215,18 @@ export class KoreaFilings {
    * with `listRecentFilings` if budget is tight. `limit` is capped
    * at 50 server-side.
    *
+   * @throws {ConfigurationError} if `ticker` is not 6–7 alphanumeric
+   *   characters (KRX SPAC tickers can include letters; standard
+   *   listed tickers are 6 digits). Same up-front-validation
+   *   rationale as `getSummary`.
    * @throws {ApiError} / {PaymentError} as for `getSummary`.
    */
   async getRecentFilings(ticker: string, limit = 5): Promise<Summary[]> {
+    if (!TICKER_PATTERN.test(ticker)) {
+      throw new ConfigurationError(
+        `ticker must be 6-7 alphanumeric characters (e.g. "005930"), got ${JSON.stringify(ticker)}`,
+      );
+    }
     const params = new URLSearchParams({
       ticker,
       limit: clamp(limit, 1, 50).toString(),

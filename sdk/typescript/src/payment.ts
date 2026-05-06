@@ -23,6 +23,39 @@ import type { PaymentRequirement } from './models.js';
 export const X402_VERSION = 2;
 
 /**
+ * EIP-712 domain values the SDK accepts for known chains. The 402
+ * challenge sends server-supplied `extra.name`, `extra.version`,
+ * and `asset` (verifyingContract); a malicious or MITM-injected
+ * server could substitute these to trick the client into signing
+ * a `transferWithAuthorization` against a different USDC contract,
+ * a different chain, or a custom contract with no replay protection.
+ *
+ * For known chains we ignore the server-supplied values entirely
+ * and use the canonical USDC deployment. For unknown chains we
+ * fall back to the server-supplied values with a console.warn —
+ * keeps forward compatibility with future test networks without
+ * silently expanding the trusted-domain set.
+ *
+ * Address case is the EIP-55 checksum form. The comparison is
+ * case-insensitive so a server that sends a lowercase asset still
+ * matches.
+ */
+const KNOWN_DOMAINS: Record<string, { name: string; version: string; verifyingContract: `0x${string}` }> = {
+  // Base mainnet — eip155:8453, USDC (Native)
+  '8453': {
+    name: 'USD Coin',
+    version: '2',
+    verifyingContract: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+  },
+  // Base Sepolia — eip155:84532, USDC
+  '84532': {
+    name: 'USDC',
+    version: '2',
+    verifyingContract: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+  },
+};
+
+/**
  * Pick the first payment requirement the server offers. Today the
  * server only ever offers one (USDC on whatever network it's
  * configured for), so we take index 0. If the server starts offering
@@ -96,22 +129,57 @@ export async function signEip3009(
   requirement: PaymentRequirement,
   authorization: Authorization,
 ): Promise<Hex> {
-  const chainId = Number(requirement.network.split(':')[1]);
-  if (!Number.isFinite(chainId)) {
+  // Strict eip155:<chainId> shape so a malformed network string is
+  // rejected before signing, instead of relying on the accidental
+  // robustness of Number.isFinite.
+  const networkMatch = requirement.network.match(/^eip155:(\d+)$/);
+  if (!networkMatch) {
     throw new PaymentError(
       'invalid_network',
-      `cannot parse chainId from "${requirement.network}"`,
+      `expected CAIP-2 eip155:<chainId> shape, got "${requirement.network}"`,
     );
   }
-  const domainName = requirement.extra?.name ?? 'USDC';
-  const domainVersion = requirement.extra?.version ?? '2';
-  if (domainName !== 'USD Coin' && domainName !== 'USDC') {
+  const chainId = Number(networkMatch[1]);
+
+  // For known chains we override the server-supplied domain fields
+  // with our allowlisted values — defends against a malicious server
+  // injecting a different USDC contract, a different EIP-712 domain
+  // version, or a custom contract with no replay protection. The
+  // server-supplied requirement.asset MUST also match the
+  // allowlist's verifyingContract; if it doesn't, we hard-fail
+  // rather than sign for a contract that wasn't authorized in code.
+  let domainName: string;
+  let domainVersion: string;
+  let verifyingContract: Hex;
+
+  const known = KNOWN_DOMAINS[String(chainId)];
+  if (known) {
+    if (requirement.asset.toLowerCase() !== known.verifyingContract.toLowerCase()) {
+      throw new PaymentError(
+        'asset_mismatch',
+        `server advertises asset ${requirement.asset} for chain ${chainId} ` +
+          `but SDK's allowlist for this chain is ${known.verifyingContract}. ` +
+          'Refusing to sign — a wrong verifyingContract burns the EIP-3009 ' +
+          'nonce on-chain or, worse, signs a transfer against an unrelated contract.',
+      );
+    }
+    domainName = known.name;
+    domainVersion = known.version;
+    verifyingContract = known.verifyingContract;
+  } else {
+    // Unknown chain — fall through with a loud warning. Useful
+    // during testnet rollout for new chains; should never fire in
+    // production against Base mainnet.
+    domainName = requirement.extra?.name ?? 'USDC';
+    domainVersion = requirement.extra?.version ?? '2';
+    verifyingContract = requirement.asset as Hex;
     // eslint-disable-next-line no-console
     console.warn(
-      `x402: server-declared EIP-712 token name "${domainName}" is not the ` +
-        'canonical "USD Coin" (Base mainnet) or "USDC" (Base Sepolia). ' +
-        'If the server is genuine, verify the asset contract; if not, the ' +
-        'wrong domain will burn the EIP-3009 nonce on-chain.',
+      `x402: chain ${chainId} is not in the SDK's allowlist of known ` +
+        `domains. Signing with server-supplied name="${domainName}" ` +
+        `version="${domainVersion}" asset=${requirement.asset}. If you ` +
+        'do not control this server, consider hard-coding the chain in ' +
+        'KNOWN_DOMAINS or refusing the call entirely.',
     );
   }
 
@@ -120,7 +188,7 @@ export async function signEip3009(
       name: domainName,
       version: domainVersion,
       chainId,
-      verifyingContract: requirement.asset as Hex,
+      verifyingContract,
     },
     types: {
       TransferWithAuthorization: [
@@ -186,11 +254,28 @@ export function buildPaymentSignatureHeader(
  * decode/parse failure. Both `PAYMENT-RESPONSE` (v2) and
  * `X-PAYMENT-RESPONSE` (legacy) carry the same shape, so callers
  * pass either header value through this same function.
+ *
+ * <p>Returns `null` if the decoded payload is not a JSON object with
+ * a boolean `success` field — defends against a malicious server
+ * stuffing a non-object (string, number, null) or a multi-megabyte
+ * `errorReason` blob into the header. The caller treats `null` as
+ * "no settlement proof was attached" and falls back to the response
+ * body for error detail.
+ *
+ * <p>Caps the decoded payload size at 16 KB; a real settlement proof
+ * is ~200 bytes, so anything larger is either a server bug or a
+ * deliberate denial-of-service attempt against client-side log /
+ * error-message storage.
  */
 export function decodeSettlementHeader(value: string | null | undefined): unknown {
   if (!value) return null;
+  // 16 KB cap — settlement proofs are well under 1 KB in practice.
+  if (value.length > 16 * 1024) return null;
   try {
-    return JSON.parse(base64Decode(value));
+    const decoded: unknown = JSON.parse(base64Decode(value));
+    if (typeof decoded !== 'object' || decoded === null) return null;
+    if (typeof (decoded as { success?: unknown }).success !== 'boolean') return null;
+    return decoded;
   } catch {
     return null;
   }

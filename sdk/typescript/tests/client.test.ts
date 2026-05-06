@@ -163,6 +163,14 @@ describe('KoreaFilings paid 402 → sign → retry flow', () => {
     const sigHeader = headers['PAYMENT-SIGNATURE'];
     expect(sigHeader).toBeTruthy();
     expect(sigHeader!.length).toBeGreaterThan(40);
+
+    // The init object preserves header casing (TS-side), but on the
+    // wire fetch lowercases header names. Verify the actual wire
+    // shape via Headers normalisation so the test reflects what the
+    // server's case-insensitive `getHeader()` will see, not what the
+    // SDK's caller wrote.
+    const onWire = new Headers(secondInit.headers).get('payment-signature');
+    expect(onWire).toEqual(sigHeader);
   });
 
   it('throws PaymentError when the 402 advertises a different network than configured', async () => {
@@ -188,6 +196,24 @@ describe('KoreaFilings paid 402 → sign → retry flow', () => {
     );
     const c = new KoreaFilings({ privateKey: TEST_KEY, network: 'base-sepolia' });
     await expect(c.getSummary('20260424900874')).rejects.toThrow(/invalid_payload/);
+  });
+
+  it('rejects malformed rcptNo BEFORE signing (preserves nonce throughput)', async () => {
+    // No fetch mock is needed — validation must throw before the
+    // SDK ever issues the unpaid GET.
+    const c = new KoreaFilings({ privateKey: TEST_KEY, network: 'base-sepolia' });
+    await expect(c.getSummary('not-14-digits')).rejects.toThrow(ConfigurationError);
+    await expect(c.getSummary('1234')).rejects.toThrow(ConfigurationError);
+    // Lock in: not even one fetch call goes out for an invalid input.
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed ticker BEFORE signing', async () => {
+    const c = new KoreaFilings({ privateKey: TEST_KEY, network: 'base-sepolia' });
+    await expect(c.getRecentFilings('xx', 1)).rejects.toThrow(ConfigurationError);
+    await expect(c.getRecentFilings('not_alnum_!', 1)).rejects.toThrow(ConfigurationError);
+    await expect(c.getRecentFilings('TOOLONG12345', 1)).rejects.toThrow(ConfigurationError);
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it('legacy X-PAYMENT-RESPONSE header is also accepted on the settled response', async () => {
