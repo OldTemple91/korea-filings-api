@@ -28,18 +28,37 @@ Raw DART data is free, but it's in Korean and structured for human
 filings clerks, not LLMs. Korea Filings turns every disclosure into a
 structured, cached, English-summarised JSON payload — agents resolve
 a Korean company by name for free, then fetch a batch of summaries
-for that ticker in one paid x402 call. Each summary looks like:
+for that ticker in one paid x402 call. The summary is built from the
+filing body itself (not just the title), so quantitative events come
+back with the actual amounts, dilution percentages, counterparty
+names, and effective dates extracted from the Korean source. Two
+examples — a light governance event and a quantitative capital-raise:
 
 ```json
 {
   "rcptNo": "20260424900874",
-  "summaryEn": "Global SM's stock trading was temporarily suspended on April 24, 2026, due to a change in electronic registration related to a stock consolidation or split.",
-  "importanceScore": 10,
-  "eventType": "SINGLE_STOCK_TRADING_SUSPENSION",
+  "summaryEn": "Global SM's stock trading was suspended at 09:00 KST on April 24, 2026, pending an updated electronic registration tied to a planned 1-for-2 stock consolidation. The suspension follows a board resolution dated April 21; trading resumes April 26 once the registration completes. Existing shareholders' record positions are unaffected.",
+  "importanceScore": 8,
+  "eventType": "TRADING_SUSPENSION",
   "sectorTags": ["Capital Goods"],
   "tickerTags": ["095440"],
-  "actionableFor": ["traders", "long_term_investors"],
+  "actionableFor": ["traders"],
   "generatedAt": "2026-04-24T08:47:51Z"
+}
+```
+
+A quantitative event (synthetic illustrative example — generic issuer):
+
+```json
+{
+  "rcptNo": "20260506000847",
+  "summaryEn": "Issuer approved a rights offering of 4.25M new common shares at KRW 285,000 per share (3.2% discount to recent close), raising approximately KRW 1.21 trillion. Subscription rights allocated to existing shareholders on the May 28 record date; subscription window June 8–10. Net proceeds earmarked for an Argentine lithium-hydroxide refinery expansion. Dilution ~4.7% of pre-offering shares outstanding.",
+  "importanceScore": 7,
+  "eventType": "RIGHTS_OFFERING",
+  "sectorTags": ["Materials"],
+  "tickerTags": ["XXXXXX"],
+  "actionableFor": ["traders", "long_term_investors", "arbitrageurs"],
+  "generatedAt": "2026-05-06T11:32:14Z"
 }
 ```
 
