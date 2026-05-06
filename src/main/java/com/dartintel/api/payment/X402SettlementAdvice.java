@@ -234,19 +234,56 @@ public class X402SettlementAdvice implements ResponseBodyAdvice<Object> {
                     settle.transaction(),
                     verified.signatureHash()
             ));
-        } catch (DataIntegrityViolationException duplicate) {
+        } catch (DataIntegrityViolationException violation) {
             // signature_hash has a UNIQUE constraint (V4 migration:
-            // uq_payment_log_sig). A duplicate hits this only when two
-            // settlements landed for the same signature — which the
-            // SETNX replay guard plus our explicit-release-on-failure
-            // pattern should normally prevent, but a tight race after
-            // a transient facilitator outage could in theory get here.
-            // The first row is already on disk so the merchant ledger
-            // is intact; swallowing the duplicate keeps Spring from
-            // turning what is effectively idempotent success into a
-            // 500 with the response body half-flushed.
-            log.warn("payment_log duplicate row swallowed: sigHash={} tx={} (idempotent)",
-                    shortHash(verified.signatureHash()), settle.transaction());
+            // uq_payment_log_sig). A genuine duplicate hits this when
+            // two settlements landed for the same signature — which
+            // the SETNX replay guard plus our explicit-release-on-
+            // failure pattern should normally prevent, but a tight
+            // race after a transient facilitator outage could in
+            // theory get here. The first row is already on disk so
+            // the merchant ledger is intact; swallowing the duplicate
+            // keeps Spring from turning what is effectively idempotent
+            // success into a 500 with the response body half-flushed.
+            //
+            // BUT — DataIntegrityViolationException is also thrown for
+            // schema mismatches (column too small / SQL state 22001),
+            // NOT NULL violations (23502), CHECK violations (23514),
+            // and FK violations (23503). Round-7 introduced a
+            // "nonce:" + 0x + 64-hex replayKey shape (72 chars)
+            // without widening the column (still VARCHAR(64)). Every
+            // paid mainnet call after that change silently 22001'd,
+            // hit this catch, and was dropped from payment_log because
+            // we used to treat every integrity exception as "idempotent
+            // duplicate". V11 widens the column to 96, and below we
+            // inspect the JDBC SQLState so future repeats of the same
+            // failure mode are LOUD instead of silent.
+            //
+            // Note: Hibernate's JPA dialect surfaces UNIQUE violations
+            // as the parent DataIntegrityViolationException, NOT as
+            // Spring's DuplicateKeyException subclass. Subclass-based
+            // catch ordering does not help here — only inspecting the
+            // underlying SQLState distinguishes the cases reliably.
+            if (isUniqueConstraintViolation(violation)) {
+                log.warn("payment_log duplicate row swallowed: sigHash={} tx={} (idempotent)",
+                        shortHash(verified.signatureHash()), settle.transaction());
+            } else {
+                // Schema is out of sync with what the code is trying
+                // to write (or a non-null column came in null, or a
+                // CHECK failed). The on-chain settlement already
+                // happened (funds moved), so the response body still
+                // flushes. Treat it exactly the same as the DB-
+                // unreachable branch below: log every reconciliation
+                // field, flag PaymentNotifier, surface to operator.
+                log.error("payment_log integrity violation (NOT duplicate) — "
+                        + "settlement landed on-chain but row was rejected: "
+                        + "payer={} amount={} network={} tx={} sigHash={} endpoint={} reason={}",
+                        verified.payer(), amountHuman, verified.requirement().network(),
+                        settle.transaction(), shortHash(verified.signatureHash()),
+                        verified.endpoint(),
+                        X402PaywallInterceptor.sanitiseLogValue(violation.getMessage()));
+                reconciliationFailure = true;
+            }
         } catch (org.springframework.dao.DataAccessException dbDown) {
             // Postgres is unreachable / over capacity / mid-failover.
             // The on-chain settlement already happened — funds moved.
@@ -272,5 +309,40 @@ public class X402SettlementAdvice implements ResponseBodyAdvice<Object> {
 
     private static String shortHash(String hash) {
         return hash != null && hash.length() >= 8 ? hash.substring(0, 8) + "…" : String.valueOf(hash);
+    }
+
+    /**
+     * Walks the cause chain of a {@link DataIntegrityViolationException}
+     * to find the underlying JDBC {@link java.sql.SQLException} and
+     * checks whether its SQLState is {@code 23505} (Postgres'
+     * {@code unique_violation}).
+     *
+     * <p>Why not just catch a more specific exception? Hibernate's JPA
+     * dialect translates UNIQUE constraint failures into the parent
+     * {@code DataIntegrityViolationException}, not into Spring's
+     * {@code DuplicateKeyException} subclass — that subclass only
+     * fires when {@code JdbcTemplate} is on the path. We use JPA, so
+     * the only way to differentiate UNIQUE from string-too-long /
+     * NOT NULL / CHECK / FK violations (all of which translate to the
+     * same parent class) is to inspect the JDBC SQLState directly.
+     *
+     * <p>Package-private for unit tests.
+     */
+    static boolean isUniqueConstraintViolation(DataIntegrityViolationException ex) {
+        Throwable cause = ex;
+        while (cause != null) {
+            if (cause instanceof java.sql.SQLException sqlEx) {
+                // Postgres SQLState "23505" = unique_violation per
+                // SQL/Foundation. The constraint name is also in
+                // sqlEx.getMessage() and the JPA layer's wrapper, so
+                // a future check could tighten to specifically
+                // uq_payment_log_sig — but any UNIQUE on this row is
+                // safe to treat as idempotent given the table's only
+                // such constraint is on signature_hash.
+                return "23505".equals(sqlEx.getSQLState());
+            }
+            cause = cause.getCause();
+        }
+        return false;
     }
 }

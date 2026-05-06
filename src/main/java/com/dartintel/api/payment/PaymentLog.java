@@ -38,7 +38,12 @@ public class PaymentLog {
     @Column(name = "facilitator_tx_id", length = 80, updatable = false)
     private String facilitatorTxId;
 
-    @Column(name = "signature_hash", length = 64, nullable = false, updatable = false)
+    // Widened from 64 in V11 to fit the "nonce:" + 0x + 64-hex
+    // replay-key format introduced in round-7. Hibernate uses this
+    // length when ddl-auto is `validate` (it is, in production), so
+    // the JPA annotation must match the column TYPE in lock-step
+    // with the V11 migration or boot fails with a schema mismatch.
+    @Column(name = "signature_hash", length = 96, nullable = false, updatable = false)
     private String signatureHash;
 
     @CreationTimestamp

@@ -1,0 +1,40 @@
+-- Widen payment_log.signature_hash to fit the current `replayKey`
+-- format used by X402PaywallInterceptor.
+--
+-- The original column was VARCHAR(64), sized for a raw SHA-256 hex
+-- digest. Round-7 audit work introduced a more readable nonce-based
+-- key:
+--
+--     replayKey := "nonce:" + authorization.nonce
+--
+-- where `authorization.nonce` is the `0x` + 64-hex-char EIP-3009
+-- nonce — total length 72. Postgres rejected the insert with SQL
+-- state 22001 ("value too long for type character varying"), which
+-- Hibernate surfaces as DataIntegrityViolationException — the same
+-- exception type as a UNIQUE constraint violation. The settlement
+-- advice's idempotency guard therefore caught the wrong category of
+-- error, swallowed the failure as if it were a benign duplicate,
+-- and silently dropped every mainnet payment_log row written via the
+-- new replay-key shape. Settlements continued to land on-chain and
+-- responses kept returning 200, so the regression was invisible from
+-- the agent side.
+--
+-- Two layered fixes ship together:
+--
+--   1. (this migration) Widen the column to 96 so both the legacy
+--      raw-hash format and the new prefixed format insert without
+--      truncation. 96 is generous; the current 72-char shape leaves
+--      24 characters of headroom for any future prefix variant.
+--   2. (X402SettlementAdvice) Inspect the root cause of
+--      DataIntegrityViolationException and only treat
+--      uq_payment_log_sig UNIQUE violations as idempotent duplicates.
+--      Anything else surfaces as ERROR plus an explicit
+--      reconciliation log line so a future regression of this shape
+--      cannot hide.
+--
+-- Postgres treats VARCHAR length as a stored type modifier; widening
+-- is a metadata-only change with no table rewrite, so this migration
+-- is fast and safe to run online.
+
+ALTER TABLE payment_log
+    ALTER COLUMN signature_hash TYPE VARCHAR(96);
