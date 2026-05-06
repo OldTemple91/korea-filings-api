@@ -13,7 +13,7 @@ These targets are intentionally narrower than industry-leading paid APIs because
 | Free endpoint p95 latency | **≤ 100 ms** | same query, `uri="/v1/companies"` and `uri="/v1/disclosures/recent"` | `/actuator/prometheus` |
 | Cold (uncached) summary latency | **≤ 8 s p95** | `time(SummaryService.summarize)` Micrometer timer | `/actuator/prometheus` |
 | 5xx error rate | **< 0.5% / day** | `sum(... status=~"5..") / sum(...)` excluding `/actuator/*` | `/actuator/prometheus` |
-| `payment_log` reconciliation gap | **= 0 rows** | `SELECT count(*) FROM payment_log WHERE facilitator_tx_id IS NULL` | Postgres |
+| `payment_log` reconciliation gap | **= 0 rows** | `payment_log_reconciliation_gap_rows` gauge (per-minute scan with 5-min grace window) + `payment_log_reconciliation_failures_total` counter | `/actuator/prometheus` |
 
 ## Why these numbers
 
@@ -23,7 +23,7 @@ These targets are intentionally narrower than industry-leading paid APIs because
 
 **8 s cold summary** is dominated by the Gemini call itself; we can't go faster without a different model. The cache hit ratio is the real lever — every paid call after the first for the same `rcptNo` hits the cache and lands well under the 300 ms p95.
 
-**0 rows reconciliation gap** is the strictest target. Every settled payment must produce a `payment_log` row with a non-null `facilitator_tx_id`. The audit pass closed every code path that could leak, and `X402SettlementAdvice.persistPaymentLog` logs an ERROR when this would happen. The metric exists to catch a future regression.
+**0 rows reconciliation gap** is the strictest target. Every settled payment must produce a `payment_log` row with a non-null `facilitator_tx_id`. The round-9 audit found a buried regression of exactly this class (column-too-small swallowed as if it were an idempotent duplicate); the round-10 fix layered five defences against recurrence: V11 + V12 column widening, SQLState-based handler differentiation, the `PaymentLogReconciliationMonitor` Prometheus gauge above (per-minute scan with 5 min grace for in-flight rows), the `_failures_total` counter incremented from the integrity-violation / DB-down branches, and a wiring test that exercises all five persistence outcomes. RUNBOOK incident scenario 12 documents the manual backfill procedure when the alert fires. Detection now survives a mis-configured `X402_NOTIFY_WEBHOOK_URL` — Grafana can alert on either Prometheus signal independently of the webhook path.
 
 ## Error budget
 

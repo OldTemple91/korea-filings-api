@@ -122,14 +122,17 @@ com.dartintel.api
 ├── payment/                         — x402 v2 middleware
 │   ├── X402Paywall.java             — @interface (priceUsdc + pricingMode)
 │   ├── X402PaywallInterceptor.java  — preHandle: emit 402 / verify
-│   ├── X402SettlementAdvice.java    — afterCompletion: settle on 2xx
-│   ├── X402Properties.java          — facilitator URL, network, asset
+│   ├── X402SettlementAdvice.java    — afterCompletion: settle on 2xx; SQLState-based DataIntegrityViolation differentiation (23505 idempotent, others reconciliation-failure)
+│   ├── X402Properties.java          — facilitator URL, network, asset, EIP-712 token name/version
+│   ├── X402PropertiesValidator.java — @PostConstruct fail-fast on misconfig (zero-address, mainnet/testnet domain mismatch)
 │   ├── FacilitatorClient.java       — Coinbase CDP HTTP client
 │   ├── CdpJwtSigner.java            — Ed25519 JWT for CDP auth
 │   ├── PaymentStore.java            — Redis SETNX replay protection
+│   ├── PaymentNotifier.java         — opt-in Slack/Discord webhook on every settlement
+│   ├── PaymentLogReconciliationMonitor.java — @Scheduled gauge + counter on /actuator/prometheus for payment_log silent-drop detection
 │   ├── VerifiedPayment.java         — request-scoped after verify
-│   ├── PaymentLog.java              — entity
-│   ├── PaymentLogRepository.java
+│   ├── PaymentLog.java              — entity (V12 column widths)
+│   ├── PaymentLogRepository.java    — repo + countNullTxOlderThan(cutoff) for the gauge
 │   └── dto/
 │       ├── PaymentRequirement.java
 │       └── FacilitatorSettleResponse.java
@@ -213,9 +216,26 @@ the rare bad summary.
 ### `payment_log` (every settled x402 payment)
 
 `id`, `rcpt_no_accessed` (nullable for batch endpoints),
-`endpoint`, `amount_usdc`, `payer_address`, `facilitator_tx_id`,
+`endpoint VARCHAR(500)`, `amount_usdc`, `payer_address`,
+`facilitator_tx_id VARCHAR(200)`, `signature_hash VARCHAR(96)`,
 `settled_at`. The single source of truth for revenue. Used for
 on-chain reconciliation and tax prep.
+
+`signature_hash` is uniquely indexed (`uq_payment_log_sig`) — a
+double-write for the same EIP-3009 nonce is the operational
+definition of an idempotent retry, and the UNIQUE constraint is
+how the settlement advice's idempotency guard short-circuits.
+
+Column widths above are post-V11 (`signature_hash` 64 → 96 for
+the `"nonce:" + 0x + 64-hex` replay-key shape) and post-V12
+(`facilitator_tx_id` 80 → 200 to decouple from the facilitator's
+tx-reference format, `endpoint` 200 → 500 for forward-compat with
+multi-constraint query endpoints). All three widenings were a
+direct response to the round-9 silent-drop class — column-too-
+small produced SQLState 22001 which the previous handler swallowed
+as if it were a UNIQUE-constraint duplicate. The
+`X402SettlementAdvice` handler now inspects the JDBC SQLState
+explicitly and only treats `23505` as idempotent.
 
 ### `request_audit` (every non-GET or 4xx/5xx request, opt-in)
 

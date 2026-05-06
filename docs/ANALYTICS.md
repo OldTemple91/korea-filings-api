@@ -2,6 +2,13 @@
 
 What this is: a reusable SQL playbook for the `request_audit` table populated by `RequestAuditFilter` + `RequestAuditPersister`. The filter writes one row per non-GET request OR any 4xx/5xx response. Rows older than 90 days are pruned nightly at 04:00 UTC.
 
+> **Payment-side observability lives elsewhere.** This doc covers HTTP traffic shape (who hits us, with what UA, with what `X-PAYMENT` flag). Settlement-side health (does every paid 200 produce a `payment_log` row?) is exposed as Prometheus signals on `/actuator/prometheus`:
+>
+> - `payment_log_reconciliation_gap_rows` — per-minute gauge of rows older than 5 min with `facilitator_tx_id IS NULL`. Target: 0 (per [SLO.md](SLO.md)).
+> - `payment_log_reconciliation_failures_total` — counter incremented from the integrity-violation / DB-down branches of `X402SettlementAdvice`.
+>
+> A non-zero reading on either is a P0 ledger drift; [`docs/RUNBOOK.md`](RUNBOOK.md#12-payment_log_reconciliation_gap_rows--0-or-_failures_total-ticking) carries the response checklist.
+
 Run on the production VM:
 
 ```bash

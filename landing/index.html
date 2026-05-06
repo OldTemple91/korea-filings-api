@@ -225,23 +225,31 @@ Agent → <span class="label">GET /v1/disclosures/by-ticker?ticker=005930&amp;li
 #   HTTP/2 402
 #   payment-required: &lt;base64 PaymentRequired payload, declares amount = 15000 (0.015 USDC)&gt;</code></pre>
 
-<p>End-to-end with the official Python SDK (handles the EIP-3009 signing and the x402 retry):</p>
-<pre><code>pip install koreafilings</code></pre>
-<pre><code>from koreafilings import Client
+<p>End-to-end with the official TypeScript SDK (handles the EIP-3009 signing and the x402 retry — runs in Node, browsers, Cloudflare Workers, Deno):</p>
+<pre><code>npm install koreafilings</code></pre>
+<pre><code>import { KoreaFilings } from 'koreafilings';
 
-with Client(private_key="0x...", network="base") as client:
-    # 1. Free name → ticker resolution
-    matches = client.find_company("Samsung Electronics")
-    ticker = matches[0].ticker  # "005930"
+const client = new KoreaFilings({
+  privateKey: process.env.PAYER_PRIVATE_KEY as `0x${'$'}{string}`,
+  network: 'base',
+});
 
-    # 2. Paid batch summary fetch (0.005 × limit USDC)
-    filings = client.get_recent_filings(ticker, limit=5)
-    for f in filings:
-        print(f"[{f.importance_score}/10] {f.event_type}: {f.summary_en}")
-    print("paid:", client.last_settlement.tx_hash)</code></pre>
+// 1. Free name → ticker resolution
+const matches = await client.findCompany('Samsung Electronics');
+const ticker = matches[0]!.ticker;  // "005930"
+
+// 2. Paid batch summary fetch (0.005 × limit USDC)
+const filings = await client.getRecentFilings(ticker, 5);
+for (const f of filings) {
+  console.log(`[${'$'}{f.importanceScore}/10] ${'$'}{f.eventType}: ${'$'}{f.summaryEn}`);
+}
+console.log('paid:', client.lastSettlement?.transaction);</code></pre>
 
 <p style="font-size:13px;">
-  Or plug it straight into Claude Desktop / Cursor / Continue with the
+  Same surface in Python: <code>pip install koreafilings</code> →
+  <code>from koreafilings import Client</code> with <code>find_company</code> /
+  <code>get_recent_filings</code> in snake_case. Or plug it straight
+  into Claude Desktop / Cursor / Continue with the
   <a href="https://pypi.org/project/koreafilings-mcp/">MCP server</a>
   — <code>uv tool install koreafilings-mcp</code> exposes
   <code>find_company</code>, <code>list_recent_filings</code>,
@@ -262,7 +270,7 @@ with Client(private_key="0x...", network="base") as client:
 
 <h2>Status</h2>
 <p>
-  Live on <strong>Base mainnet</strong> — payments settle in real USDC via the Coinbase CDP facilitator. v1.1 (name-based agent flow) is shipped with x402 v2 transport-spec headers (<code>PAYMENT-SIGNATURE</code> / <code>PAYMENT-RESPONSE</code>): <a href="https://pypi.org/project/koreafilings/">Python SDK 0.3.1</a> and <a href="https://pypi.org/project/koreafilings-mcp/">MCP server 0.3</a> are on PyPI, and the service is indexed at <a href="https://www.x402scan.com">x402scan</a>.
+  Live on <strong>Base mainnet</strong> — payments settle in real USDC via the Coinbase CDP facilitator. v1.1 (name-based agent flow) is shipped with x402 v2 transport-spec headers (<code>PAYMENT-SIGNATURE</code> / <code>PAYMENT-RESPONSE</code>): <a href="https://www.npmjs.com/package/koreafilings">TypeScript SDK 0.1.2</a> on npm, <a href="https://pypi.org/project/koreafilings/">Python SDK 0.3.1</a> and <a href="https://pypi.org/project/koreafilings-mcp/">MCP server 0.3</a> on PyPI, and the service is indexed at <a href="https://www.x402scan.com">x402scan</a>.
 </p>
 <p>
   <strong>What's next — v1.2 deep filing analysis.</strong> Today's summaries come from filing metadata only (title, filer, date, DART flag), so quantitative events ("rights offering size", "supply contract value") come back as "details are in the filing body". v1.2 pulls the per-filing XBRL via DART's <code>/document.xml</code> and template-extracts the actual numbers for the six highest-value event types — RIGHTS_OFFERING, CONVERTIBLE_BOND_ISSUANCE, DEBT_ISSUANCE, ACQUISITION, SUPPLY_CONTRACT_SIGNED, MAJOR_SHAREHOLDER_FILING — into a structured <code>keyFacts</code> field. New paid endpoint <code>/v1/disclosures/deep?rcptNo=…</code> at ~0.020 USDC; existing endpoints stay metadata-only at 0.005 USDC so callers pick depth at call time. See the <a href="https://github.com/OldTemple91/korea-filings-api/blob/main/docs/ROADMAP.md#v12--deep-filing-analysis-planned">roadmap</a> for the full plan.

@@ -1,4 +1,4 @@
-# STATUS — where we left off (2026-05-06)
+# STATUS — where we left off (2026-05-06, post-round-10)
 
 Read this first when picking up on a different machine. Summarises what is
 live, what's next, and the minimum setup to keep moving.
@@ -18,12 +18,14 @@ live, what's next, and the minimum setup to keep moving.
 - **Weeks 1–5 complete.** Ingestion, summarisation, x402 paywall, public
   deployment, landing page, Python SDK, MCP server, OpenAPI docs — all
   live in production at `api.koreafilings.com`.
-- **15 on-chain x402 settlements** in `payment_log` — 9 testnet
-  (Sepolia) + 6 mainnet (Base). Every settlement to date has been
-  the maintainer's own `testclient/payer.py` regression run; **zero
-  external paying wallets** have completed the 402 → sign → 200 loop
-  yet. The infrastructure works; awareness / HN / Smithery are the
-  next bottlenecks (TS SDK landed today).
+- **16 on-chain x402 settlements** in `payment_log` — 9 testnet
+  (Sepolia) + 7 mainnet (Base). Every settlement to date has been
+  the maintainer's own `testclient/payer.py` or TS-SDK live test;
+  **zero external paying wallets** have completed the 402 → sign →
+  200 loop yet. The infrastructure works end-to-end (TS SDK live
+  test on 2026-05-06 confirmed every layer including the V11/V12
+  widening + SQLState handler); the bottleneck is awareness, not
+  code. Awareness / HN / Smithery are the next bottlenecks.
 - **First mainnet settlement**:
   [`0x681c995e…`](https://basescan.org/tx/0x681c995e149d3ce5765ea8a3b0f921a45352fccefbd9fc9258bf4f6141eafd7c).
   Facilitator: Coinbase CDP (Ed25519 JWT auth). Bug caught at flip
@@ -49,11 +51,21 @@ live, what's next, and the minimum setup to keep moving.
   Open402DirectoryCrawler, x402audit, OAI-SearchBot, Googlebot,
   flows-crawler).
 - **PyPI packages published** — `koreafilings` 0.3.1 + `koreafilings-mcp` 0.3.0.
-- **npm package published** — `koreafilings` 0.1.0 (TypeScript SDK,
-  ESM + CJS, viem-based EIP-712 signing). Brings the same surface
-  to the JS/TS agent ecosystem (LangChain.js, Vercel AI SDK,
-  Cloudflare Workers, browser-side agents) where Python coverage was
-  the previous gap.
+- **npm package published — `koreafilings` 0.1.2** (TypeScript SDK,
+  ESM + CJS, viem 2.21.0 exact pin, KNOWN_DOMAINS allowlist that
+  hard-fails on a non-canonical USDC contract, structured
+  `PaymentError.detail`, `lastSettlementError` field for
+  disambiguating the three null-`lastSettlement` cases). Brings the
+  same surface to the JS/TS agent ecosystem (LangChain.js, Vercel
+  AI SDK, Cloudflare Workers, browser-side agents) where Python
+  coverage was the previous gap. See
+  [`sdk/typescript/CHANGELOG.md`](../sdk/typescript/CHANGELOG.md)
+  for the 0.1.0 → 0.1.1 → 0.1.2 progression.
+- **CI pipeline** — `.github/workflows/test.yml` runs `gradle test`
+  + `npm typecheck/test/build` on every push and PR. Previously,
+  tests gated only at the maintainer's laptop; the round-7 silent-
+  drop bug surfaced during a manual SDK live test, not in CI. Now
+  any future regression of that class is caught before merge.
 - **Directory registrations** — x402scan + Glama + mcp.so done;
   Smithery deferred (site outage at submission time, retry).
 - **Next**: HN Show HN post on the next available Tue/Wed at 22:00 KST.
@@ -73,7 +85,7 @@ live, what's next, and the minimum setup to keep moving.
 | Health | https://api.koreafilings.com/actuator/health | Liveness/readiness. |
 | Paid summary | `GET /v1/disclosures/summary?rcptNo=…` | 0.005 USDC on Base mainnet via Coinbase CDP facilitator. |
 | Python SDK | https://pypi.org/project/koreafilings/ | `pip install koreafilings` |
-| TypeScript SDK | https://www.npmjs.com/package/koreafilings | `npm install koreafilings` |
+| TypeScript SDK | https://www.npmjs.com/package/koreafilings | `npm install koreafilings` (currently 0.1.2) |
 | MCP server | https://pypi.org/project/koreafilings-mcp/ | `uv tool install koreafilings-mcp` |
 | Source | https://github.com/OldTemple91/korea-filings-api | Private push via `OldTemple91`. |
 
@@ -127,6 +139,52 @@ live, what's next, and the minimum setup to keep moving.
    `git.mode=simple`, Hikari pool sizing, and HTTP-fetch lifted out
    of `@Transactional` in the DART poller / `corpCode` sync.
    See commit `e5cd9ae` for the full diff.
+
+   **Round-9 / 10 — payment_log silent-drop P0 + multi-layer defence (2026-05-06).**
+   The TS SDK's first live mainnet test surfaced a buried regression
+   from round-7: the API returned 200 + a settlement header for paid
+   calls while `payment_log` rows were being silently dropped by an
+   over-broad `DataIntegrityViolationException` handler. Root cause:
+   round-7 changed the replay-key shape to `"nonce:" + 0x + 64-hex`
+   (72 chars), but `payment_log.signature_hash` stayed at
+   `VARCHAR(64)`. Postgres rejected with SQL state 22001, which the
+   handler treated identically to a UNIQUE-constraint duplicate.
+
+   Fix shipped as five layered defences across rounds 9 and 10:
+
+   - **V11 migration** widens `signature_hash` to VARCHAR(96).
+   - **V12 migration** widens `facilitator_tx_id` 80 → 200 and
+     `endpoint` 200 → 500 to defuse the same column-truncation
+     class for two more columns the same review identified as
+     latent.
+   - **SQLState differentiation** — `X402SettlementAdvice` walks
+     the cause chain to inspect the underlying JDBC SQLException's
+     state code. Only `23505` (UNIQUE) is treated as idempotent;
+     everything else (22001, 23502 NOT NULL, 23514 CHECK, FK)
+     surfaces as a loud reconciliation-failure log + flag, with
+     the {@link PaymentNotifier} alerting on the same flag.
+   - **Reconciliation gauge + counter** — new
+     `PaymentLogReconciliationMonitor` exposes
+     `payment_log_reconciliation_gap_rows` (per-minute Postgres
+     scan) and `payment_log_reconciliation_failures_total`
+     (incremented from the integrity-violation / DB-down branches)
+     on `/actuator/prometheus`. Detection now survives a
+     mis-configured `X402_NOTIFY_WEBHOOK_URL` — Grafana alert can
+     fire on either signal.
+   - **Test integration** — `DisclosuresControllerIT` now asserts
+     a real `payment_log` row lands per paid 200 (exact regression
+     guard); a new `X402SettlementAdviceWiringTest` covers all
+     five persistence outcomes (success, 23505 idempotent, 22001,
+     23502, DB-down) end-to-end. CI workflow runs both on every
+     push.
+
+   Plus round-10 surface fills: `/.well-known/x402` now publishes
+   the `extra` block (canonical EIP-712 `name` + `version` per
+   chain) so SDK 0.1.1+ KNOWN_DOMAINS allowlist consumers can
+   verify the contract before issuing a 402; `llms.txt` updated
+   with TS SDK install + format-constraint regex; 405 envelope
+   emits absolute URLs so tool-chain agents passing the body
+   through don't lose origin context.
 
    **Round-8 observability + agent discovery (2026-05-06).** Built
    the analytics infrastructure to answer "did the next release move

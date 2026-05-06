@@ -294,8 +294,88 @@ README, landing, PRD, and the HN draft were also rewritten to lead
 with the pay-per-call delivery model and to explicitly name three
 non-target segments (Korean retail, traditional sell-side, foreign
 institutional with Asia desks) so future contributors don't drift
-toward features none of them want. The remaining highest-leverage
-moves are HN Show HN and Smithery registration.
+toward features none of them want.
+
+**Round-9 / 10 — payment_log silent-drop P0 + multi-layer defence (same day, 2026-05-06).**
+
+The TS SDK's first live mainnet test (limit=2, 0.01 USDC) returned
+a 200 + a settlement header, but `payment_log` had no new row.
+Investigation showed the round-7 work had introduced a replay-key
+shape (`"nonce:" + 0x + 64-hex` = 72 chars) that exceeded the
+`signature_hash VARCHAR(64)` column. Postgres rejected with SQL
+state 22001; Hibernate wrapped it in
+`DataIntegrityViolationException`; the round-7 idempotency handler
+caught the parent class and treated every integrity violation as a
+benign duplicate. Every paid mainnet settlement after round-7 was
+silently dropped from the merchant ledger. Settlements continued
+to land on-chain and clients kept getting their summaries, so the
+regression was invisible from outside the database.
+
+Five layered defences shipped:
+
+- **V11 migration** — widen `signature_hash` 64 → 96 (commit `ef68797`).
+- **V12 migration** — widen `facilitator_tx_id` 80 → 200 and
+  `endpoint` 200 → 500 to defuse the same column-truncation class
+  for two more columns identified as latent (commit `f672fa7`).
+- **`X402SettlementAdvice` SQLState differentiation** — walks the
+  exception cause chain to inspect the underlying JDBC SQLState.
+  Only `23505` (UNIQUE) is treated as idempotent; 22001 / 23502 /
+  23503 / 23514 surface as a loud reconciliation-failure log +
+  `reconciliationFailure=true` flag flowing to `PaymentNotifier`
+  and a Micrometer counter.
+- **`PaymentLogReconciliationMonitor`** (commit `cb95153`) —
+  `@Scheduled` per-minute scan of `payment_log` for rows older
+  than 5 minutes with `facilitator_tx_id IS NULL`. Exposes
+  `payment_log_reconciliation_gap_rows` gauge and
+  `payment_log_reconciliation_failures_total` counter on
+  `/actuator/prometheus`. Detection now survives a mis-configured
+  `X402_NOTIFY_WEBHOOK_URL` — a Grafana alert can fire on either
+  signal independently of the webhook path.
+- **Integration tests** — `DisclosuresControllerIT.facilitatorValidAcceptance...`
+  now asserts a real row lands in `payment_log` with the expected
+  shape (the original test only asserted the controller response,
+  which would have passed even under the silent-drop bug). New
+  `X402SettlementAdviceWiringTest` covers all five persistence
+  outcomes (success, 23505 idempotent, 22001 truncation, 23502
+  not-null, DB-down) with mocked deps. Both run in CI.
+
+Round-10 also closed the rest of the multi-agent review's findings
+across both languages and three doc surfaces:
+
+- **TS SDK 0.1.1 → 0.1.2** — `KNOWN_DOMAINS` allowlist hard-fails
+  on a non-canonical USDC contract (defends against a malicious
+  server substituting a different verifyingContract), structured
+  `PaymentError.detail` (object with `expected` / `observed` /
+  `recommendation` so an LLM agent can branch without parsing the
+  human message), `lastSettlementError` field disambiguates the
+  three previously-identical null-`lastSettlement` cases (free
+  tier / header absent / header malformed-or-oversize),
+  `viem 2.21.0` exact pin (no caret) for stable EIP-712 typed-data
+  encoding, viem encoding canary test fails before any silent
+  bump can ship a broken SDK.
+- **`/.well-known/x402` now publishes `extra`** — the canonical
+  EIP-712 `name` + `version` for the running chain, so SDK 0.1.1+
+  KNOWN_DOMAINS consumers can verify the contract from the
+  discovery doc before issuing a 402.
+- **`llms.txt` accuracy** — TS SDK install line + `viem 2.21.0`
+  pin note + `rcptNo` / `ticker` regex format constraints
+  (mirrors the server's `@Pattern` rules) for agents not using
+  the SDK.
+- **405 envelope absolute URLs** — `hint` and `discovery` emit
+  full `https://api.koreafilings.com/...` URLs reconstructed from
+  Tomcat's already-trusted forward headers, so a tool-chain agent
+  passing the envelope through a multi-step flow does not lose
+  origin context.
+- **CI** — `.github/workflows/test.yml` runs `gradle test` +
+  `npm typecheck/test/build` on every push and PR. Round-9's P0
+  was caught by a manual SDK live test, not by CI; that gate is
+  now automated.
+
+**Total today**: 9 commits (round-9 P0 fix + round-10 ship +
+round-9 / round-10 review fixes), 190 tests green (Java 158, TS
+32). `payment_log` mainnet rows: 7, all from the maintainer's own
+testclient or TS-SDK live test. Highest-leverage remaining moves:
+HN Show HN and Smithery registration.
 
 ## Guardrails Throughout
 

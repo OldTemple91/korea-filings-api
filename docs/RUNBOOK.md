@@ -270,7 +270,50 @@ Manual refund: send USDC from the merchant wallet directly via Coinbase Wallet /
 
 ---
 
-### 12. DART API blocks our key
+### 12. `payment_log_reconciliation_gap_rows > 0` (or `_failures_total` ticking)
+
+**Symptom**: Grafana alert on either Prometheus signal — gauge above zero or counter incremented.
+
+**What it means**: a settlement landed (the facilitator confirmed and the response body flushed to the client with a `PAYMENT-RESPONSE` header) but the corresponding `payment_log` row was rejected by the database. The exact failure mode that round-9 found buried: column-too-small (SQLState 22001), NOT NULL violation (23502), CHECK violation (23514), FK violation (23503), or a transient DB outage. **Funds moved on-chain — they cannot be undone — but the merchant ledger does not have a record.** SLO target: 0 rows.
+
+**Triage:**
+
+```bash
+# 1. Find the rows the gauge is counting (anything older than 5 min with null tx).
+ssh root@<PROD_VM> 'docker exec dartintel-postgres psql -U dartintel -d dartintel -c \
+  "SELECT id, payer_address, amount_usdc, endpoint, settled_at, signature_hash
+   FROM payment_log
+   WHERE facilitator_tx_id IS NULL AND settled_at < NOW() - INTERVAL '"'"'5 minutes'"'"'
+   ORDER BY settled_at DESC;"'
+
+# 2. Find the matching ERROR log lines (X402SettlementAdvice emits a structured line per failure).
+ssh root@<PROD_VM> 'docker logs --since 1h dartintel-app 2>&1 | grep -iE "integrity violation \(NOT duplicate\)|payment_log persist FAILED" | tail -20'
+```
+
+The log line carries the SQLState reason (`22001` / `23502` / etc.), the payer wallet, the on-chain tx hash, and the endpoint. With those four fields you can:
+
+1. **Confirm on-chain** — `https://basescan.org/tx/<tx>` shows the `transferWithAuthorization` succeeded.
+2. **Manually backfill the row** — `INSERT INTO payment_log (...)` with the values from the log. Use `signature_hash` from the log so the UNIQUE constraint prevents a duplicate from a future retry.
+3. **Fix the root cause** — if 22001, identify the column whose width is too narrow and add a new V-migration to widen it. The same class as V11 (signature_hash) and V12 (facilitator_tx_id, endpoint).
+
+```sql
+-- Manual backfill template. Replace placeholders with values from the ERROR log line.
+INSERT INTO payment_log (
+    rcpt_no_accessed, endpoint, amount_usdc, payer_address, network,
+    facilitator_tx_id, signature_hash, settled_at
+) VALUES (
+    '<rcpt_no_or_NULL>', '<endpoint>', '<amount>', '<payer>', '<network>',
+    '<tx_hash_from_basescan>', '<sigHash_from_log>', NOW()
+);
+```
+
+After the backfill, the next gauge tick will return zero. If the underlying schema problem isn't fixed, the same failure recurs on the next paid call and the gauge climbs again.
+
+**Why this exists**: the round-9 silent-drop incident dropped multiple mainnet payments from `payment_log` over weeks before a TS SDK live test surfaced the gap. The gauge + counter make the next instance of the same class visible within 1-2 minutes; this RUNBOOK entry makes the response a checklist.
+
+---
+
+### 13. DART API blocks our key
 
 **Symptom**: `DartPollingScheduler` logs `DART API error status=011` (rate-limited) or `403`; ingestion stops.
 
