@@ -91,6 +91,7 @@ export class KoreaFilings {
   private readonly baseUrl: string;
   private readonly timeoutMs: number;
   private _lastSettlement: SettlementProof | null = null;
+  private _lastSettlementError: string | null = null;
 
   constructor(opts: ClientOptions) {
     if (!opts.privateKey || !opts.privateKey.startsWith('0x') || opts.privateKey.length !== 66) {
@@ -122,6 +123,27 @@ export class KoreaFilings {
   /** Settlement proof from the most recent successful paid call, or `null`. */
   get lastSettlement(): SettlementProof | null {
     return this._lastSettlement;
+  }
+
+  /**
+   * Diagnostic flag for the case where a paid call succeeded
+   * (HTTP 200, content delivered, money moved) but the
+   * `PAYMENT-RESPONSE` header was missing, malformed, or oversized.
+   * `null` means either no paid call has run or the last paid call
+   * had a clean settlement proof; a non-null string is the reason
+   * the SDK refused to parse it (`'oversize'`, `'not_object'`,
+   * `'missing_success'`, `'malformed_json'`, `'header_absent'`).
+   *
+   * <p>Without this field, an agent inspecting `lastSettlement` on
+   * a 200 response cannot distinguish (a) free-tier response,
+   * (b) paid call where the server omitted the header,
+   * (c) paid call where the server sent a malformed/oversized
+   * header. All three look identical (`null`); the user has paid in
+   * case (c) and lost the on-chain receipt unless they can
+   * reconcile from log / basescan / `payment_log`.
+   */
+  get lastSettlementError(): string | null {
+    return this._lastSettlementError;
   }
 
   // ------------------------------------------------------------------
@@ -267,7 +289,15 @@ export class KoreaFilings {
     if (requirement.network !== this.expectedChain) {
       throw new PaymentError(
         'network_mismatch',
-        `server advertises ${requirement.network}, client configured for ${this.expectedChain}`,
+        {
+          expected: this.expectedChain,
+          observed: requirement.network,
+          recommendation: 'reconfigure_client_or_refuse_server',
+          rationale:
+            'The 402 challenge advertised a chain different from the one the ' +
+            'client was constructed with. Either reconfigure the client to ' +
+            'match the server, or treat the discrepancy as hostile and stop.',
+        },
       );
     }
 
@@ -301,7 +331,28 @@ export class KoreaFilings {
     if (!paid.ok) {
       throw new ApiError(paid.status, await safeJson(paid));
     }
-    this._lastSettlement = settlementRaw ?? null;
+    if (settlementRaw) {
+      this._lastSettlement = settlementRaw;
+      this._lastSettlementError = null;
+    } else {
+      // Settled response (HTTP 200, paid call retried) but no
+      // parseable settlement proof. Surface the reason so an agent
+      // looking at `lastSettlement === null` after a 200 can tell
+      // "no header at all" apart from "header was rejected by the
+      // 16 KB cap / shape guard". The on-chain payment is non-
+      // refundable in either case — the proof is recoverable from
+      // the server's payment_log if needed.
+      this._lastSettlement = null;
+      this._lastSettlementError = settlementHeader
+                ? 'malformed_or_oversize'
+                : 'header_absent';
+      // eslint-disable-next-line no-console
+      console.warn(
+        `x402: paid 200 returned without a parseable settlement proof ` +
+          `(${this._lastSettlementError}). The on-chain transfer happened — ` +
+          `recover the tx hash via the server's payment_log if reconciliation matters.`,
+      );
+    }
     return paid.json();
   }
 

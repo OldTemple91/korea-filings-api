@@ -155,12 +155,22 @@ export async function signEip3009(
   const known = KNOWN_DOMAINS[String(chainId)];
   if (known) {
     if (requirement.asset.toLowerCase() !== known.verifyingContract.toLowerCase()) {
+      // Structured detail an LLM agent can reason about without
+      // string-parsing the human-readable message: the agent reads
+      // .detail.expected vs .detail.observed and decides whether
+      // to refuse the server (mismatch is hostile or
+      // misconfigured) or to fall back to a different endpoint.
       throw new PaymentError(
         'asset_mismatch',
-        `server advertises asset ${requirement.asset} for chain ${chainId} ` +
-          `but SDK's allowlist for this chain is ${known.verifyingContract}. ` +
-          'Refusing to sign — a wrong verifyingContract burns the EIP-3009 ' +
-          'nonce on-chain or, worse, signs a transfer against an unrelated contract.',
+        {
+          expected: known.verifyingContract,
+          observed: requirement.asset,
+          chainId,
+          recommendation: 'refuse_server',
+          rationale:
+            'Refusing to sign — a wrong verifyingContract burns the EIP-3009 ' +
+            'nonce on-chain or, worse, signs a transfer against an unrelated contract.',
+        },
       );
     }
     domainName = known.name;

@@ -83,11 +83,69 @@ Three classes, all extending `KoreaFilingsError`:
 
 - `ApiError` — non-2xx, non-402 HTTP response. Carries `status` and
   the parsed JSON body.
-- `PaymentError` — payment flow itself failed (network mismatch,
-  empty `accepts[]`, signature rejected, settle failed). Carries
-  `reason` and any settlement-response detail.
+- `PaymentError` — payment flow itself failed. Carries a stable
+  `reason` string and a structured `detail` (object or wire payload)
+  that an agent can branch on without parsing the human message.
+  See the `reason` table below.
 - `ConfigurationError` — only thrown at construction time when
-  `privateKey` or `network` is malformed.
+  `privateKey` or `network` is malformed, or when a malformed
+  `rcptNo` / `ticker` is passed to `getSummary` / `getRecentFilings`
+  (validated client-side BEFORE issuing the unpaid GET, so a bad
+  input does not burn a nonce slot).
+
+### `PaymentError.reason` vocabulary
+
+| `reason` | Where it fires | Recoverable? | Recommendation |
+|---|---|---|---|
+| `empty_accepts` | 402 body has no `accepts[]` entries — server bug | No, terminal | Refuse this server, contact maintainer |
+| `invalid_network` | 402's `network` is not the CAIP-2 `eip155:<chainId>` shape | No, terminal | Refuse this server |
+| `network_mismatch` | 402 advertises a chain ≠ client's `network` config | Maybe | Reconfigure client to match server, or refuse if hostile. `detail` has `expected` + `observed` |
+| `asset_mismatch` | Known chain but server advertises a non-canonical USDC contract | **No** — terminal, hostile | Refuse this server. `detail` has `expected` + `observed` + `recommendation` |
+| `payment_rejected` | Facilitator's `/verify` rejected the signature | Sometimes | Check wallet key / clock skew, retry with fresh nonce |
+| `settle_failed` | Facilitator's `/settle` rejected after a successful verify | Sometimes | Wait for facilitator to clear, retry with fresh nonce |
+| (facilitator-supplied) | A 402 retry returned `success:false` with a custom `errorReason` | Depends | Inspect the message — usually transient |
+
+```ts
+import { KoreaFilings, ApiError, PaymentError } from 'koreafilings';
+
+try {
+  const filings = await client.getRecentFilings('005930', 5);
+} catch (e) {
+  if (e instanceof PaymentError) {
+    if (e.reason === 'asset_mismatch') {
+      // Server advertised a non-canonical USDC contract — never retry, treat as hostile.
+      throw new Error('Refusing to use a server that advertises a non-canonical USDC contract');
+    } else if (e.reason === 'network_mismatch') {
+      console.error('chain mismatch:', e.detail);
+    } else {
+      console.error('payment refused:', e.reason, e.detail);
+    }
+  } else if (e instanceof ApiError) {
+    console.error('api error:', e.status, e.body);
+  } else {
+    throw e;
+  }
+}
+```
+
+### `lastSettlement` and `lastSettlementError`
+
+After a paid call returns 200, `client.lastSettlement` carries the
+on-chain settlement proof (tx hash, payer, network). It is `null` in
+three different cases:
+
+| `lastSettlement` | `lastSettlementError` | Means |
+|---|---|---|
+| `SettlementProof` object | `null` | Paid call settled cleanly |
+| `null` | `null` | Free-tier response — no payment was needed |
+| `null` | `'header_absent'` | Paid call (HTTP 200, money moved) but server omitted `PAYMENT-RESPONSE` |
+| `null` | `'malformed_or_oversize'` | Paid call but the header was unparseable or > 16 KB (the SDK rejected to defend against DoS) |
+
+Use `lastSettlementError` to disambiguate. In the `header_absent` /
+`malformed_or_oversize` cases the on-chain transfer still happened —
+the proof is recoverable from the server's `payment_log` table if
+reconciliation matters; the SDK itself logs a `console.warn` so the
+side-channel is visible.
 
 ```ts
 import { KoreaFilings, ApiError, PaymentError } from 'koreafilings';

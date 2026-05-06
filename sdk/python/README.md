@@ -200,6 +200,26 @@ except ConfigurationError as e:
     print("config:", e)
 ```
 
+### `PaymentError.reason` vocabulary
+
+A stable string field an agent can branch on without parsing the
+human message. Same set as the TypeScript SDK uses:
+
+| `reason` | Where it fires | Recoverable? | Recommendation |
+|---|---|---|---|
+| `empty_accepts` | 402 body has no `accepts[]` entries — server bug | No, terminal | Refuse this server |
+| `network_mismatch` | 402 advertises a chain ≠ client's `network` config | Maybe | Reconfigure client to match server, or refuse if hostile |
+| `payment_rejected` | Facilitator's `/verify` rejected the signature | Sometimes | Check wallet key / clock skew, retry with fresh nonce |
+| `settle_failed` | Facilitator's `/settle` rejected after a successful verify | Sometimes | Wait for facilitator to clear, retry with fresh nonce |
+| (facilitator-supplied) | A 402 retry returned `success:false` with a custom `errorReason` | Depends | Inspect the message — usually transient |
+
+The TypeScript SDK 0.1.2+ adds two more reasons (`invalid_network`,
+`asset_mismatch`) tied to its `KNOWN_DOMAINS` allowlist; the Python
+SDK soft-warns on the same conditions today and may add equivalent
+hard-fail behaviour in 0.4.0. If you write cross-language error
+handling, branch on `reason` rather than on exception subclass —
+the subclass tree is identical, only the `reason` set differs.
+
 ## Security notes
 
 - **The private key signs real-money authorizations.** Do not ship it

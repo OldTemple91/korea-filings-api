@@ -1,6 +1,6 @@
 {
   "name": "koreafilings",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "TypeScript SDK for koreafilings.com — AI-summarized Korean DART disclosures, paid per call in USDC via x402.",
   "keywords": [
     "x402",
