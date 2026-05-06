@@ -1,7 +1,6 @@
 package com.dartintel.api.ingestion;
 
 import com.dartintel.api.company.CompanyService;
-import com.dartintel.api.summarization.job.SummaryJobQueue;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -40,9 +39,6 @@ class DartPollingSchedulerTest {
     ValueOperations<String, String> valueOps;
 
     @Mock
-    SummaryJobQueue summaryJobQueue;
-
-    @Mock
     CompanyService companyService;
 
     DartPollingScheduler scheduler;
@@ -50,11 +46,14 @@ class DartPollingSchedulerTest {
     @BeforeEach
     void setUp() {
         DartProperties props = new DartProperties(
-                new DartProperties.Api("http://x", "k", new DartProperties.Api.Timeout(1000, 1000)),
+                new DartProperties.Api(
+                        "http://x", "k",
+                        new DartProperties.Api.Timeout(1000, 1000),
+                        new DartProperties.Api.Document(1000, 1000, 5 * 1024 * 1024)),
                 new DartProperties.Polling(true, 30000, 1, 100)
         );
         scheduler = new DartPollingScheduler(
-                dartClient, disclosureRepository, redisTemplate, props, summaryJobQueue, companyService);
+                dartClient, disclosureRepository, redisTemplate, props, companyService);
         when(redisTemplate.opsForValue()).thenReturn(valueOps);
         // Default to "no ticker mapping" so existing tests stay
         // unaffected. Tests that care about ticker resolution can
@@ -85,7 +84,8 @@ class DartPollingSchedulerTest {
                         && d.getRceptDt().equals(LocalDate.of(2026, 4, 23))
                         && d.getRm().equals("유")
                         && d.getCorpNameEng() == null));
-        verify(summaryJobQueue).push("20260423000123");
+        // v1.1 lazy pivot: ingestion no longer pushes to the summary
+        // queue; summarisation runs synchronously on the first paid call.
         verify(valueOps).set(DartPollingScheduler.CURSOR_KEY, "20260423");
     }
 
@@ -105,7 +105,6 @@ class DartPollingSchedulerTest {
         scheduler.poll();
 
         verify(disclosureRepository, never()).save(any());
-        verify(summaryJobQueue, never()).push(anyString());
         verify(valueOps, never()).set(eq(DartPollingScheduler.CURSOR_KEY), anyString());
     }
 

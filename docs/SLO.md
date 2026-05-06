@@ -11,7 +11,7 @@ These targets are intentionally narrower than industry-leading paid APIs because
 | Monthly availability (paid endpoints) | **99.0%** | `(1 - sum(http_server_requests_seconds_count{uri=~"/v1/disclosures/.*",status=~"5.."}) / sum(http_server_requests_seconds_count{uri=~"/v1/disclosures/.*"}))` over 30d | `/actuator/prometheus` |
 | Cached paid summary p95 latency | **≤ 300 ms** | `histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket{uri="/v1/disclosures/summary",status="200"}[5m])))` | `/actuator/prometheus` |
 | Free endpoint p95 latency | **≤ 100 ms** | same query, `uri="/v1/companies"` and `uri="/v1/disclosures/recent"` | `/actuator/prometheus` |
-| Cold (uncached) summary latency | **≤ 8 s p95** | `time(SummaryService.summarize)` Micrometer timer | `/actuator/prometheus` |
+| Cold (uncached) summary latency | **≤ 12 s p95** | `time(SummaryService.summarize)` Micrometer timer | `/actuator/prometheus` |
 | 5xx error rate | **< 0.5% / day** | `sum(... status=~"5..") / sum(...)` excluding `/actuator/*` | `/actuator/prometheus` |
 | `payment_log` reconciliation gap | **= 0 rows** | `payment_log_reconciliation_gap_rows` gauge (per-minute scan with 5-min grace window) + `payment_log_reconciliation_failures_total` counter | `/actuator/prometheus` |
 
@@ -21,7 +21,7 @@ These targets are intentionally narrower than industry-leading paid APIs because
 
 **300 ms cached p95** is the right number for a single-region (Europe) deployment serving global agents. The PRD originally targeted 200 ms; adding two facilitator round-trips per paid call (verify + settle) at ~50 ms each pushes the floor up. Once the settlement path is asynchronised (capacity audit P0), tightening to 200 ms is realistic.
 
-**8 s cold summary** is dominated by the Gemini call itself; we can't go faster without a different model. The cache hit ratio is the real lever — every paid call after the first for the same `rcptNo` hits the cache and lands well under the 300 ms p95.
+**12 s cold summary** covers the round-11 lazy-generation path: DART `/document.xml` body fetch (~2-5 s) + jsoup parse (~50 ms) + Gemini call (~5-7 s) + write-back. The body fetch can fall through to title-only on a 404 / open `dart-document` breaker — that path is faster (~6 s) but lower quality. The cache hit ratio is the real lever — every paid call after the first for the same `rcptNo` hits the cache and lands well under the 300 ms p95.
 
 **0 rows reconciliation gap** is the strictest target. Every settled payment must produce a `payment_log` row with a non-null `facilitator_tx_id`. The round-9 audit found a buried regression of exactly this class (column-too-small swallowed as if it were an idempotent duplicate); the round-10 fix layered five defences against recurrence: V11 + V12 column widening, SQLState-based handler differentiation, the `PaymentLogReconciliationMonitor` Prometheus gauge above (per-minute scan with 5 min grace for in-flight rows), the `_failures_total` counter incremented from the integrity-violation / DB-down branches, and a wiring test that exercises all five persistence outcomes. RUNBOOK incident scenario 12 documents the manual backfill procedure when the alert fires. Detection now survives a mis-configured `X402_NOTIFY_WEBHOOK_URL` — Grafana can alert on either Prometheus signal independently of the webhook path.
 

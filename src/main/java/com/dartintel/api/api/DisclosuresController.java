@@ -9,6 +9,7 @@ import com.dartintel.api.ingestion.DisclosureRepository;
 import com.dartintel.api.payment.X402Paywall;
 import com.dartintel.api.summarization.DisclosureSummary;
 import com.dartintel.api.summarization.DisclosureSummaryRepository;
+import com.dartintel.api.summarization.SummaryService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -35,6 +36,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/v1/disclosures")
@@ -45,6 +47,7 @@ public class DisclosuresController {
 
     private final DisclosureSummaryRepository summaryRepository;
     private final DisclosureRepository disclosureRepository;
+    private final SummaryService summaryService;
 
     /**
      * Free metadata feed of recent filings across every listed company.
@@ -154,16 +157,30 @@ public class DisclosuresController {
     ) {
         List<Disclosure> recent = disclosureRepository
                 .findByTickerRecent(ticker, PageRequest.of(0, limit));
-        // Single bulk lookup instead of N findById calls — keeps
-        // get-by-ticker latency O(1) DB round-trips even at the 50-row
-        // ceiling. The result preserves recent's order via lookup map.
+        // Single bulk lookup for the warm-cache path — keeps latency
+        // O(1) DB round-trips when every summary is already cached.
         List<String> rcptNos = recent.stream().map(Disclosure::getRcptNo).toList();
-        Map<String, DisclosureSummary> byRcptNo = summaryRepository.findAllById(rcptNos)
-                .stream()
-                .collect(java.util.stream.Collectors.toMap(
-                        DisclosureSummary::getRcptNo,
-                        s -> s,
-                        (a, b) -> a));
+        Map<String, DisclosureSummary> byRcptNo = new java.util.HashMap<>(
+                summaryRepository.findAllById(rcptNos)
+                        .stream()
+                        .collect(java.util.stream.Collectors.toMap(
+                                DisclosureSummary::getRcptNo,
+                                s -> s,
+                                (a, b) -> a)));
+        // Lazy-fill missing summaries. Each cache miss triggers a
+        // single LLM call inside SummaryService (single-flight Redis
+        // lock prevents duplicate spend across concurrent callers).
+        // Cold-cache by-ticker is therefore p99 = limit × LLM-latency
+        // (~8 s per row); warm-cache by-ticker is unchanged. The
+        // settlement-on-2xx invariant means a generation failure
+        // surfaces as a 5xx and the caller is not charged.
+        for (Disclosure d : recent) {
+            if (!byRcptNo.containsKey(d.getRcptNo())) {
+                summaryService.summarize(d.getRcptNo());
+                summaryRepository.findById(d.getRcptNo())
+                        .ifPresent(s -> byRcptNo.put(d.getRcptNo(), s));
+            }
+        }
         List<DisclosureSummaryDto> summaries = recent.stream()
                 .map(d -> byRcptNo.get(d.getRcptNo()))
                 .filter(java.util.Objects::nonNull)
@@ -233,10 +250,49 @@ public class DisclosuresController {
             @Pattern(regexp = "^[0-9]{14}$",
                     message = "rcptNo must be exactly 14 digits")
             String rcptNo) {
+        // Cache hit — the standard 99%+ path once a filing has been
+        // paid for at least once. Returns immediately without touching
+        // DART or the LLM.
+        Optional<DisclosureSummary> cached = summaryRepository.findById(rcptNo);
+        if (cached.isPresent()) {
+            return ResponseEntity.ok(DisclosureSummaryDto.from(cached.get()));
+        }
+
+        // Cache miss — first paid call for this rcpt_no globally.
+        // Verify the disclosure exists in our DB before incurring an
+        // LLM call. If we don't have the metadata, an LLM call would
+        // fail anyway — and 404 is the right shape here regardless of
+        // whether the rcpt_no is actually valid at DART (caller used
+        // a stale or bogus number).
+        if (disclosureRepository.findById(rcptNo).isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+
+        // Synchronous lazy generation. The single-flight Redis lock
+        // inside SummaryService guarantees exactly one LLM call per
+        // rcpt_no even under concurrent paid requests; subsequent
+        // racers either skip (lock held) or hit the cache by the time
+        // they re-query below.
+        try {
+            summaryService.summarize(rcptNo);
+        } catch (Exception e) {
+            // SummaryService swallows recoverable errors and records
+            // an audit_failure row. An exception escaping here is a
+            // wiring bug or a config-level problem; surface as 500 so
+            // settlement-on-2xx does NOT charge the caller.
+            throw e;
+        }
         return summaryRepository.findById(rcptNo)
                 .map(DisclosureSummaryDto::from)
                 .map(ResponseEntity::ok)
-                .orElseGet(() -> ResponseEntity.notFound().build());
+                .orElseGet(() -> {
+                    // Generation failed (audit_failure row written by
+                    // SummaryService). Returning 503 keeps settlement
+                    // off — the caller may retry without paying twice.
+                    return ResponseEntity
+                            .status(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE)
+                            .build();
+                });
     }
 
     @SuppressWarnings("unused")

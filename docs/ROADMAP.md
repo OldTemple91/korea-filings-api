@@ -159,58 +159,71 @@ What ships:
 - Python SDK 0.2 + MCP server 0.2 expose all four flows
 - All summaries remain metadata-only — same Gemini cache as v1
 
-## v1.2 — Deep Filing Analysis (planned)
+## v1.1 lazy + body fetch (round-11, shipping 2026-05-06)
 
-v1.1 fixed the discovery problem; v1.2 fixes the depth problem. Right
-now Gemini only sees the filing's metadata (title, date, filer name)
-and routinely returns "specifics are in the filing body" for
-quantitative events like rights offerings, debt issuance, and supply
-contracts — exactly the events agents most want numbers for.
+The v1.2 "deep analysis" plan that previously lived here was
+collapsed into v1.1 once a closer look at the v1.1 stored summaries
+showed that ~50% of `summaryEn` characters were filler about
+"details are in the filing body" — exactly because the LLM only
+ever saw the title. Rather than charging extra for a separate
+"deep" tier, the standing 0.005 USDC endpoint now uses body-aware
+summarisation, with the body fetched lazily on the first paid call
+per rcpt_no and cached forever.
 
-**Build:**
+**Built:**
 
-1. **`DartClient.fetchDocument(rcptNo)`** — pulls the per-filing
-   ZIP from `https://opendart.fss.or.kr/api/document.xml`. Each ZIP
-   carries an XBRL or HTML payload with the actual content. Cache
-   the unzipped body on Postgres next to the existing summary so
-   downstream LLM runs are idempotent.
+1. **`DartClient.fetchDocument(rcptNo)`** — single GET to
+   `https://opendart.fss.or.kr/api/document.xml`, separate
+   Resilience4j `dart-document` instance (breaker / retry /
+   30-rpm rate limiter), 5 MB body cap, raw JDK HTTP client to
+   avoid the Reactor Netty data-buffer truncation issue.
+2. **`DartDocumentParser`** — jsoup-based ZIP walker that keeps
+   `.html` / `.htm` / `.xml` entries, strips markup, normalises
+   whitespace, truncates at 20,000 chars. Image attachments are
+   skipped; corrupt ZIPs raise `IllegalStateException` (caller
+   degrades gracefully to title-only).
+3. **`disclosure.body` TEXT column** (V13) — caches the parsed
+   body. NULL = not yet fetched. Populated lazily by
+   `SummaryService.ensureBody` on the first paid call via a
+   short `REQUIRES_NEW` transaction.
+4. **Lazy summarisation in `DisclosuresController`** —
+   `/summary?rcptNo=…` and `/by-ticker?ticker=…` cache miss
+   triggers `SummaryService.summarize` synchronously inside the
+   request thread. The existing single-flight Redis SETNX lock
+   guarantees one LLM call per rcpt_no even under concurrent
+   paid requests; a 503 on generation failure leaves the caller
+   uncharged via settlement-on-2xx.
+5. **Gemini prompt update** — branches on body presence: when
+   the body is available, the model leads with concrete numbers
+   (KRW / USD amounts, dilution %, counterparty, dates);
+   otherwise falls back to title-only summarisation. Prompt-side
+   body cap is 12,000 chars (parser cap is 20,000) to bound
+   Flash-Lite per-call cost without hurting summary quality.
+6. **Eager pipeline disabled** — `DartPollingScheduler` no
+   longer pushes to `summary_job_queue`;
+   `summary.consumer.enabled` and `summary.retry.enabled` default
+   to `false`. The classes stay in code so an offline backfill
+   can flip them on via env var.
 
-2. **Body extractor** — most filing types follow a small set of
-   templated XBRL fact patterns. Start with the highest-value six
-   (RIGHTS_OFFERING, CONVERTIBLE_BOND_ISSUANCE, DEBT_ISSUANCE,
-   ACQUISITION, SUPPLY_CONTRACT_SIGNED, MAJOR_SHAREHOLDER_FILING)
-   — these are where customers actually want concrete numbers.
-   Each gets a small parser that pulls amount, dilution %,
-   counterparty, and material dates.
+**Guardrails preserved:**
 
-3. **`SummaryResult.keyFacts`** — new structured field on the
-   summary DTO carrying the extracted numbers. The free-text
-   `summary_en` paragraph cites them inline; agents that want
-   strict typing read `keyFacts` directly.
+- Same flat 0.005 USDC price for `/summary` and per-result
+  `/by-ticker × limit`. No tier change at the surface.
+- Cache invariant ("margin engine") unchanged — same rcpt_no
+  always serves the same summary, generated once globally, paid
+  once at the LLM provider.
+- Body fetch failures degrade gracefully to title-only
+  summarisation; no paid request is ever killed by an
+  unavailable body endpoint.
 
-4. **New paid endpoint** — `GET /v1/disclosures/deep?rcptNo=…`
-   priced higher (~0.020 USDC) to reflect the body fetch + extra
-   LLM tokens. The existing `summary` endpoint stays at
-   0.005 USDC and stays metadata-only — customers pick depth at
-   call time.
-
-5. **MCP tool** — `get_disclosure_deep(rcpt_no)` mirrors the new
-   endpoint so Claude Desktop / Cursor can request depth on
-   demand.
-
-**Guardrails:**
-
-- DART rate-limits the document endpoint per-key. Add a
-  Resilience4j RateLimiter alongside the existing `dart` instance.
-- Body fetch is opt-in only — never auto-fire on every ingestion,
-  or the LLM cost balloons before any agent has paid for depth.
-- Document bodies can run megabytes of XBRL; cap per-request
-  tokens sent to Gemini at ~5k characters of the most relevant
-  template fields, not the raw body.
-
-**When to ship:** after v1.1 has been live for at least a week and
-we have agent traffic telling us which filing types they actually
-care about.
+**Future tiered pricing** — if later traffic data shows
+quantitative events (rights offerings, debt issuance, supply
+contracts) drive disproportionate paid volume, the next
+iteration will introduce event-type clusters
+(LOW/STANDARD/HIGH) priced at the ingestion-time keyword
+classification step. That iteration is intentionally deferred
+until there is enough adoption to make the tier boundaries
+data-driven.
 
 ## v0.4.x — Operations + Observability (shipped 2026-05-04 to 2026-05-06)
 

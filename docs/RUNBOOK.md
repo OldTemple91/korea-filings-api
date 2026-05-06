@@ -118,7 +118,7 @@ If Postgres is corrupt and won't start, see [Restore Postgres](#restore-postgres
 
 ### 4. Redis outage
 
-**Symptom**: paid endpoints 503; `SummaryJobConsumer` logs "Consumer loop error" repeatedly.
+**Symptom**: paid endpoints 503; cold-cache `/summary` lazy generation aborts at the SETNX lock acquisition step.
 
 ```bash
 ssh root@<PROD_VM> 'docker logs --tail 50 dartintel-redis 2>&1'
@@ -130,10 +130,11 @@ Restart:
 docker compose --profile prod restart redis
 ```
 
-After restart:
-- `summary_job_queue` may have lost in-flight items. `SummaryRetryScheduler` rebuilds the queue from Postgres (`findRcptNosMissingSummary`) within 5 minutes. No data is lost — only delayed.
+After restart (round-11 lazy pivot):
+- `summary_inflight:*` single-flight locks lost. The next paid call for any rcpt_no acquires a fresh lock; no double-LLM risk because `summaryExists`/`auditSuccessExists` short-circuits before the LLM if the prior run completed.
 - `payment_sig:*` replay keys lost their TTL. Replay protection falls back to the on-chain EIP-3009 nonce check; the facilitator rejects replayed nonces.
-- `dart_last_rcept_dt` watermark loss → next poll re-fetches the last `initial-cursor-days-back` of filings. `existsByRcptNo` deduplicates so no duplicate rows; just a re-enqueue burst.
+- `dart_last_rcept_dt` watermark loss → next poll re-fetches the last `initial-cursor-days-back` of filings. `existsByRcptNo` deduplicates so no duplicate rows.
+- The legacy `summary_job_queue` is no longer used by ingestion (round-11 lazy pivot). It only matters when an offline backfill flips `SUMMARY_CONSUMER_ENABLED=true` and pushes rcpt_nos manually.
 
 The Redis volume uses `appendonly yes` with `appendfsync everysec` (default) — up to 1 second of writes can be lost on a hard crash. Acceptable for this workload.
 
@@ -161,17 +162,20 @@ The fail-closed design means no data is leaked; agents see 402 + spec-compliant 
 
 ### 6. Gemini quota exhausted
 
-**Symptom**: `summary_job_queue` depth grows; `RequestNotPermitted` exceptions in `SummaryJobConsumer` logs.
+**Symptom**: cold-cache paid calls return 503; `RequestNotPermitted` exceptions in `DisclosuresController` logs.
 
 ```bash
-# Queue depth
-docker exec dartintel-redis redis-cli -a "$REDIS_PASSWORD" llen summary_job_queue
-
 # Rate limiter state
 curl -s http://localhost:8080/actuator/ratelimiters | python3 -m json.tool
+
+# Recent failed audits
+docker exec dartintel-postgres psql -U dartintel -d dartintel -c \
+  "SELECT rcpt_no, error_message, created_at FROM llm_audit \
+   WHERE NOT success AND created_at > NOW() - INTERVAL '10 minutes' \
+   ORDER BY created_at DESC LIMIT 20;"
 ```
 
-If sustained: bump quota in Google AI Studio (the Quota #4 we set to 60 RPM was for that exact reason). Without a quota change, the queue catches up at 10 RPM (free tier) once the burst subsides — 100 backlog filings drain in 10 minutes.
+Round-11 lazy pivot: there is no longer a queue depth metric to watch — paid calls drive the LLM rate directly. If sustained, bump quota in Google AI Studio. Settlement-on-2xx leaves callers uncharged on a 503, so a quota outage does not silently take revenue.
 
 ---
 

@@ -93,11 +93,35 @@ dart:
     timeout:
       connect-ms: 5000
       read-ms: 10000
+    document:
+      # /api/document.xml — per-filing ZIP fetch. Slower than
+      # /list.json because DART assembles the bundle on demand.
+      connect-ms: 5000
+      read-ms: 30000
+      # 5 MB cap. A 5+ MB body is a long annual report; the parser
+      # truncates after extraction so the cap mostly defends memory
+      # during streaming download against a runaway response.
+      max-body-bytes: 5242880
   polling:
     enabled: true
     interval-ms: 30000
     initial-cursor-days-back: 1
     page-count: 100
+
+# v1.1 lazy pivot. The eager pipeline (background consumer + retry
+# scheduler that scans the DB for orphan rcpt_nos and enqueues them)
+# is preserved as code but disabled by default — summary generation
+# now runs synchronously on the first paid call inside
+# DisclosuresController.getSummary, with a Redis SETNX single-flight
+# lock guarding against duplicate LLM spend. To re-enable for an
+# offline backfill, override SUMMARY_CONSUMER_ENABLED / SUMMARY_RETRY_ENABLED
+# via environment variables and a workflow can push rcpt_nos onto
+# summary_job_queue manually. See ARCHITECTURE.md "Lazy summarisation".
+summary:
+  consumer:
+    enabled: ${SUMMARY_CONSUMER_ENABLED:false}
+  retry:
+    enabled: ${SUMMARY_RETRY_ENABLED:false}
 
 gemini:
   base-url: https://generativelanguage.googleapis.com
@@ -165,11 +189,29 @@ resilience4j:
         wait-duration-in-open-state: 30s
         permitted-number-of-calls-in-half-open-state: 2
         automatic-transition-from-open-to-half-open-enabled: true
+      # Separate breaker for /api/document.xml (per-filing ZIP fetch).
+      # Decoupled from `dart` so a flaky body endpoint does not halt
+      # /list.json polling — ingestion velocity stays unaffected even
+      # when document fetches fail in burst.
+      dart-document:
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
   retry:
     instances:
       dart:
         max-attempts: 2
         wait-duration: 1s
+      dart-document:
+        max-attempts: 2
+        wait-duration: 1s
+        # 4xx is permanent (filing not found / cancelled / DART
+        # disabled this rcpt_no). No point retrying.
+        ignore-exceptions:
+          - io.github.resilience4j.circuitbreaker.CallNotPermittedException
       gemini:
         max-attempts: 2
         wait-duration: 2s
@@ -195,6 +237,19 @@ resilience4j:
         # Background consumer has no user waiting; block up to the full
         # refresh window for a permit rather than failing fast.
         timeout-duration: 60s
+      dart-document:
+        # DART body endpoint has its own per-key rate budget, separate
+        # from /list.json. The free-tier daily allowance is generous
+        # (~10K/day) but the per-minute window is tighter — 30/min is
+        # a safe cap that absorbs an HN traffic spike without
+        # tripping DART's WAF.
+        limit-for-period: 30
+        limit-refresh-period: 60s
+        # The lazy summarisation path waits for a permit (paid call
+        # is already inside a 60-second EIP-3009 validity window;
+        # if document fetch can't get a permit in 30s the retry path
+        # gets us within that window).
+        timeout-duration: 30s
 
 audit:
   requests:

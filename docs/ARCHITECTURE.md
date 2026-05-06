@@ -174,6 +174,10 @@ internal layout.
 - `rm` — remarks (DART disclosure type flag)
 - `ticker` — denormalised KRX ticker (5-7 alphanumeric, V6 + V7), nullable
   for delisted / foreign / non-corp filers
+- `body` — TEXT, plain-text rendering of the per-filing
+  `/api/document.xml` ZIP, capped at 20,000 chars by
+  `DartDocumentParser` before insert (V13). NULL until the first
+  paid call for the rcpt_no fetches and parses the body.
 - `created_at`, `updated_at`
 
 Index on `(rcept_dt DESC, rcpt_no DESC)` for `/v1/disclosures/recent`.
@@ -346,7 +350,12 @@ declares the dynamic amount in `accepts[0].amount` so the agent
 sees the exact charge before signing. The signed authorisation
 covers the whole batch in one on-chain transferWithAuthorization.
 
-## Request Lifecycle — Ingestion
+## Request Lifecycle — Ingestion (metadata only)
+
+Round-11 (2026-05-06) split ingestion from summarisation. The poller
+no longer triggers an LLM call — every disclosure lands in Postgres
+as metadata, and summary generation runs lazily on the first paid
+call (see "Lazy summarisation" below).
 
 1. `DartPollingScheduler#poll()` fires every 30 seconds.
 2. Queries DART `/list.json` for filings with `rcept_dt >=
@@ -355,17 +364,56 @@ covers the whole batch in one on-chain transferWithAuthorization.
    If new:
    - Persist raw filing (with denormalised `ticker` looked up
      from the `company` table at write time).
-   - `summaryJobQueue.push(rcptNo)`.
+   - `body` column starts NULL. The body fetch is deferred to
+     the first paid call.
 4. Update `dart_last_rcept_dt` to the max `rcept_dt` seen.
-5. `SummaryJobConsumer` (separate thread) runs `BRPOP
-   summary_job_queue 10`.
-6. For each pulled `rcptNo`: classify complexity (informational
-   only — does not change the LLM model today), call
-   `GeminiFlashLiteClient`, validate JSON, persist summary,
-   write `llm_audit`, populate Redis.
-7. On exception, `SummaryRetryScheduler` re-enqueues the job on
-   a separate cadence so a transient Gemini outage does not lose
-   filings.
+
+The legacy `SummaryJobQueue` / `SummaryJobConsumer` /
+`SummaryRetryScheduler` beans remain in code for offline backfill —
+disabled by default via `summary.consumer.enabled=false` and
+`summary.retry.enabled=false`. To re-enable them for a backfill
+run, override the env vars and push rcpt_nos onto
+`summary_job_queue` directly.
+
+## Request Lifecycle — Lazy summarisation (first paid call)
+
+When `GET /v1/disclosures/summary?rcptNo=…` (or
+`…/by-ticker?ticker=…`) hits a `disclosure_summary` cache miss, the
+controller drives the generation synchronously inside the request
+thread. The Redis SETNX single-flight lock around `SummaryService`
+guarantees exactly one LLM call per `rcptNo` even under concurrent
+paid requests; second-comers either see the lock and exit, or hit
+the freshly-populated cache by the time they re-query.
+
+1. Cache lookup: `disclosureSummaryRepository.findById(rcptNo)`. If
+   present, return immediately (warm path — typical 99%+ of paid
+   traffic once a filing has been paid for once).
+2. If missing, verify the disclosure metadata exists in our DB. If
+   not, return 404 — the agent supplied an unknown `rcptNo` and
+   settlement-on-2xx leaves them uncharged.
+3. Call `SummaryService.summarize(rcptNo)`:
+   - Acquire the `summary_inflight:{rcptNo}` Redis SETNX lock
+     (2-minute TTL).
+   - Fetch the body if `disclosure.body IS NULL`:
+     `DartClient.fetchDocument(rcptNo)` returns the ZIP from
+     `/api/document.xml`, `DartDocumentParser.parse(...)` strips
+     HTML/XBRL via jsoup and caps at 20,000 chars. Persist via a
+     short `REQUIRES_NEW` transaction so a later LLM failure
+     doesn't erase the cached body.
+   - All body-fetch failures (404 = filing not yet finalised, open
+     `dart-document` breaker, parser failure, empty payload)
+     degrade gracefully to title-only summarisation rather than
+     killing the request.
+   - Call `GeminiFlashLiteClient.summarize(ctx)` with the body
+     when present (truncated to 12,000 chars in the prompt) or
+     `null` for title-only.
+   - Audit-row commits first (`REQUIRES_NEW`), summary row second
+     — the existing audit-success short-circuit covers the
+     partial-write recovery case unchanged.
+4. Re-query the cache and serve the freshly-written summary. If
+   generation failed (audit_failure row written), return 503 so
+   `X402SettlementAdvice` does not charge the caller; the agent
+   may retry without paying twice.
 
 `CompanySyncScheduler` runs separately:
 
@@ -380,6 +428,13 @@ covers the whole batch in one on-chain transferWithAuthorization.
 - **DART API down** — Resilience4j circuit-breaker on the `dart`
   instance opens; scheduler logs and no-ops. Next cycle retries.
   Cache hits keep paid traffic working.
+- **DART `/document.xml` down or filing not finalised** — the
+  separate `dart-document` Resilience4j instance (breaker + retry
+  + 30 rpm rate limiter) opens or returns 404, and
+  `SummaryService.ensureBody` swallows the exception and degrades
+  to title-only summarisation. The agent still gets a paid
+  response; only the depth of the summary suffers, and the next
+  paid call retries the body fetch automatically.
 - **Gemini API down or rate-limited** — Resilience4j
   CircuitBreaker + RateLimiter (10 RPM, conservative below the
   free-tier 15 RPM ceiling) on the `gemini` instance gate
@@ -435,27 +490,39 @@ by new disclosures per weekday (~870 average, range 600–1,100), so daily Gemin
 predictable and small regardless of how many clients hit cached
 summaries.
 
-## v1.2 — planned shape (not yet implemented)
+## Round-11 deltas (lazy + body fetch, 2026-05-06)
 
-The v1.2 milestone introduces deep filing analysis. The
-deltas to this architecture are:
+Body-aware summarisation moved out of v1.2 and into v1.1 as part of
+the lazy pivot. The relevant changes are already reflected in the
+sections above; for orientation:
 
-- New `DartClient.fetchDocument(rcptNo)` pulling the per-filing
-  ZIP from `/api/document.xml`. Cache the unzipped body on
-  Postgres next to the existing summary so downstream LLM runs
-  are idempotent.
-- New body-extraction stage between ingestion and summarisation
-  for the six highest-value event types (RIGHTS_OFFERING,
-  CONVERTIBLE_BOND_ISSUANCE, DEBT_ISSUANCE, ACQUISITION,
-  SUPPLY_CONTRACT_SIGNED, MAJOR_SHAREHOLDER_FILING). Templated
-  XBRL parsers extract amount, dilution %, counterparty, dates.
-- New `SummaryResult.keyFacts` field carrying the extracted
-  numbers as a structured JSON blob.
-- New paid endpoint `/v1/disclosures/deep?rcptNo=…` priced at
-  ~0.020 USDC. Existing endpoints stay metadata-only at 0.005
-  USDC so callers pick depth at call time.
-- New `dart` rate-limiter for the `/document.xml` endpoint
-  (separate per-key budget from `/list.json`).
+- `DartClient.fetchDocument(rcptNo)` issues a single GET to
+  `/api/document.xml` with the `dart-document` Resilience4j
+  instance (separate breaker / retry / 30 rpm rate limiter from
+  `/list.json`). The raw JDK HTTP client buffers the ZIP via
+  `BodyHandlers.ofByteArray()` to avoid Reactor Netty's data-buffer
+  truncation issue; bodies above the configured cap (default 5 MB)
+  are rejected at receipt time.
+- `DartDocumentParser` walks the ZIP, keeps `.html` / `.htm` /
+  `.xml` entries, runs each through jsoup `text()` to strip
+  markup, normalises whitespace, and truncates at 20,000 chars.
+  Image attachments (`.jpg`, `.png`) and other binaries are
+  skipped without error.
+- `disclosure.body` (TEXT, V13 migration) caches the parsed text.
+  NULL = body has not been fetched yet. The summarisation path
+  populates it on first paid call via a short `REQUIRES_NEW`
+  transaction so a later LLM failure does not erase the cached
+  body — the next attempt short-circuits the body fetch.
+- The Gemini prompt branches on body presence: when the body is
+  available, the model is instructed to lead with concrete
+  numbers (amounts, dilution %, counterparty); otherwise it falls
+  back to title-only summarisation with the previous behaviour.
+  Prompt-side body cap is 12,000 chars (parser cap is 20,000)
+  because Flash-Lite cost scales linearly with input tokens and
+  the marginal quality benefit past 12K is small for analyst-style
+  summaries.
 
-See `docs/ROADMAP.md#v12--deep-filing-analysis-planned` for the
-full plan and ship trigger.
+A future tiered-pricing iteration (event-type clusters, e.g.
+LOW/STANDARD/HIGH) is tracked in `docs/ROADMAP.md` but is not on
+the v1.1 critical path. Current pricing is flat 0.005 USDC for
+both `/summary` and `/by-ticker × limit`.

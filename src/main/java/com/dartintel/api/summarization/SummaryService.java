@@ -1,5 +1,7 @@
 package com.dartintel.api.summarization;
 
+import com.dartintel.api.ingestion.DartClient;
+import com.dartintel.api.ingestion.DartDocumentParser;
 import com.dartintel.api.ingestion.Disclosure;
 import com.dartintel.api.ingestion.DisclosureRepository;
 import com.dartintel.api.summarization.classifier.ComplexityClassifier;
@@ -8,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -59,6 +62,8 @@ public class SummaryService {
     private final ComplexityClassifier classifier;
     private final LlmClient llmClient;
     private final StringRedisTemplate redisTemplate;
+    private final DartClient dartClient;
+    private final DartDocumentParser documentParser;
 
     public void summarize(String rcptNo) {
         Optional<Disclosure> opt = disclosureRepository.findById(rcptNo);
@@ -96,6 +101,13 @@ public class SummaryService {
     }
 
     private void doSummarize(String rcptNo, Disclosure d) {
+        // Body fetch + parse runs OUTSIDE any DB transaction so a slow
+        // DART download or a tripped dart-document breaker doesn't pin
+        // a Hikari connection. The body is persisted via a separate
+        // small REQUIRES_NEW transaction in saveBodyIfMissing(...) so
+        // a later LLM failure doesn't erase the body cache row.
+        String body = ensureBody(d);
+
         DisclosureContext ctx = new DisclosureContext(
                 d.getRcptNo(),
                 d.getCorpCode(),
@@ -103,11 +115,12 @@ public class SummaryService {
                 d.getCorpNameEng(),
                 d.getReportNm(),
                 d.getRceptDt(),
-                d.getRm()
+                d.getRm(),
+                body
         );
         Complexity complexity = classifier.classify(d.getReportNm());
-        // Day 4: route every complexity to Flash-Lite. Flash + extended-reasoning land Week 2+.
-        log.debug("summarize: rcpt_no={} complexity={}", rcptNo, complexity);
+        log.debug("summarize: rcpt_no={} complexity={} hasBody={} bodyChars={}",
+                rcptNo, complexity, ctx.hasBody(), body == null ? 0 : body.length());
 
         String promptHash = sha256(buildPromptDigest(ctx));
         long start = System.currentTimeMillis();
@@ -118,14 +131,78 @@ public class SummaryService {
             // LLM provider was paid.
             writer.recordAuditSuccess(rcptNo, env, promptHash);
             writer.recordSummary(rcptNo, env);
-            log.info("summarize: rcpt_no={} cost=${} latency={}ms",
-                    rcptNo, env.costUsd(), env.latencyMs());
+            log.info("summarize: rcpt_no={} cost=${} latency={}ms hasBody={}",
+                    rcptNo, env.costUsd(), env.latencyMs(), ctx.hasBody());
         } catch (Exception e) {
             int elapsedMs = (int) (System.currentTimeMillis() - start);
             String errMsg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
             writer.recordAuditFailure(rcptNo, llmClient.modelId(), promptHash, elapsedMs, errMsg);
             log.error("summarize: rcpt_no={} failed in {}ms: {}", rcptNo, elapsedMs, errMsg);
         }
+    }
+
+    /**
+     * Return the body text for the given disclosure, fetching from
+     * DART {@code /document.xml} on first call and caching to
+     * {@code disclosure.body}. Returns {@code null} when the fetch
+     * fails — the LLM then falls back to title-only summarisation
+     * with the existing prompt branch.
+     *
+     * <p>Failure modes that are tolerated and surface as a null body:
+     * <ul>
+     *   <li>404 — filing not yet finalised by DART (very fresh
+     *       filings show up in /list.json before /document.xml is
+     *       ready).</li>
+     *   <li>Open dart-document circuit breaker — body endpoint is
+     *       in burst-failure mode.</li>
+     *   <li>Body exceeds the configured byte cap.</li>
+     *   <li>Parser failure — corrupt ZIP, unrecognised charset.</li>
+     * </ul>
+     *
+     * <p>None of these should kill the summary. The agent paid for a
+     * summary; a degraded title-only one is still a usable answer.
+     */
+    String ensureBody(Disclosure d) {
+        if (d.getBody() != null && !d.getBody().isBlank()) {
+            return d.getBody();
+        }
+        try {
+            byte[] zipBytes = dartClient.fetchDocument(d.getRcptNo());
+            String parsed = documentParser.parse(zipBytes);
+            if (parsed == null || parsed.isBlank()) {
+                log.debug("ensureBody: rcpt_no={} parsed body is empty, skipping persist",
+                        d.getRcptNo());
+                return null;
+            }
+            saveBodyIfMissing(d.getRcptNo(), parsed);
+            return parsed;
+        } catch (Exception e) {
+            // All body-fetch failures degrade gracefully to title-only
+            // summarisation — no rethrow. Log at INFO not WARN because
+            // the dominant case (DART hasn't published the body yet)
+            // is normal.
+            log.info("ensureBody: rcpt_no={} body fetch failed, falling back to title-only: {}",
+                    d.getRcptNo(), e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Persist the parsed body in its own small transaction so the
+     * body row commits even if the subsequent LLM call fails. A
+     * second paid call for the same rcpt_no then short-circuits the
+     * body fetch via {@link Disclosure#getBody()} — already in the
+     * cache after the first attempt's body fetch, even though the
+     * first attempt's LLM run errored out.
+     */
+    @Transactional
+    public void saveBodyIfMissing(String rcptNo, String body) {
+        disclosureRepository.findById(rcptNo).ifPresent(row -> {
+            if (row.getBody() == null || row.getBody().isBlank()) {
+                row.setBody(body);
+                disclosureRepository.save(row);
+            }
+        });
     }
 
     private static String buildPromptDigest(DisclosureContext c) {

@@ -50,6 +50,27 @@ public class Disclosure {
     @Column(name = "ticker", length = 7)
     private String ticker;
 
+    /**
+     * Plain-text body extracted from DART's {@code /api/document.xml}
+     * ZIP. Populated lazily by {@link com.dartintel.api.summarization.SummaryService}
+     * on the first paid call for this {@code rcptNo} — the LLM uses
+     * this to extract concrete numbers (amounts, percentages,
+     * counterparty names, dates) instead of admitting "details are in
+     * the filing body" as the v1.0 metadata-only flow had to.
+     *
+     * <p>{@code NULL} = body has not been fetched yet (eager rows from
+     * before the body-fetch path landed, or fresh ingestion that has
+     * not been paid for). The summarisation flow falls back to title-
+     * only prompting when body is null, so NULL is a safe legacy state.
+     *
+     * <p>Capped at 20,000 characters by {@link com.dartintel.api.ingestion.DartDocumentParser}
+     * before insert — no DB-side LENGTH constraint to keep the upper
+     * bound flexible if a future filing type produces meaningful
+     * content past that cap.
+     */
+    @Column(name = "body", columnDefinition = "TEXT")
+    private String body;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -117,6 +138,19 @@ public class Disclosure {
 
     public String getTicker() {
         return ticker;
+    }
+
+    public String getBody() {
+        return body;
+    }
+
+    /**
+     * Set after the document body is fetched + parsed. Idempotent — a
+     * second fetch for the same {@code rcptNo} replaces the prior text
+     * (rare; only happens if the parser cap changes between deploys).
+     */
+    public void setBody(String body) {
+        this.body = body;
     }
 
     public Instant getCreatedAt() {

@@ -67,6 +67,14 @@ dependencies {
     // JSON
     implementation("com.fasterxml.jackson.module:jackson-module-parameter-names")
 
+    // HTML / XBRL text extraction for DART /api/document.xml ZIP bodies.
+    // jsoup over a hand-rolled regex stripper because filing bodies
+    // mix XBRL XML, HTML tables, and inline SVG / iframes — jsoup
+    // handles malformed nested markup that ad-hoc regex would
+    // misparse. ZIP unpacking uses Java's built-in ZipInputStream so
+    // no separate compress library is needed.
+    implementation("org.jsoup:jsoup:1.18.3")
+
     // Lombok (used sparingly per CLAUDE.md)
     compileOnly("org.projectlombok:lombok")
     annotationProcessor("org.projectlombok:lombok")

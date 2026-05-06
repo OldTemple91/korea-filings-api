@@ -38,20 +38,29 @@ public class GeminiFlashLiteClient implements LlmClient {
             (전자공시) corporate disclosures for AI agents and quant funds that act on
             the information. Every summary you produce is paid for in USDC by an
             autonomous agent — vagueness costs your customer money. Be specific. When
-            specifics are not in the metadata, say so explicitly rather than padding.
+            specifics are not in the source, say so explicitly rather than padding.
 
             === What you are given ===
 
-            For each filing you have only:
+            For each filing you receive:
               - corp name (Korean, sometimes English)
               - filing title in Korean (e.g. "유상증자결정", "기업설명회(IR)개최")
               - filing date
               - DART receipt number
               - DART flag (single-letter code such as "유","정","첨", may be empty)
+              - filing body (plain text extracted from DART /api/document.xml,
+                may be empty for very fresh filings or filings DART has not
+                yet finalised the body for)
 
-            You DO NOT have the filing body. Do not fabricate numbers, percentages, or
-            dates. If only the title is given, write what the filing type implies and
-            note that quantitative details are in the filing body itself.
+            When the body is present, mine it for the concrete numbers an analyst
+            cares about: amounts (KRW / USD), percentages of shares outstanding or
+            revenue, counterparty names, effective dates, conversion prices. The
+            body is a faithful Korean text rendering of the filing — translate
+            the numbers, don't invent them, don't quote Korean verbatim.
+
+            When the body is absent or empty, write what the filing type implies
+            from the title alone and note that quantitative details are in the
+            filing body itself. Never fabricate numbers, percentages, or dates.
 
             === Korean filing-type taxonomy (map the title to eventType) ===
 
@@ -147,14 +156,16 @@ public class GeminiFlashLiteClient implements LlmClient {
 
             === summaryEn rules ===
 
-              - 80-400 characters, paraphrased English. Never quote the Korean source.
+              - 80-600 characters, paraphrased English. Never quote the Korean source.
               - Lead with the company name and the action ("Foo Inc. signed a supply
                 contract…", not "A supply contract was signed by Foo…").
-              - Include any concrete numbers visible in metadata (rare).
+              - When the body is present, lead with the concrete numbers it contains
+                (amounts in KRW or USD, dilution %, counterparty, effective date) —
+                that is the value the agent paid for. Translate; don't quote Korean.
               - If the filing is an AMENDMENT, state what it amends.
-              - If the title alone implies a magnitude/category, state it. Where the
-                title is silent, write that quantitative details (e.g. amount,
-                dilution, counterparty) are in the filing body — do NOT invent.
+              - When the body is absent or empty, write what the title alone
+                implies and explicitly note "quantitative details (amount,
+                dilution, counterparty) are in the filing body". Do NOT invent.
               - End with a short "why care" clause when obvious from filing type;
                 otherwise omit. No filler ("Investors should review…", "This filing
                 provides important information…") — cut every such clause.
@@ -272,7 +283,29 @@ public class GeminiFlashLiteClient implements LlmClient {
         return input.add(output).divide(MILLION, 8, RoundingMode.HALF_UP);
     }
 
+    /**
+     * Soft cap on the body chars sent to Gemini. The parser caps the
+     * stored body at 20,000 chars; this further trims to 12,000 for
+     * the prompt because Flash-Lite's per-call cost scales linearly
+     * with input tokens and the marginal LLM-quality benefit past 12K
+     * is small for analyst-style summarisation. The trim is from the
+     * head — the executive-summary section of a Korean filing
+     * always comes first, and the appendices that get cut are
+     * boilerplate auditor signatures and disclaimers.
+     */
+    static final int PROMPT_BODY_CHAR_CAP = 12_000;
+
     private static Map<String, Object> buildRequestBody(DisclosureContext c) {
+        String bodyExcerpt;
+        if (c.hasBody()) {
+            String body = c.body();
+            bodyExcerpt = body.length() > PROMPT_BODY_CHAR_CAP
+                    ? body.substring(0, PROMPT_BODY_CHAR_CAP)
+                    : body;
+        } else {
+            bodyExcerpt = "(empty — body not yet available)";
+        }
+
         String userPrompt = """
                 Filing metadata:
                   Issuer (KR): %s
@@ -282,6 +315,9 @@ public class GeminiFlashLiteClient implements LlmClient {
                   DART receipt no: %s
                   DART flag: %s
 
+                Filing body (plain text, may be truncated):
+                %s
+
                 Apply the taxonomy and produce the structured JSON summary.
                 """.formatted(
                 c.corpName(),
@@ -289,7 +325,8 @@ public class GeminiFlashLiteClient implements LlmClient {
                 c.reportNm(),
                 c.rceptDt(),
                 c.rcptNo(),
-                c.rm() != null && !c.rm().isBlank() ? c.rm() : "none"
+                c.rm() != null && !c.rm().isBlank() ? c.rm() : "none",
+                bodyExcerpt
         );
 
         return Map.of(

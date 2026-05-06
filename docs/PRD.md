@@ -33,20 +33,19 @@ This narrowing was rebalanced in 2026-05 after observing that the technical infr
 - The system polls the DART Open API endpoint for the list of new disclosures every 30 seconds. The polling interval is configurable.
 - Every new `rcpt_no` (receipt number, DART's unique ID for a filing) is persisted to the `disclosure` table with its metadata: corp_code, corp_name, report_nm, flr_nm, rcept_dt, rm.
 - Duplicates (same `rcpt_no` already in the table) are silently ignored.
-- After successful persistence, a summarization job is enqueued for the new filing.
+- The body column starts NULL and is populated lazily on the first paid call for the rcpt_no — see Summarization below.
 
 ### Summarization
 
-- A disclosure's summarization is triggered by the job queue.
-- Complexity classification: `ComplexityClassifier` runs a simple keyword rules engine on DART's `report_nm` and tags each filing as SIMPLE, MEDIUM, or COMPLEX. The tag is recorded for observability today; v1 routes every tier to the same model.
+- Summarization runs **lazily** on the first paid call for each `rcpt_no`. The cache miss path inside `DisclosuresController` calls `SummaryService.summarize(rcptNo)` synchronously, with a Redis SETNX single-flight lock keyed `summary_inflight:{rcptNo}` ensuring exactly one LLM call globally even under concurrent paid requests. The legacy eager queue (`summary_job_queue` + background consumer + retry scheduler) remains in code for offline backfill but is disabled by default.
+- Complexity classification: `ComplexityClassifier` runs a simple keyword rules engine on DART's `report_nm` and tags each filing as SIMPLE, MEDIUM, or COMPLEX. The tag is recorded for observability today; v1.1 routes every tier to the same model.
+- **Body fetch**: when `disclosure.body IS NULL`, `SummaryService` pulls the per-filing ZIP via `DartClient.fetchDocument(rcptNo)` (DART `/api/document.xml`, separate `dart-document` Resilience4j instance with breaker / retry / 30 rpm rate limiter), unzips and strips markup via `DartDocumentParser` (jsoup, 20,000 char cap), and persists the parsed text in a short `REQUIRES_NEW` transaction so a later LLM failure doesn't erase the cached body. Body-fetch failures (404 = filing not yet finalised, open breaker, parse error) degrade gracefully to title-only summarisation.
 - LLM routing (current):
   - All tiers → **Gemini 2.5 Flash-Lite** (single model in production for v1.1).
   - The pipeline is wired through an `LlmClient` interface so a future tier-aware router (e.g. promote COMPLEX to Gemini 2.5 Flash with extended reasoning) can be added without touching the orchestrator.
-- The prompt is anchored against a 50-row Korean → English filing-type taxonomy + importance score reference, asking for a JSON object with: `summaryEn` (≤ 400 chars), `importanceScore` (1–10), `sectorTags` (array of GICS-style sector labels), `tickerTags` (array of 6-7 digit alphanumeric codes — SPAC tickers contain letters), `eventType` (one of ~50 canonical values, with `OTHER` as the fallback held under 5%), and `actionableFor` (array of: "traders" | "long_term_investors" | "governance_analysts" | "none").
-- The LLM response is validated against a JSON schema. Malformed or transient-failure responses are re-enqueued by `SummaryRetryScheduler` on a separate cadence so paying readers (cache hits) are unaffected by upstream Gemini hiccups.
-- The final summary is persisted to `disclosure_summary` and pushed into Redis with key `summary:{rcptNo}` and TTL of 30 days (re-populated on access). The summary is generated **once per `rcpt_no` and cached forever** — every subsequent paid call for that filing hits the DB cache, so margins compound as adoption grows.
-
-> **v1.1 scope**: summaries derive from filing metadata (title, date, filer, DART flag) — drives event-type / importance / ticker / sector tagging. **v1.2 scope** (planned): adds per-filing XBRL fetch via DART's `/document.xml` and structured extraction of amounts, dilution %, counterparty, and dates for the six highest-value event types into a `keyFacts` field, served via a new `/v1/disclosures/deep` higher-tier endpoint. Detailed plan in `docs/ROADMAP.md`.
+- The prompt is anchored against a 50-row Korean → English filing-type taxonomy + importance score reference, asking for a JSON object with: `summaryEn` (≤ 600 chars; the model is instructed to lead with concrete numbers from the body when available), `importanceScore` (1–10), `sectorTags` (array of GICS-style sector labels), `tickerTags` (array of 6-7 digit alphanumeric codes — SPAC tickers contain letters), `eventType` (one of ~50 canonical values, with `OTHER` as the fallback held under 5%), and `actionableFor` (array of: "traders" | "long_term_investors" | "governance_analysts" | "none"). Prompt-side body cap is 12,000 chars (parser-side cap is 20,000) so Flash-Lite per-call cost stays bounded.
+- The LLM response is validated against a JSON schema. On a parse / transport failure, an audit_failure row is recorded and the controller returns 503 — settlement-on-2xx leaves the caller uncharged, and they may retry without paying twice.
+- The final summary is persisted to `disclosure_summary`. The summary is generated **once per `rcpt_no` and cached forever** — every subsequent paid call for that filing hits the DB cache, so margins compound as adoption grows.
 
 ### Paid API
 
@@ -69,7 +68,7 @@ See `README.md` (Pricing section) and the live machine-readable descriptor at [`
 
 ## Non-Functional Requirements
 
-- **Latency**: p95 response time for cached summary reads ≤ 200 ms. Cold (uncached) reads ≤ 8 seconds (dominated by the Gemini call). Free endpoints (`/v1/companies`, `/v1/disclosures/recent`) ≤ 100 ms p95 — pg_trgm fuzzy search across 3,961 rows is sub-50 ms in practice.
+- **Latency**: p95 response time for cached summary reads ≤ 200 ms. Cold (uncached) reads ≤ 12 seconds — body fetch from DART (~2-5 s) + Gemini call (~5-7 s) + write-back, dominated by the upstream LLM. Free endpoints (`/v1/companies`, `/v1/disclosures/recent`) ≤ 100 ms p95 — pg_trgm fuzzy search across 3,961 rows is sub-50 ms in practice.
 - **Availability**: Target 99% monthly uptime for MVP, gated by the underlying VPS provider's SLA + Cloudflare Tunnel. Planned maintenance is acceptable with notice on the status page.
 - **Freshness**: New DART disclosures appear in `/v1/disclosures/recent` within 60 seconds of publication (30 s poll interval + 30 s summarisation headroom).
 - **Cost per request**: average Gemini cost per unique disclosure ≤ $0.002, amortised to ≤ $0.0003 per call at 10-call reuse. The cache-hit path costs effectively nothing (Postgres lookup + JSON serialisation), so margins compound with adoption. If the per-disclosure floor is ever violated, reconsider the prompt or model.
@@ -85,11 +84,10 @@ See `README.md` (Pricing section) and the live machine-readable descriptor at [`
 - Korean-to-English translation of the full filing text (summaries only; copyright and cost concerns).
 - On-chain credit system for pre-paid calls (pay per call is the model).
 
-### Deferred to v1.2 (planned, not yet built)
+### Folded into v1.1 (round-11, 2026-05-06)
 
-- Per-filing **body fetch** via DART's `/document.xml` ZIP endpoint and templated XBRL extraction of concrete numbers (issuance amount, dilution %, contract value, counterparty, dates) for the six highest-value event types: RIGHTS_OFFERING, CONVERTIBLE_BOND_ISSUANCE, DEBT_ISSUANCE, ACQUISITION, SUPPLY_CONTRACT_SIGNED, MAJOR_SHAREHOLDER_FILING.
-- New paid endpoint `/v1/disclosures/deep?rcptNo=…` at a higher price tier (~0.020 USDC) and a structured `keyFacts` field on the summary DTO. Existing endpoints stay metadata-only at 0.005 USDC so callers pick depth at call time.
-- Build trigger: at least a week of v1.1 traffic showing which filing types agents actually pay for. See `docs/ROADMAP.md#v12--deep-filing-analysis-planned`.
+- **Body fetch via DART `/document.xml`** — was originally scoped as the v1.2 "deep analysis" tier. Pulled forward into v1.1 as part of the lazy-generation pivot, served via the same standing `/v1/disclosures/summary` and `/v1/disclosures/by-ticker` endpoints at the same flat 0.005 USDC price. Quantitative events (rights offerings, debt issuance, supply contracts) now surface concrete amounts, dilution %, and counterparty names directly in `summaryEn`.
+- A future **tiered pricing iteration** (event-type clusters, e.g. LOW/STANDARD/HIGH) is tracked in `docs/ROADMAP.md` but is intentionally deferred until traffic data shows which event types drive disproportionate paid volume.
 
 ## Success Metrics
 
@@ -110,4 +108,4 @@ If by end of month 6:
 - No repeat users (same wallet calling twice on different days) numbering more than 3
 - Discovery-surface traffic dominated by indexers / crawlers rather than payment-capable agents
 
-... then reassess: ship v1.2 deep analysis to lift average revenue per call (higher tier ~0.020 USDC), pivot toward a Korean address-normalisation API (higher call volume but lower margin per call), or pivot toward a Chaebol graph API (higher marginal value per call, different customer).
+... then reassess: introduce tiered pricing (event-type clusters) to lift average revenue per call, pivot toward a Korean address-normalisation API (higher call volume but lower margin per call), or pivot toward a Chaebol graph API (higher marginal value per call, different customer).

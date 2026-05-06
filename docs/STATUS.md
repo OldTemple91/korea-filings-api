@@ -18,6 +18,20 @@ live, what's next, and the minimum setup to keep moving.
 - **Weeks 1–5 complete.** Ingestion, summarisation, x402 paywall, public
   deployment, landing page, Python SDK, MCP server, OpenAPI docs — all
   live in production at `api.koreafilings.com`.
+- **Round-11 lazy + body fetch (in flight, 2026-05-06).** Eager LLM
+  calls at ingestion replaced with synchronous lazy generation on the
+  first paid call, plus per-filing body fetch via DART's `/document.xml`
+  ZIP. Summaries are now generated from filing body text (capped at
+  20,000 chars by the parser, 12,000 in the prompt) instead of title
+  metadata only — fixes the "details are in the filing body" filler
+  that was eating ~50% of summary length on quantitative events. New
+  `dart-document` Resilience4j circuit / retry / rate-limiter (30
+  rpm) keeps the body endpoint isolated from `/list.json` polling.
+  `disclosure.body` TEXT column added via V13. Test count 158 → 177
+  green. ROADMAP v1.2 collapsed into v1.1 — the body-fetch tier no
+  longer needs its own price tier because every paid call now uses
+  body when available, falling back to title-only on 404 / open
+  breaker / parse failure.
 - **On-chain x402 settlements verified** on both Sepolia (test) and
   Base mainnet (production). The 2026-05-06 TS SDK live test
   confirmed every layer of the paid path end-to-end including the
@@ -206,14 +220,17 @@ live, what's next, and the minimum setup to keep moving.
      carry signed nonces. Powers the SQL playbook in
      [`docs/ANALYTICS.md`](ANALYTICS.md).
 
-2. **v1.2 — planned, body-fetch + numerical extraction.** Adds a
-   higher-tier endpoint that pulls per-filing XBRL via DART's
-   `/document.xml` API and extracts concrete numbers (amounts,
-   dilution %, counterparty, dates) for the six highest-value event
-   types into a structured `keyFacts` field. Build trigger: at
-   least a week of v1.1 traffic showing which filing types agents
-   actually pay for. Detailed plan in
-   [`docs/ROADMAP.md`](ROADMAP.md#v12--deep-filing-analysis-planned).
+2. **v1.1 lazy + body fetch — round-11, 2026-05-06.** The body fetch
+   originally scoped as v1.2 was pulled forward into v1.1 as part of
+   the lazy-generation pivot. The standing `/v1/disclosures/summary`
+   and `/v1/disclosures/by-ticker` endpoints now use body-aware
+   summarisation at the same flat 0.005 USDC price — quantitative
+   events (rights offerings, debt issuance, supply contracts)
+   surface concrete amounts, dilution %, and counterparty names
+   directly in `summaryEn` instead of falling back to "details are
+   in the filing body". A future tiered-pricing iteration is
+   tracked in [`docs/ROADMAP.md`](ROADMAP.md) but is not on the
+   v1.1 critical path.
 
 3. **Directory registrations**: x402scan ✅ (re-registered after v0.3
    migration; UUID `46ef920d-…` preserved, stale path-param

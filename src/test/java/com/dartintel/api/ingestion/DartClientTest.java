@@ -9,7 +9,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.reactive.function.client.WebClient;
 
+import java.io.ByteArrayOutputStream;
 import java.time.LocalDate;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
@@ -17,6 +20,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class DartClientTest {
 
@@ -40,7 +44,13 @@ class DartClientTest {
                 new DartProperties.Api(
                         "http://localhost:" + wireMock.port() + "/api",
                         "test-key",
-                        new DartProperties.Api.Timeout(2000, 3000)
+                        new DartProperties.Api.Timeout(2000, 3000),
+                        // Per-document tuning: short read timeout so the
+                        // exception-path test doesn't sit on the JDK
+                        // HttpClient default; small body cap so the
+                        // oversize test stays under WireMock's response
+                        // budget without needing a 5 MB stub body.
+                        new DartProperties.Api.Document(2000, 3000, 1024)
                 ),
                 new DartProperties.Polling(true, 30000, 1, 100)
         );
@@ -155,5 +165,78 @@ class DartClientTest {
         assertThat(response.status()).isEqualTo("000");
         assertThat(response.list()).hasSize(1);
         assertThat(response.list().get(0).rcptNo()).isEqualTo("20260423000001");
+    }
+
+    // ----- fetchDocument(rcptNo) -----
+
+    @Test
+    void fetchDocumentReturnsRawZipBytes() throws Exception {
+        byte[] zip = sampleZip("body.html",
+                "<html><body><p>샘플 본문</p></body></html>");
+        wireMock.stubFor(get(urlPathEqualTo("/api/document.xml"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/zip")
+                        .withBody(zip)));
+
+        byte[] body = client.fetchDocument("20260423000123");
+
+        assertThat(body).isEqualTo(zip);
+        wireMock.verify(getRequestedFor(urlPathEqualTo("/api/document.xml"))
+                .withQueryParam("crtfc_key", equalTo("test-key"))
+                .withQueryParam("rcept_no", equalTo("20260423000123")));
+    }
+
+    @Test
+    void fetchDocumentRejectsMalformedRcptNo() {
+        assertThatThrownBy(() -> client.fetchDocument("abc123"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("14 digits");
+        // Reject before any HTTP call goes out.
+        wireMock.verify(0,
+                getRequestedFor(urlPathEqualTo("/api/document.xml")));
+    }
+
+    @Test
+    void fetchDocumentSurfaces404AsIllegalState() {
+        wireMock.stubFor(get(urlPathEqualTo("/api/document.xml"))
+                .willReturn(aResponse().withStatus(404)));
+
+        assertThatThrownBy(() -> client.fetchDocument("20260423000999"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("404")
+                .hasMessageContaining("20260423000999");
+    }
+
+    @Test
+    void fetchDocumentRejectsBodyAboveCap() throws Exception {
+        // Document cap is 1024 bytes in setUp(); a 4 KB ZIP busts it.
+        byte[] oversize = new byte[4096];
+        for (int i = 0; i < oversize.length; i++) {
+            oversize[i] = (byte) (i & 0xff);
+        }
+        wireMock.stubFor(get(urlPathEqualTo("/api/document.xml"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/zip")
+                        .withBody(oversize)));
+
+        assertThatThrownBy(() -> client.fetchDocument("20260423000123"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("exceeds cap");
+    }
+
+    /**
+     * Build an in-memory ZIP with one entry. Used as the {@code /document.xml}
+     * response in tests — DART always returns a ZIP, never the raw body.
+     */
+    private static byte[] sampleZip(String entryName, String body) throws Exception {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (ZipOutputStream zip = new ZipOutputStream(out)) {
+            zip.putNextEntry(new ZipEntry(entryName));
+            zip.write(body.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            zip.closeEntry();
+        }
+        return out.toByteArray();
     }
 }

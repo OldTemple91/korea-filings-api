@@ -183,7 +183,7 @@ Agent → <span class="label">GET /v1/disclosures/by-ticker?ticker=005930&amp;li
 }</code></pre>
 
 <ul>
-  <li><strong>summaryEn</strong> — paraphrased English, never a verbatim translation. The Gemini prompt targets concise output (typically under ~400 chars); the column is unbounded so a longer event-type-specific summary will pass through unchanged.</li>
+  <li><strong>summaryEn</strong> — paraphrased English, never a verbatim translation. The model is anchored on the filing body itself (fetched lazily via DART's <code>/document.xml</code> ZIP, parsed and capped at 20,000 chars) so quantitative events surface concrete amounts, dilution percentages, counterparty names, and effective dates. The prompt targets ≤ 600 chars; the column is unbounded so a longer event-type-specific summary will pass through unchanged.</li>
   <li><strong>importanceScore</strong> — 1 for routine housekeeping, 10 for market-moving events.</li>
   <li><strong>eventType</strong> — canonical <code>UPPER_SNAKE_CASE</code> labels (<code>RIGHTS_OFFERING</code>, <code>MERGER</code>, <code>DIVIDEND_DECISION</code>, etc).</li>
   <li><strong>sectorTags</strong>, <strong>tickerTags</strong> — GICS-style sectors and 6-digit Korean stock codes.</li>
