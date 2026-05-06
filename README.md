@@ -5,11 +5,17 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![x402](https://img.shields.io/badge/payments-x402-orange.svg)](https://www.x402.org/)
 
-Machine-ready English summaries of Korean corporate disclosures
-(DART · 전자공시), paid per call in USDC over the
-[x402](https://www.x402.org/) protocol on Base. Built for AI agents,
-quant funds, and research platforms that need programmatic access to
-Korean market events without reading Korean PDFs.
+An [x402](https://www.x402.org/)-paid HTTP API that turns Korean
+corporate disclosures (DART · 전자공시) into machine-ready English
+summaries — pay 0.005 USDC per summary over Base, no API key, no
+signup. Built for **autonomous AI agents and indie agent builders**
+who need diverse data sources and prefer pay-per-call to subscriptions.
+
+Korean financial data is the surface we ship today, but the value
+propositions that drive adoption are pay-per-call instead of monthly
+contracts and standard x402 instead of bespoke auth — the same shape
+would apply to any other public-records API. No API key, no signup,
+no procurement loop.
 
 **Live**: <https://koreafilings.com> · API at
 <https://api.koreafilings.com> · interactive docs at

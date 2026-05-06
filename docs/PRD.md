@@ -4,21 +4,27 @@
 
 Korean corporate disclosures are filed through DART (Data Analysis, Retrieval and Transfer System) operated by the Financial Supervisory Service. Roughly **800–1,100 filings are published per weekday (~870 average, ~220,000 per year)** across the ~3,800 KOSPI / KOSDAQ listed companies the service tracks (plus ~80 OTHER and unclassified entries in the DART corpCode dump). The original filings are in Korean, often as PDF attachments to XML metadata, and use domain-specific vocabulary (감자, 유상증자, 자사주 매입, 전환사채, 지주사 전환, 대규모내부거래 등).
 
-Global investors — foreign institutional investors, quant funds, and increasingly AI research agents deployed by these firms — need to react to these filings within minutes. Today they rely on (a) delayed English reporting from Korean financial news outlets, (b) in-house translators, or (c) no coverage at all for non-top-50 tickers. None of these work for an AI agent that must read and act programmatically.
+Korean financial data is the surface; the wedge is the delivery model. Existing options for English Korea coverage — Bloomberg, Refinitiv, FnGuide, Smartkarma — sell monthly subscriptions through procurement channels with corporate logins and bespoke contracts. Autonomous agents and indie agent builders can use none of that: they need pay-per-call, no signup, no API key, and a wire format an LLM can reason about without a human in the loop.
 
 ## Solution
 
-A paid API, billed per call in USDC via the x402 protocol, that returns structured English summaries of Korean disclosures with consistent importance scoring and entity tagging. Every disclosure is summarized exactly once (by an LLM) and then served from cache forever, so the marginal cost of the nth request for the same filing approaches zero while the price stays constant.
+An x402-paid HTTP API that returns structured English summaries of Korean disclosures with consistent importance scoring and entity tagging. Every disclosure is summarized exactly once (by an LLM) and then served from cache forever, so the marginal cost of the nth request for the same filing approaches zero while the price stays constant. Wallet authentication, USDC settlement on Base, and machine-readable discovery (`/.well-known/x402`, `/.well-known/agent.json`, `/llms.txt`, `/v1/pricing`) keep the integration loop short enough that an agent can complete its first paid call in single-digit minutes.
 
 ## Target Users
 
-Primary: Autonomous AI research agents (LangChain, CrewAI, custom agent frameworks) deployed by hedge funds and investment research platforms that cover Asian equities.
+**Primary: x402-capable AI agents and the indie devs / small teams who build them.** This is the audience x402 itself was designed for — autonomous agents that prefer pay-per-call, hold their own wallets, run on serverless or self-hosted infrastructure, and pull diverse data sources rather than living inside one vendor's contract. Korean financial data is one such source; the same agent buys research, market data, and tools from many similar APIs. Their willingness-to-pay is small per call but accumulates with usage.
 
-Secondary: Independent quants and developers building Korea-focused trading or monitoring tools who want to avoid building a Korean NLP pipeline themselves.
+**Secondary: MCP-server users inside Claude Desktop / Cursor / Continue** who want a natural-language interface to Korean market events without setting up their own infrastructure. They install `koreafilings-mcp`, plug a wallet, and ask their assistant in English.
 
-Tertiary: MCP-server users inside Claude Desktop / other MCP clients who want a natural-language interface to Korean market events.
+**Tertiary: Crypto-native quant funds doing Asia macro trades.** A small TAM (≈ 5–20 funds globally) but a real fit — they already operate in USDC rails and don't need procurement to use a new data source. Volume per fund is higher than the indie segment.
 
-Non-users (explicitly not serving these): Retail Korean-speaking investors — they already have Naver Finance, Kakao Stock, and free DART. Large sell-side institutions with in-house translators — they won't pay a startup for this.
+**Explicitly not serving these segments:**
+
+- **Korean retail investors.** They have Naver Finance, Kakao Stock, and DART itself for free. Korean is their first language; they don't pay for English summaries of Korean filings.
+- **Traditional sell-side / institutional asset managers.** They already buy Bloomberg / Refinitiv / FnGuide. Compliance and procurement won't approve a USDC wallet as a billing method, regardless of how cheap per call we make it.
+- **Foreign institutional investors with established Asia desks.** Same procurement / subscription expectation as above. The wallet model is a hard constraint, not a price-comparison decision.
+
+This narrowing is intentional and was rebalanced in 2026-05 after observing that 100% of the first 15 mainnet settlements were the maintainer's own self-test traffic — no external paying wallet had completed the 402 → sign → 200 loop yet, despite the infrastructure being end-to-end live. The bottleneck is reach into the x402-capable indie agent ecosystem (TypeScript SDK + HN + Smithery + agent-network presence), not building features for buyers who will never adopt the rail.
 
 ## Functional Requirements
 
@@ -94,7 +100,7 @@ The MVP is successful if, by the end of month 3 post-launch:
 - At least one named integration (someone publicly saying "we use Korea Filings in our agent").
 - x402scan ranking: top 20 by weekly transaction count in the "data" category.
 
-Stretch: monthly revenue ≥ $500, and one quantitative fund or investment research platform doing > 1,000 calls/day.
+Stretch: monthly revenue ≥ $500, and at least one external paying wallet returning week-over-week for ≥ 4 consecutive weeks (sustained agent integration, not a probe).
 
 ## Failure Criteria (When to Pivot)
 

@@ -58,7 +58,7 @@ What's there:
 - OpenAPI at /v3/api-docs, discovery at /.well-known/x402
 - Indexed at https://www.x402scan.com/server/46ef920d-18db-4255-8ec1-f7233451bec7
 
-Why: raw DART data is free but in Korean and structured for filing clerks, not LLMs. Korean equities carry real information asymmetry vs US/EU — but the entry tax for English-speaking quant teams is "hire someone to read Korean PDFs all day." Per-call x402 means an autonomous agent watching Korea pays cents per signal, with no signup, no API key, no monthly minimum.
+Why: raw DART data is free but in Korean and structured for filing clerks, not LLMs. Per-call x402 means an autonomous agent watching Korea pays cents per signal — no signup, no API key, no monthly minimum, no procurement loop. The pay-per-call delivery model is the wedge; Korean financial data is the surface we ship today, but the same shape applies to any other public-records API behind the kind of subscription paywall agents can't navigate.
 
 Honest scope:
 
@@ -96,9 +96,13 @@ Happy to dig into any of this.
 
 Pre-thought answers for the highest-probability comments. Keep responses short and direct — HN rewards concision.
 
-**Q: Why should agents care about Korean disclosures?**
+**Q: Who actually pays for this?**
 
-Information asymmetry. Korean equities trade on KRX, but English-language coverage lags 30 minutes to several hours after a filing. Quant strategies that watch Korea in real time have a meaningful information edge over those that wait for Bloomberg / Reuters to translate. An autonomous agent paying 0.005 USDC per filing it cares about can monitor the entire market for less than a coffee per day.
+x402-capable indie agent builders, mostly. Real-money buyers of Korean financial data (Bloomberg / Refinitiv / FnGuide subscribers) won't be on USDC rails any time soon. The realistic ICP today is autonomous agents that pull diverse data sources and prefer pay-per-call to subscriptions — same audience x402 itself was designed for. Korean data is one of many such sources they pay cents per call for.
+
+**Q: Why should agents care about Korean disclosures specifically?**
+
+English-language coverage of KRX filings lags 30 minutes to several hours behind the source. An autonomous agent paying 0.005 USDC per filing it cares about can monitor the entire market for less than a coffee per day, with structured importance scoring + entity tagging + sector tags wired in.
 
 **Q: Why x402 instead of API keys?**
 
