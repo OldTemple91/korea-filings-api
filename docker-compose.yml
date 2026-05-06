@@ -114,6 +114,10 @@ services:
       # Off in dev/tests; flip to true in prod to capture
       # REQ_AUDIT lines for non-GET / 4xx-5xx traffic.
       REQUEST_AUDIT_ENABLED: ${REQUEST_AUDIT_ENABLED:-false}
+      # When true (and REQUEST_AUDIT_ENABLED is also true), audit
+      # rows are persisted to the request_audit Postgres table for
+      # long-term funnel / KPI analysis. See docs/ANALYTICS.md.
+      REQUEST_AUDIT_PERSIST: ${REQUEST_AUDIT_PERSIST:-false}
     # Bind to localhost only — public traffic reaches the app via the
     # cloudflared sidecar through the docker compose network
     # (`app:8080`), so the host port doesn't need to be open to the

@@ -210,6 +210,16 @@ audit:
     # parallel POST handlers. Off by default; enable in prod via
     # REQUEST_AUDIT_ENABLED=true in .env.
     enabled: ${REQUEST_AUDIT_ENABLED:false}
+    # When true (and `enabled` is also true), the same audit rows
+    # are also written to the `request_audit` Postgres table via an
+    # async, bounded-queue persister. The DB-resident copy survives
+    # log rotation (50 MB × 5 generations) and powers the funnel /
+    # KPI / cohort queries documented in docs/ANALYTICS.md. 90-day
+    # retention via a nightly prune at 04:00 UTC. Off by default;
+    # enable in prod via REQUEST_AUDIT_PERSIST=true in .env.
+    # `enabled` must be true for `persist` to have any effect — the
+    # persister is downstream of the filter.
+    persist: ${REQUEST_AUDIT_PERSIST:false}
 
 logging:
   level:

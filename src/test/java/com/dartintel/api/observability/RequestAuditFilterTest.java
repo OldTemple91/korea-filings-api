@@ -143,4 +143,77 @@ class RequestAuditFilterTest {
         assertThat(line).contains("...");
         assertThat(line.length()).isLessThan(500);
     }
+
+    // ---- toRow() ----  the DB-bound mapping that mirrors formatLine()
+
+    @Test
+    void toRowCapturesAllStructuralFieldsWithoutHeaderValues() {
+        MockHttpServletRequest req = new MockHttpServletRequest("POST", "/v1/disclosures/summary");
+        req.setParameter("rcptNo", "20260424900874");
+        req.setContentType("application/json");
+        req.setContent("{\"rcpt_no\":\"...\"}".getBytes());
+        req.addHeader("User-Agent", "axios/1.14.0");
+        req.addHeader("CF-Connecting-IP", "104.131.41.96");
+        req.addHeader("PAYMENT-SIGNATURE", "eyJ4NDAyVmVyc2lvbiI6Mn0=");
+
+        RequestAudit row = RequestAuditFilter.toRow(req, 405);
+
+        assertThat(row.getMethod()).isEqualTo("POST");
+        assertThat(row.getPath()).isEqualTo("/v1/disclosures/summary");
+        assertThat(row.getStatus()).isEqualTo(405);
+        assertThat(row.getIp()).isEqualTo("104.131.41.96");
+        assertThat(row.getUserAgent()).isEqualTo("axios/1.14.0");
+        assertThat(row.getQueryKeys()).isEqualTo("rcptNo");
+        assertThat(row.getContentType()).isEqualTo("application/json");
+        assertThat(row.getBodyBytes()).isPositive();
+        assertThat(row.isHasPaymentSig()).isTrue();
+        assertThat(row.isHasXPayment()).isFalse();
+        // Header VALUES never end up on any row field — only the
+        // boolean. Sweep every getter that returns a String to catch
+        // any accidental future regression that copies the header.
+        assertThat(row.getMethod()).doesNotContain("eyJ4NDAyVmVyc2lvbiI6Mn0=");
+        assertThat(row.getPath()).doesNotContain("eyJ4NDAyVmVyc2lvbiI6Mn0=");
+        assertThat(row.getIp()).doesNotContain("eyJ4NDAyVmVyc2lvbiI6Mn0=");
+        assertThat(row.getUserAgent()).doesNotContain("eyJ4NDAyVmVyc2lvbiI6Mn0=");
+    }
+
+    @Test
+    void toRowWithMultipleQueryKeysIsCommaSeparatedSorted() {
+        MockHttpServletRequest req = new MockHttpServletRequest("GET", "/v1/disclosures/by-ticker");
+        req.setParameter("ticker", "005930");
+        req.setParameter("limit", "5");
+
+        RequestAudit row = RequestAuditFilter.toRow(req, 402);
+
+        // TreeSet ordering: limit before ticker.
+        assertThat(row.getQueryKeys()).isEqualTo("limit,ticker");
+    }
+
+    @Test
+    void toRowWithoutQueryKeysIsNullNotEmptyString() {
+        MockHttpServletRequest req = new MockHttpServletRequest("GET", "/v1/pricing");
+
+        RequestAudit row = RequestAuditFilter.toRow(req, 200);
+
+        // null distinguishes "no query string" from "empty key list"
+        // when querying — `WHERE query_keys IS NULL` reads cleaner
+        // than `WHERE query_keys = ''`.
+        assertThat(row.getQueryKeys()).isNull();
+        assertThat(row.getBodyBytes()).isNull();
+        assertThat(row.getContentType()).isNull();
+    }
+
+    @Test
+    void toRowTruncatesOverlongFieldsToColumnLimits() {
+        MockHttpServletRequest req = new MockHttpServletRequest("GET", "/" + "a".repeat(400));
+        req.addHeader("User-Agent", "x".repeat(500));
+
+        RequestAudit row = RequestAuditFilter.toRow(req, 404);
+
+        // path column is VARCHAR(256), user_agent VARCHAR(256)
+        assertThat(row.getPath().length()).isLessThanOrEqualTo(256);
+        assertThat(row.getUserAgent().length()).isLessThanOrEqualTo(256);
+        assertThat(row.getPath()).endsWith("...");
+        assertThat(row.getUserAgent()).endsWith("...");
+    }
 }

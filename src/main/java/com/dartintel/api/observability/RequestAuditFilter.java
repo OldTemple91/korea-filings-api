@@ -5,11 +5,13 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.time.Instant;
 import java.util.TreeSet;
 
 /**
@@ -59,6 +61,17 @@ public class RequestAuditFilter extends OncePerRequestFilter {
 
     static final String LOG_TAG = "REQ_AUDIT";
 
+    /**
+     * Optional persister. Present only when {@code audit.requests.persist=true};
+     * {@link ObjectProvider} resolves to empty when the bean isn't
+     * registered, so the filter degrades gracefully to log-only mode.
+     */
+    private final ObjectProvider<RequestAuditPersister> persister;
+
+    public RequestAuditFilter(ObjectProvider<RequestAuditPersister> persister) {
+        this.persister = persister;
+    }
+
     @Override
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
@@ -76,10 +89,99 @@ public class RequestAuditFilter extends OncePerRequestFilter {
                     return;
                 }
                 log.info("{} {}", LOG_TAG, formatLine(request, status));
+                // Best-effort persistence to the request_audit table.
+                // The persister is async + bounded, so this is a queue
+                // offer, not a DB write — never blocks the request.
+                RequestAuditPersister p = persister.getIfAvailable();
+                if (p != null) {
+                    p.enqueue(toRow(request, status));
+                }
             } catch (RuntimeException e) {
                 log.debug("audit logging skipped: {}", e.getMessage());
             }
         }
+    }
+
+    /**
+     * Builds a {@link RequestAudit} row from the same source data the
+     * log line uses. Kept package-private for symmetry with
+     * {@link #formatLine(HttpServletRequest, int)}.
+     */
+    static RequestAudit toRow(HttpServletRequest request, int status) {
+        return RequestAudit.builder()
+                .ts(Instant.now())
+                .method(truncate(request.getMethod(), 8))
+                .path(truncate(request.getRequestURI(), 256))
+                .status(status)
+                .ip(truncate(rawClientIp(request), 64))
+                .userAgent(truncate(sanitiseOrNull(request.getHeader("User-Agent")), 256))
+                .queryKeys(truncate(rawSortedQueryKeys(request), 512))
+                .bodyBytes(rawContentLength(request))
+                .contentType(truncate(sanitiseOrNull(request.getContentType()), 128))
+                .hasXPayment(request.getHeader("X-PAYMENT") != null)
+                .hasPaymentSig(request.getHeader("PAYMENT-SIGNATURE") != null)
+                .build();
+    }
+
+    /** Like {@link #clientIp} but without the {@code "-"} placeholder for logs. */
+    private static String rawClientIp(HttpServletRequest req) {
+        String cf = req.getHeader("CF-Connecting-IP");
+        if (cf != null && !cf.isBlank()) {
+            return sanitiseOrNull(cf);
+        }
+        String addr = req.getRemoteAddr();
+        return sanitiseOrNull(addr);
+    }
+
+    /**
+     * Same CR/LF stripping + length cap as {@link #sanitise(String)}
+     * but returns {@code null} on missing input. The log path uses
+     * {@code "-"} for grep convenience; the DB row uses {@code NULL}
+     * because {@code WHERE col IS NULL} reads cleaner than
+     * {@code WHERE col = '-'} and prevents accidental aggregation
+     * over the placeholder.
+     */
+    static String sanitiseOrNull(String value) {
+        if (value == null || value.isEmpty()) {
+            return null;
+        }
+        String stripped = value.replaceAll("[\r\n\t]", " ");
+        if (stripped.length() > 200) {
+            stripped = stripped.substring(0, 200) + "...";
+        }
+        return stripped;
+    }
+
+    private static Long rawContentLength(HttpServletRequest req) {
+        long len = req.getContentLengthLong();
+        return len < 0 ? null : len;
+    }
+
+    private static String rawSortedQueryKeys(HttpServletRequest req) {
+        if (req.getParameterMap().isEmpty()) {
+            return null;
+        }
+        // Comma-separated rather than the bracketed log format
+        // (the DB column already implies "this is a list").
+        return new TreeSet<>(req.getParameterMap().keySet())
+                .stream()
+                .reduce((a, b) -> a + "," + b)
+                .orElse(null);
+    }
+
+    /**
+     * VARCHAR(N) safety net — Postgres rejects oversize inserts at the
+     * boundary. Trim with an ellipsis marker rather than letting
+     * Hibernate truncate silently or the INSERT fail.
+     */
+    private static String truncate(String value, int max) {
+        if (value == null) {
+            return null;
+        }
+        if (value.length() <= max) {
+            return value;
+        }
+        return value.substring(0, Math.max(0, max - 3)) + "...";
     }
 
     /**
