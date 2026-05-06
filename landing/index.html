@@ -122,7 +122,7 @@
     <span class="pill">1 free + 1 paid call</span>
     <span class="pill">x402 v2 on Base</span>
     <span class="pill">3,961 listed companies</span>
-    <span class="pill">300–500 filings/day</span>
+    <span class="pill">800–1,100 filings/weekday</span>
   </div>
 </header>
 
@@ -130,7 +130,7 @@
 
 <h2>Why this exists</h2>
 <p>
-  Korea's Financial Supervisory Service publishes 300–500 corporate disclosures every day across KOSPI and KOSDAQ. The feed is free. It is also in Korean, structured as PDFs pinned to XML metadata, and full of domain vocabulary — 유상증자, 전환사채, 지주사 전환 — that general-purpose LLMs translate badly.
+  Korea's Financial Supervisory Service publishes roughly 800–1,100 corporate disclosures every weekday across KOSPI and KOSDAQ — about 220,000 a year. The feed is free. It is also in Korean, structured as PDFs pinned to XML metadata, and full of domain vocabulary — 유상증자, 전환사채, 지주사 전환 — that general-purpose LLMs translate badly.
 </p>
 <p>
   For an AI agent or a quantitative desk, raw DART is unusable without a Korean NLP pipeline, a translation layer, and an importance-scoring model. Korea Filings does that work once per filing, caches the result forever, and sells it per call.
@@ -170,12 +170,12 @@ Agent → <span class="label">GET /v1/disclosures/by-ticker?ticker=005930&amp;li
 <p>One call returns a structured JSON object:</p>
 <pre><code>{
   "rcptNo": "20260424900874",
-  "summaryEn": "Global SM's stock trading will be temporarily
+  "summaryEn": "Global SM's stock trading was temporarily
                 suspended on April 24, 2026, due to a change in
                 electronic registration related to a stock
-                consolidation or split. ...",
+                consolidation or split.",
   "importanceScore": 10,
-  "eventType": "OTHER",
+  "eventType": "SINGLE_STOCK_TRADING_SUSPENSION",
   "sectorTags": ["Capital Goods"],
   "tickerTags": ["095440"],
   "actionableFor": ["traders", "long_term_investors"],
@@ -183,7 +183,7 @@ Agent → <span class="label">GET /v1/disclosures/by-ticker?ticker=005930&amp;li
 }</code></pre>
 
 <ul>
-  <li><strong>summaryEn</strong> — paraphrased English, never a verbatim translation, capped at 400 characters.</li>
+  <li><strong>summaryEn</strong> — paraphrased English, never a verbatim translation. The Gemini prompt targets concise output (typically under ~400 chars); the column is unbounded so a longer event-type-specific summary will pass through unchanged.</li>
   <li><strong>importanceScore</strong> — 1 for routine housekeeping, 10 for market-moving events.</li>
   <li><strong>eventType</strong> — canonical <code>UPPER_SNAKE_CASE</code> labels (<code>RIGHTS_OFFERING</code>, <code>MERGER</code>, <code>DIVIDEND_DECISION</code>, etc).</li>
   <li><strong>sectorTags</strong>, <strong>tickerTags</strong> — GICS-style sectors and 6-digit Korean stock codes.</li>
@@ -251,10 +251,11 @@ console.log('paid:', client.lastSettlement?.transaction);</code></pre>
   <code>get_recent_filings</code> in snake_case. Or plug it straight
   into Claude Desktop / Cursor / Continue with the
   <a href="https://pypi.org/project/koreafilings-mcp/">MCP server</a>
-  — <code>uv tool install koreafilings-mcp</code> exposes
-  <code>find_company</code>, <code>list_recent_filings</code>,
-  <code>get_recent_filings</code>, <code>get_pricing</code> as native
-  agent tools.
+  — <code>uv tool install koreafilings-mcp</code> exposes five tools
+  (<code>find_company</code>, <code>list_recent_filings</code>,
+  <code>get_pricing</code> for free discovery; <code>get_recent_filings</code>
+  and <code>get_disclosure_summary</code> for paid AI summaries) as
+  native agent tools.
 </p>
 
 <h2>First production settlement</h2>
