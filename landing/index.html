@@ -133,7 +133,7 @@
   Korea's Financial Supervisory Service publishes roughly 800–1,100 corporate disclosures every weekday across KOSPI and KOSDAQ — about 220,000 a year. The feed is free. It is also in Korean, structured as PDFs pinned to XML metadata, and full of domain vocabulary — 유상증자, 전환사채, 지주사 전환 — that general-purpose LLMs translate badly.
 </p>
 <p>
-  For an AI agent or a quantitative desk, raw DART is unusable without a Korean NLP pipeline, a translation layer, and an importance-scoring model. Korea Filings does that work once per filing, caches the result forever, and sells it per call.
+  For an autonomous AI agent, raw DART is unusable without a Korean NLP pipeline, a translation layer, and an importance-scoring model. Korea Filings does that work once per filing, caches the result forever, and sells it per call.
 </p>
 
 <h2>How it works</h2>
@@ -256,17 +256,6 @@ console.log('paid:', client.lastSettlement?.transaction);</code></pre>
   <code>get_pricing</code> for free discovery; <code>get_recent_filings</code>
   and <code>get_disclosure_summary</code> for paid AI summaries) as
   native agent tools.
-</p>
-
-<h2>First production settlement</h2>
-<p>A live 0.005 USDC settlement from this deployment:</p>
-<p class="tx-hash">
-  <a href="https://basescan.org/tx/0x681c995e149d3ce5765ea8a3b0f921a45352fccefbd9fc9258bf4f6141eafd7c">
-    0x681c995e149d3ce5765ea8a3b0f921a45352fccefbd9fc9258bf4f6141eafd7c
-  </a>
-</p>
-<p style="font-size:13px;">
-  First on-chain settlement on Base mainnet via the Coinbase CDP facilitator. 0.005 USDC moved from a payer wallet to the merchant wallet (0x8467Be…) in a single <code>transferWithAuthorization</code> call.
 </p>
 
 <h2>Status</h2>

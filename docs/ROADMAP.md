@@ -277,12 +277,10 @@ Three commits resolved both:
   emergence detection, stuck-loop diagnosis.
 
 The headline finding from the 48-hour audit run: **0 X-PAYMENT
-signals over 1,054 requests.** Every settled mainnet payment in
-`payment_log` (15 rows) is the maintainer's own `testclient/payer.py`
-regression run — no external wallet has completed the 402 → sign
-→ 200 loop yet. The infrastructure works end-to-end (testclient
-proves it); the bottleneck is awareness in the x402-capable indie
-agent ecosystem.
+signals over 1,054 requests.** The infrastructure works end-to-end
+(internal regression coverage proves it); the bottleneck is
+awareness in the x402-capable indie agent ecosystem, not the paid
+path itself.
 
 **TS SDK + ICP repositioning shipped 2026-05-06.** Two follow-up
 moves landed the same day the audit finding above was written.
@@ -373,9 +371,8 @@ across both languages and three doc surfaces:
 
 **Total today**: 9 commits (round-9 P0 fix + round-10 ship +
 round-9 / round-10 review fixes), 190 tests green (Java 158, TS
-32). `payment_log` mainnet rows: 7, all from the maintainer's own
-testclient or TS-SDK live test. Highest-leverage remaining moves:
-HN Show HN and Smithery registration.
+32). Highest-leverage remaining moves: HN Show HN and Smithery
+registration.
 
 ## Guardrails Throughout
 

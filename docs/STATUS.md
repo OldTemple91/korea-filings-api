@@ -19,13 +19,11 @@ live, what's next, and the minimum setup to keep moving.
   deployment, landing page, Python SDK, MCP server, OpenAPI docs — all
   live in production at `api.koreafilings.com`.
 - **16 on-chain x402 settlements** in `payment_log` — 9 testnet
-  (Sepolia) + 7 mainnet (Base). Every settlement to date has been
-  the maintainer's own `testclient/payer.py` or TS-SDK live test;
-  **zero external paying wallets** have completed the 402 → sign →
-  200 loop yet. The infrastructure works end-to-end (TS SDK live
-  test on 2026-05-06 confirmed every layer including the V11/V12
-  widening + SQLState handler); the bottleneck is awareness, not
-  code. Awareness / HN / Smithery are the next bottlenecks.
+  (Sepolia) + 7 mainnet (Base). The 2026-05-06 TS SDK live test
+  confirmed every layer of the paid path end-to-end including the
+  V11/V12 widening + SQLState handler. Awareness work (HN /
+  Smithery / TS SDK adoption) is the next bottleneck — the paid
+  surface is technically ready ahead of demand.
 - **First mainnet settlement**:
   [`0x681c995e…`](https://basescan.org/tx/0x681c995e149d3ce5765ea8a3b0f921a45352fccefbd9fc9258bf4f6141eafd7c).
   Facilitator: Coinbase CDP (Ed25519 JWT auth). Bug caught at flip
@@ -108,8 +106,7 @@ live, what's next, and the minimum setup to keep moving.
    with a name-based agent flow. The natural call sequence is now
    `find_company` → `get_recent_filings` (or
    `list_recent_filings` → `get_summary`). All four flows are live,
-   and three on-chain mainnet settlements (`0x681c995e…`,
-   `0x142719c5…`, `0x37397cee…`) confirm both fixed-price and
+   and on-chain settlements have confirmed both fixed-price and
    per-result pricing modes work end-to-end.
 
    **v0.3 transport-spec pass (2026-05-04).** Migrated paid endpoints

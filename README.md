@@ -220,12 +220,11 @@ The same paid-action surface is also exposed in Agent Web Protocol
 and a plain-English overview for AI agents lives at
 [`/llms.txt`](https://api.koreafilings.com/llms.txt).
 
-Live on **Base mainnet** via the Coinbase CDP facilitator. The first
-on-chain settlement is permanent at
-[0x681c995e…](https://basescan.org/tx/0x681c995e149d3ce5765ea8a3b0f921a45352fccefbd9fc9258bf4f6141eafd7c) —
-a payer wallet moved 0.005 USDC to the merchant wallet
-`0x8467Be164C75824246CFd0fCa8E7F7009fB8f720` in a single
-`transferWithAuthorization` call.
+Live on **Base mainnet** via the Coinbase CDP facilitator. Every paid
+call settles a real `transferWithAuthorization` on-chain in a single
+hop; the merchant wallet, network, and USDC contract address are all
+self-describing through `/v1/pricing` and `/.well-known/x402` so an
+agent can verify the destination before signing.
 
 ## Architecture
 
@@ -311,8 +310,7 @@ your `.env`.
 
 ## Status
 
-Live on **Base mainnet** with verified on-chain settlement
-([first tx](https://basescan.org/tx/0x681c995e149d3ce5765ea8a3b0f921a45352fccefbd9fc9258bf4f6141eafd7c)).
+Live on **Base mainnet** with verified on-chain settlement.
 MVP feature set:
 
 - DART real-time ingestion (30-second poll)
