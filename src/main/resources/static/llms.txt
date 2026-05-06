@@ -27,12 +27,23 @@ The intended agent flow is two calls: a free name → ticker resolution, then a 
 - These endpoints are READ operations. Use **GET**, never POST.
 - `rcpt_no` is **not LLM-knowable** — get it from the response of `/v1/disclosures/by-ticker` or the free `/v1/disclosures/recent` feed before calling `/v1/disclosures/summary`.
 - Pay via the `PAYMENT-SIGNATURE` header (x402 v2 transport spec). The legacy `X-PAYMENT` header is also accepted for older 0.2.x SDK / MCP releases.
-- The Python SDK and MCP server handle the full 402 → sign → retry flow automatically. Recommended over hand-rolled HTTP.
+- The TypeScript SDK, Python SDK, and MCP server handle the full 402 → sign → retry flow automatically. Recommended over hand-rolled HTTP.
+
+## Format constraints (validated server-side, mirror these client-side)
+
+- `rcptNo` must match `^\d{14}$` — exactly 14 digits, no separators.
+- `ticker` must match `^[0-9A-Z]{6,7}$` — 6 alphanumeric for standard KRX listings, 7 for SPAC tickers ending in `K`.
+- `limit` query parameter is clamped to the documented range server-side (1–50 for `by-ticker`, 1–100 for `recent`).
+- A malformed `rcptNo` or `ticker` produces HTTP 400 with `{ "error": "validation_failed" }` — no payment is ever charged for a rejected input.
 
 ## SDKs and clients
 
-- Python SDK: <https://pypi.org/project/koreafilings/>
-- MCP server (Claude Desktop / Cursor / Continue): <https://pypi.org/project/koreafilings-mcp/>
+- TypeScript / JavaScript SDK: `npm install koreafilings` — <https://www.npmjs.com/package/koreafilings>
+  - Same surface as the Python SDK in idiomatic camelCase.
+  - Runs in Node 18+, browsers, Cloudflare Workers, and Deno.
+  - Pinned exact `viem 2.21.0` for stable EIP-712 typed-data hashing.
+- Python SDK: `pip install koreafilings` — <https://pypi.org/project/koreafilings/>
+- MCP server (Claude Desktop / Cursor / Continue): `uv tool install koreafilings-mcp` — <https://pypi.org/project/koreafilings-mcp/>
 - Source repository: <https://github.com/OldTemple91/korea-filings-api>
 - Reference test client: `testclient/payer.py` in the repo (full 402 → sign → retry flow in ~150 lines of Python).
 

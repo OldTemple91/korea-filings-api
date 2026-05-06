@@ -134,8 +134,16 @@ class PublicControllerIT {
                 .andExpect(jsonPath("$.error").value("method_not_allowed"))
                 .andExpect(jsonPath("$.method").value("POST"))
                 .andExpect(jsonPath("$.supported[0]").value("GET"))
-                .andExpect(jsonPath("$.hint").value(containsString("GET /v1/disclosures/summary")))
-                .andExpect(jsonPath("$.discovery").value("/.well-known/x402"));
+                // Round-10 fix: hint and discovery now emit ABSOLUTE
+                // URLs so a tool-chain agent that forwards the
+                // envelope to a follow-up step doesn't lose the
+                // origin host. The protocol part may vary in
+                // MockMvc (no real TLS termination), so assert on
+                // the path tail and on the scheme://host shape.
+                .andExpect(jsonPath("$.hint").value(containsString("/v1/disclosures/summary")))
+                .andExpect(jsonPath("$.hint").value(containsString("://")))
+                .andExpect(jsonPath("$.discovery").value(containsString("/.well-known/x402")))
+                .andExpect(jsonPath("$.discovery").value(containsString("://")));
     }
 
     @Test
@@ -144,7 +152,8 @@ class PublicControllerIT {
         mockMvc.perform(post("/v1/pricing"))
                 .andExpect(status().isMethodNotAllowed())
                 .andExpect(jsonPath("$.error").value("method_not_allowed"))
-                .andExpect(jsonPath("$.hint").value(containsString("GET /v1/pricing")));
+                .andExpect(jsonPath("$.hint").value(containsString("/v1/pricing")))
+                .andExpect(jsonPath("$.hint").value(containsString("://")));
     }
 
     /**

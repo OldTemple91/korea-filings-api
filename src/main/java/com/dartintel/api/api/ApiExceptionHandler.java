@@ -108,20 +108,46 @@ public class ApiExceptionHandler {
         String allowHeader = (supported == null || supported.length == 0)
                 ? "GET"
                 : String.join(", ", supported);
+        // Tool-using agents that pass the 405 envelope through a
+        // multi-step chain may lose the request's `Host` context
+        // before they construct the follow-up call. Emit absolute
+        // URLs in both `hint` and `discovery` so any downstream
+        // consumer can act on the body without reconstructing the
+        // origin from `Host` / `X-Forwarded-Host` headers.
+        String origin = absoluteOrigin(request);
         String hint = (supported == null || supported.length == 0)
                 ? "This path does not accept the method you used."
-                : "Use " + supported[0] + " " + request.getRequestURI()
-                  + ". See /.well-known/x402 for the full agent flow.";
+                : "Use " + supported[0] + " " + origin + request.getRequestURI()
+                  + ". See " + origin + "/.well-known/x402 for the full agent flow.";
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("error", "method_not_allowed");
         body.put("method", request.getMethod());
         body.put("supported", supported == null ? List.of() : List.of(supported));
         body.put("hint", hint);
-        body.put("discovery", "/.well-known/x402");
+        body.put("discovery", origin + "/.well-known/x402");
         return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED)
                 .header(HttpHeaders.ALLOW, allowHeader)
                 .header(HttpHeaders.CACHE_CONTROL, "no-store")
                 .body(body);
+    }
+
+    /**
+     * Reconstructs the public origin (scheme + host + optional port)
+     * from forwarded headers — Tomcat's {@code remoteIp} valve has
+     * already trusted {@code X-Forwarded-Proto} / {@code X-Forwarded-Host}
+     * from the cloudflared bridge per {@code application.yml}, so
+     * {@code request.getScheme()} / {@code getServerName()} return
+     * the public values, not the loopback the container sees.
+     */
+    private static String absoluteOrigin(HttpServletRequest request) {
+        String scheme = request.getScheme();
+        String host = request.getServerName();
+        int port = request.getServerPort();
+        boolean defaultPort = ("https".equals(scheme) && port == 443)
+                || ("http".equals(scheme) && port == 80);
+        return defaultPort
+                ? scheme + "://" + host
+                : scheme + "://" + host + ":" + port;
     }
 
     /**

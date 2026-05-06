@@ -80,6 +80,7 @@ public class X402SettlementAdvice implements ResponseBodyAdvice<Object> {
     private final PaymentStore paymentStore;
     private final ObjectMapper objectMapper;
     private final PaymentNotifier paymentNotifier;
+    private final PaymentLogReconciliationMonitor reconciliationMonitor;
 
     @Override
     public boolean supports(MethodParameter returnType,
@@ -208,7 +209,17 @@ public class X402SettlementAdvice implements ResponseBodyAdvice<Object> {
         }
     }
 
-    private void persistPaymentLog(VerifiedPayment verified, FacilitatorSettleResponse settle) {
+    /**
+     * Package-private so {@link com.dartintel.api.payment.X402SettlementAdviceWiringTest}
+     * can call it directly with mocked dependencies and verify that
+     * {@code reconciliationMonitor.recordReconciliationFailure()} is
+     * actually invoked on the integrity-violation branch — without
+     * requiring a full {@code @SpringBootTest} + Postgres testcontainer
+     * to exercise the private-method behaviour. The real production
+     * call site is still {@code beforeBodyWrite} on this advice; the
+     * accessibility relaxation is purely for test reach.
+     */
+    void persistPaymentLog(VerifiedPayment verified, FacilitatorSettleResponse settle) {
         String rcptNo = X402PaywallInterceptor.extractRcptNo(verified.endpoint());
         BigDecimal amountHuman = new BigDecimal(verified.requirement().amount())
                 .divide(X402PaywallInterceptor.USDC_ATOMIC, 6, RoundingMode.HALF_UP);
@@ -291,6 +302,11 @@ public class X402SettlementAdvice implements ResponseBodyAdvice<Object> {
                         verified.endpoint(),
                         X402PaywallInterceptor.sanitiseLogValue(violation.getMessage()));
                 reconciliationFailure = true;
+                // Surface to Prometheus independent of the
+                // PaymentNotifier webhook — Grafana alert can fire on
+                // this counter even when X402_NOTIFY_WEBHOOK_URL is
+                // unset (which is the production state today).
+                reconciliationMonitor.recordReconciliationFailure();
             }
         } catch (org.springframework.dao.DataAccessException dbDown) {
             // Postgres is unreachable / over capacity / mid-failover.
@@ -308,6 +324,12 @@ public class X402SettlementAdvice implements ResponseBodyAdvice<Object> {
                     verified.endpoint(),
                     X402PaywallInterceptor.sanitiseLogValue(dbDown.getMessage()));
             reconciliationFailure = true;
+            // Same counter as the integrity-violation branch — both
+            // produce the same operator outcome ("settle landed but
+            // row missing"), and both should fire the same Grafana
+            // alert. The log line wording above is what
+            // distinguishes the sub-cause for incident response.
+            reconciliationMonitor.recordReconciliationFailure();
         }
         // Notify operator (Slack / Discord webhook). Best-effort,
         // never blocks the request thread, never throws. Driven by

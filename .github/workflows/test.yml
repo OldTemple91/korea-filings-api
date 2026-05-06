@@ -1,0 +1,91 @@
+name: test
+
+# Runs the Java + TypeScript test suites on every push and PR.
+# Until this workflow existed, tests were a manual `gradle test`
+# on the maintainer's laptop before each push — round-9 caught a
+# P0 silent-drop bug that the existing tests would have surfaced
+# at the time, but only because the maintainer ran them by hand.
+# CI removes the human-in-the-loop precondition.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel an in-flight run when a new commit lands on the same branch /
+# PR — prevents a long Testcontainers-bearing run from queuing behind
+# its own outdated predecessors after a rapid push sequence.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  java:
+    name: Java + Spring Boot (Gradle)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          # Gradle wrapper lives in the repo; this caches the
+          # downloaded distribution + the resolved dependency JARs.
+          cache: gradle
+
+      - name: Run gradle test
+        # Testcontainers spins up Postgres + Redis per IT class. The
+        # default ubuntu-24.04 runner ships with Docker already
+        # running, so no extra setup is needed.
+        run: ./gradlew test --no-daemon --stacktrace
+
+      - name: Upload test reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: java-test-reports
+          path: build/reports/tests/test
+          retention-days: 7
+
+  typescript:
+    name: TypeScript SDK (vitest)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: sdk/typescript
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 20 LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: sdk/typescript/package-lock.json
+
+      - name: Install dependencies
+        # `npm ci` enforces the lockfile — any drift fails the build,
+        # which is exactly what we want for a payments SDK whose only
+        # dep (viem) is pinned exact.
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Run vitest
+        run: npm test
+
+      - name: Verify build succeeds (ESM + CJS + d.ts)
+        # Build is a publish prerequisite. Catching a broken build
+        # in CI prevents the laptop-only `npm publish` workflow from
+        # ever shipping a package that won't load.
+        run: npm run build

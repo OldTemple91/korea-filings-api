@@ -435,6 +435,8 @@ class DisclosuresControllerIT {
                                 {"success":true,"transaction":"0xABC123","network":"eip155:84532","payer":"0x857b06519E91e3A54538791bDbb0E22373e36b66"}
                                 """)));
 
+        long beforeCount = paymentLogRepository.count();
+
         mockMvc.perform(get("/v1/disclosures/summary?rcptNo=20260423000001")
                         .header("X-PAYMENT", validPaymentPayloadBase64("sig-b")))
                 .andExpect(status().isOk())
@@ -447,6 +449,35 @@ class DisclosuresControllerIT {
 
         wireMock.verify(postRequestedFor(urlPathEqualTo("/verify")));
         wireMock.verify(postRequestedFor(urlPathEqualTo("/settle")));
+
+        // Round-9/V11 regression guard — the round-7 silent-drop bug
+        // returned a 200 + a settlement header for paid calls while
+        // the payment_log row was being silently dropped by the
+        // exception handler. Asserting on the controller response
+        // alone (as the original version of this test did) would
+        // pass even under that broken state. Lock in that the row
+        // actually lands.
+        long afterCount = paymentLogRepository.count();
+        org.assertj.core.api.Assertions.assertThat(afterCount).isEqualTo(beforeCount + 1);
+
+        // Cross-check that the new row carries the on-chain tx hash
+        // — a row with `facilitator_tx_id IS NULL` would trip the
+        // PaymentLogReconciliationMonitor SLO gauge and is never an
+        // expected outcome on the success path.
+        com.dartintel.api.payment.PaymentLog lastRow = paymentLogRepository.findAll().stream()
+                .max(java.util.Comparator.comparing(com.dartintel.api.payment.PaymentLog::getSettledAt))
+                .orElseThrow();
+        org.assertj.core.api.Assertions.assertThat(lastRow.getFacilitatorTxId()).isEqualTo("0xABC123");
+        org.assertj.core.api.Assertions.assertThat(lastRow.getPayerAddress()).isEqualTo("0x857b06519E91e3A54538791bDbb0E22373e36b66");
+        org.assertj.core.api.Assertions.assertThat(lastRow.getEndpoint()).contains("rcptNo=20260423000001");
+        org.assertj.core.api.Assertions.assertThat(lastRow.getNetwork()).isEqualTo("eip155:84532");
+        // signature_hash uses the round-7 "nonce:" + 0x + 64-hex
+        // shape (72 chars). Pre-V11 this would have silently 22001'd
+        // and dropped the row. Asserting on length is the simplest
+        // proof the V11 widening took effect end-to-end through the
+        // full settle path, not just at the entity layer.
+        org.assertj.core.api.Assertions.assertThat(lastRow.getSignatureHash()).startsWith("nonce:0x");
+        org.assertj.core.api.Assertions.assertThat(lastRow.getSignatureHash().length()).isGreaterThan(64);
     }
 
     @Test

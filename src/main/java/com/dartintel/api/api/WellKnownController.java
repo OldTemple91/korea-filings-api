@@ -159,6 +159,20 @@ public class WellKnownController {
         x402.put("network", x402Properties.network());
         x402.put("asset", x402Properties.asset());
         x402.put("recipient", x402Properties.recipientAddress());
+        // `extra` mirrors the EIP-712 domain values the 402 challenge
+        // will carry in `accepts[].extra`. SDK 0.1.1+ pins the
+        // canonical (name, version, asset) triple per chain in a
+        // KNOWN_DOMAINS allowlist and refuses to sign if the actual
+        // 402 challenge advertises anything else. Surfacing the same
+        // values here lets a cold-start agent verify "the server I
+        // discovered will work with my pinned SDK" before issuing the
+        // first paid call. The values come straight from the live
+        // X402Properties so a config drift in the running app is
+        // immediately visible to indexers.
+        Map<String, Object> extra = new LinkedHashMap<>();
+        extra.put("name", x402Properties.tokenName());
+        extra.put("version", x402Properties.tokenVersion());
+        x402.put("extra", extra);
 
         Map<String, Object> body = new LinkedHashMap<>();
         // === Spec-required fields (strict types) ===
