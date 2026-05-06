@@ -2,6 +2,7 @@
 
 [![PyPI](https://img.shields.io/pypi/v/koreafilings.svg?label=koreafilings)](https://pypi.org/project/koreafilings/)
 [![PyPI MCP](https://img.shields.io/pypi/v/koreafilings-mcp.svg?label=koreafilings-mcp)](https://pypi.org/project/koreafilings-mcp/)
+[![npm](https://img.shields.io/npm/v/koreafilings.svg?label=koreafilings%20%28npm%29)](https://www.npmjs.com/package/koreafilings)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![x402](https://img.shields.io/badge/payments-x402-orange.svg)](https://www.x402.org/)
 
@@ -54,6 +55,36 @@ USDC payment. Margins compound as adoption grows.
 Pick whichever surface fits your stack. All three speak the same x402
 flow under the hood; the wallet that signs the `PAYMENT-SIGNATURE` header *is*
 the identity. No API keys. No signup.
+
+### TypeScript SDK
+
+```bash
+npm install koreafilings
+```
+
+```ts
+import { KoreaFilings } from 'koreafilings';
+
+const client = new KoreaFilings({
+  privateKey: process.env.PAYER_PRIVATE_KEY as `0x${string}`,
+  network: 'base',
+});
+
+// 1. Free — Korean / English company name → six-digit KRX ticker
+const matches = await client.findCompany('Samsung Electronics');
+const ticker = matches[0]!.ticker; // "005930"
+
+// 2. Paid — 0.005 × limit USDC, settled via x402 in one round-trip
+const filings = await client.getRecentFilings(ticker, 5);
+for (const f of filings) {
+  console.log(`[${f.importanceScore}/10] ${f.eventType}: ${f.summaryEn}`);
+}
+console.log('paid:', client.lastSettlement?.transaction);
+```
+
+Sources for TypeScript / JavaScript callers — works in Node 18+, the
+browser, Cloudflare Workers, and Vercel Functions. Full SDK docs in
+[`sdk/typescript/README.md`](sdk/typescript/README.md).
 
 ### Python SDK
 
@@ -238,6 +269,7 @@ Compose, Cloudflare Tunnel, Cloudflare Workers. See
 .
 ├── src/                  # Spring Boot application source
 ├── sdk/python/           # `koreafilings` Python SDK (PyPI)
+├── sdk/typescript/       # `koreafilings` TypeScript SDK (npm)
 ├── mcp/                  # `koreafilings-mcp` MCP server (PyPI)
 ├── landing/              # Marketing landing page (Cloudflare Workers)
 ├── testclient/           # Reference Python x402 client (testnet payer)
