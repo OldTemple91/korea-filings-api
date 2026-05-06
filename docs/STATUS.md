@@ -243,9 +243,9 @@ live, what's next, and the minimum setup to keep moving.
 4. **HN Show HN post** — `docs/launch/HN_DRAFT.md` is the copy.
    Targeting Tuesday/Wednesday 22:00 KST. Headline shifted from
    "rcpt_no demo" (the v1 framing) to "1 free call + 1 paid call to
-   get Korean filings as English signals", with v1.2 deep analysis
-   explicitly named as the next phase so the launch positions a
-   roadmap, not a demo.
+   get Korean filings as English signals", body-aware summarisation
+   already in the round-11 ship so the launch leads with delivered
+   depth instead of a roadmap promise.
 
 5. **Operational follow-ups (post-launch)**:
    - **PaymentNotifier webhook** — Slack/Discord notification on every

@@ -72,8 +72,8 @@ Why: raw DART data is free but in Korean and structured for filing clerks, not L
 
 Honest scope:
 
-- Today's summaries are generated from filing metadata only — title, date, filer, DART flag. That gives event type / importance score / sector / ticker reliably (first-pass screening) but the LLM honestly says "details are in the filing body" for quantitative events instead of fabricating numbers. Whether to extract the actual amounts is the v1.2 question.
-- v1.2 plan, on the roadmap: pull the per-filing XBRL via DART's /document.xml and template-extract numbers (issuance amount, dilution %, contract value, …) for the six highest-value event types into a structured keyFacts field. New paid endpoint /v1/disclosures/deep?rcptNo=… at ~0.020 USDC; existing endpoints stay metadata-only at 0.005 USDC so callers pick depth at call time.
+- Summaries are body-aware — the model reads the filing body itself (fetched lazily via DART's /document.xml ZIP, parsed and capped at 20,000 chars) so quantitative events surface concrete amounts, dilution percentages, counterparty names, and effective dates. Body fetch is lazy: the first paid call per rcpt_no fetches and caches the body in Postgres, every subsequent call hits the cache. If DART hasn't finalised the body yet (very fresh filings) the LLM falls back to title-only and the response notes the missing detail explicitly rather than fabricating numbers.
+- A future tiered-pricing iteration (event-type clusters, e.g. LOW/STANDARD/HIGH) sits on the roadmap, but the standing 0.005 USDC flat price already covers body-aware summarisation today — the tier change would be triggered by traffic data, not by a depth gap.
 
 Repo (MIT, Java backend + Python SDK + Python MCP + landing): https://github.com/OldTemple91/korea-filings-api
 
@@ -132,11 +132,11 @@ The SDK signs locally; the key never leaves the caller's process. The server nev
 
 **Q: What if Gemini 429s?**
 
-Resilience4j RateLimiter (10 RPM, conservative below the 15 RPM free-tier ceiling) gates outbound calls; CircuitBreaker on the gemini provider trips after sustained failures; the SummaryRetry scheduler re-enqueues failed jobs on a separate cadence. None of this affects paying readers because cache hits short-circuit the whole pipeline; only the first caller for a given rcpt_no can possibly hit a 429-driven slow path.
+Resilience4j RateLimiter (10 RPM, conservative below the 15 RPM free-tier ceiling) gates outbound calls; CircuitBreaker on the gemini provider trips after sustained failures. None of this affects paying readers because cache hits short-circuit the whole pipeline; only the first caller for a given rcpt_no can possibly hit a 429-driven slow path. On a 429 the controller returns 503 — settlement-on-2xx leaves the caller uncharged, so a Gemini outage doesn't silently take revenue.
 
 **Q: Pricing roadmap?**
 
-0.005 USDC per metadata summary stays flat — marginal cost on a cache hit is near-zero, so per-call flat pricing made more sense than tokens or subscriptions. The next pricing tier is v1.2 deep analysis at ~0.020 USDC (new /v1/disclosures/deep?rcptNo=… endpoint pulling the filing body for quantitative facts), which lets agents pick depth at call time. Volume tiers would land only if data shows high-frequency agents repeatedly hitting the same handful of tickers — but the cache moat already covers that case for free.
+0.005 USDC per summary stays flat — marginal cost on a cache hit is near-zero, so per-call flat pricing made more sense than tokens or subscriptions. Body-aware summarisation (the v1.2-flavour "deep" tier originally planned) ships at the same 0.005 USDC price; pulling the body fetch forward into v1.1 turned out cleaner than maintaining two pricing tiers when the LLM cost difference between metadata-only and body-aware Flash-Lite calls is well under a cent. A future tiered-pricing iteration (event-type clusters) sits on the roadmap and would be triggered by traffic data showing which events drive disproportionate paid volume, not by the depth gap. Volume tiers would land only if high-frequency agents repeatedly hit the same handful of tickers — but the cache moat already covers that case for free.
 
 **Q: Korean text in console?**
 
