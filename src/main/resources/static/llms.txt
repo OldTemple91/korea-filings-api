@@ -1,0 +1,44 @@
+# Korea Filings
+
+> Pay-per-call API for AI-summarised Korean DART corporate disclosures. Free company directory + recent feed for discovery; paid summaries for content via x402 (USDC on Base mainnet).
+
+The intended agent flow is two calls: a free name → ticker resolution, then a paid `get_recent_filings(ticker, limit)`. Direct receipt-number lookup is also supported for callers that already have a 14-digit DART rcpt_no.
+
+## Discovery
+
+- [/.well-known/x402](https://api.koreafilings.com/.well-known/x402): canonical x402 service descriptor — network, asset, recipient wallet, paid endpoint catalog with prices and methods.
+- [/.well-known/agent.json](https://api.koreafilings.com/.well-known/agent.json): Agent Web Protocol manifest — same surface in AWP shape for indexers that prefer it.
+- [/v1/pricing](https://api.koreafilings.com/v1/pricing): machine-readable pricing + workflow steps + example calls.
+- [/openapi.json](https://api.koreafilings.com/openapi.json): full OpenAPI 3 schema.
+
+## Free endpoints
+
+- `GET /v1/companies?q={koreanOrEnglishName}` — trigram fuzzy search across 3,961 KRX-listed companies. Returns ticker, corp_code, market.
+- `GET /v1/companies/{ticker}` — direct six-digit ticker lookup.
+- `GET /v1/disclosures/recent?limit={n}&since_hours={h}` — market-wide metadata feed of the most recent DART filings.
+
+## Paid endpoints (x402, USDC on Base)
+
+- `GET /v1/disclosures/by-ticker?ticker={ticker}&limit={n}` — 0.005 USDC × n. Returns AI-summarised English filings, newest first. Default limit 5, max 50.
+- `GET /v1/disclosures/summary?rcptNo={14-digit}` — 0.005 USDC fixed. Re-fetch a single summary by 14-digit DART receipt number.
+
+## Common agent mistakes
+
+- These endpoints are READ operations. Use **GET**, never POST.
+- `rcpt_no` is **not LLM-knowable** — get it from the response of `/v1/disclosures/by-ticker` or the free `/v1/disclosures/recent` feed before calling `/v1/disclosures/summary`.
+- Pay via the `PAYMENT-SIGNATURE` header (x402 v2 transport spec). The legacy `X-PAYMENT` header is also accepted for older 0.2.x SDK / MCP releases.
+- The Python SDK and MCP server handle the full 402 → sign → retry flow automatically. Recommended over hand-rolled HTTP.
+
+## SDKs and clients
+
+- Python SDK: <https://pypi.org/project/koreafilings/>
+- MCP server (Claude Desktop / Cursor / Continue): <https://pypi.org/project/koreafilings-mcp/>
+- Source repository: <https://github.com/OldTemple91/korea-filings-api>
+- Reference test client: `testclient/payer.py` in the repo (full 402 → sign → retry flow in ~150 lines of Python).
+
+## What this service is not
+
+- Not a real-time feed; refresh follows the DART portal's cadence (~30 second polling).
+- Not a verbatim translation. Summaries are paraphrased English to reduce copyright risk and improve agent consumption.
+- Not a substitute for the original disclosure; every summary links back to the DART original URL.
+- Not a Korean retail investor product — there is no UI, no Korean-language frontend, no signup, no API key. Payment IS the authentication.

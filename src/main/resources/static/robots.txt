@@ -1,0 +1,24 @@
+# Korea Filings — robots.txt
+#
+# Discovery surface (the things crawlers / indexers should learn about
+# us) lives under /.well-known and a few public read-only paths. Paid
+# endpoints under /v1/disclosures/by-ticker and /v1/disclosures/summary
+# are intentionally NOT crawled — anonymous crawls hit 402 every time
+# and just generate noise on both ends.
+#
+# See https://api.koreafilings.com/llms.txt for an agent-readable
+# overview of the same information.
+
+User-agent: *
+Allow: /
+Allow: /.well-known/
+Allow: /openapi.json
+Allow: /llms.txt
+Allow: /v1/companies
+Allow: /v1/disclosures/recent
+Allow: /v1/pricing
+Disallow: /v1/disclosures/by-ticker
+Disallow: /v1/disclosures/summary
+Disallow: /actuator/
+
+Sitemap: https://api.koreafilings.com/sitemap.xml

@@ -146,4 +146,51 @@ class PublicControllerIT {
                 .andExpect(jsonPath("$.error").value("method_not_allowed"))
                 .andExpect(jsonPath("$.hint").value(containsString("GET /v1/pricing")));
     }
+
+    /**
+     * AWP (Agent Web Protocol) manifest probed by the Open402
+     * directory crawler and other AWP-aware indexers. Same surface
+     * as /.well-known/x402 but in the awp_version / domain / intent /
+     * actions[] shape. Verify required top-level fields, that paid
+     * actions carry a payment block, and that free actions don't.
+     */
+    @Test
+    void wellKnownAgentJsonReturnsAwpManifestWithPaidAndFreeActions() throws Exception {
+        mockMvc.perform(get("/.well-known/agent.json"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.awp_version").value("0.2"))
+                .andExpect(jsonPath("$.domain").value("api.koreafilings.com"))
+                .andExpect(jsonPath("$.intent").value(containsString("Korean DART")))
+                .andExpect(jsonPath("$.payment.scheme").value("x402"))
+                .andExpect(jsonPath("$.payment.discovery").value("/.well-known/x402"))
+                // free actions present — find-company is the cold-start anchor
+                .andExpect(jsonPath("$.actions[?(@.id == 'find-company')].method").value("GET"))
+                .andExpect(jsonPath("$.actions[?(@.id == 'find-company')].endpoint").value("/v1/companies"))
+                // paid actions carry a payment block; free ones don't
+                .andExpect(jsonPath("$.actions[?(@.id == 'get-by-ticker')].payment.scheme").value("x402"))
+                .andExpect(jsonPath("$.actions[?(@.id == 'get-by-ticker')].payment.priceUsdc").value("0.005"))
+                .andExpect(jsonPath("$.actions[?(@.id == 'get-summary')].payment.priceMode").value("fixed"))
+                // free action has no payment field
+                .andExpect(jsonPath("$.actions[?(@.id == 'find-company')].payment").doesNotExist());
+    }
+
+    /**
+     * Casual visits to the API host (humans pasting api.koreafilings.com
+     * into a browser, search engine bots) used to 404 — now 302 to
+     * the marketing landing page. Indirectly proves the
+     * DiscoveryRootController is wired and that the X402PaywallInterceptor
+     * doesn't accidentally challenge the root path.
+     */
+    @Test
+    void rootRedirectsToLandingPage() throws Exception {
+        mockMvc.perform(get("/"))
+                .andExpect(status().isFound())
+                .andExpect(header().string("Location", "https://koreafilings.com"));
+    }
+
+    @Test
+    void faviconReturns204NoContentNot404() throws Exception {
+        mockMvc.perform(get("/favicon.ico"))
+                .andExpect(status().isNoContent());
+    }
 }

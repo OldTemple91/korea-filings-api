@@ -77,9 +77,20 @@ public class WellKnownController {
         this.handlerMapping = handlerMapping;
     }
 
+    /**
+     * Pre-built AWP (Agent Web Protocol) manifest. Same surface as
+     * {@code /.well-known/x402} but in the {@code awp_version / domain
+     * / intent / actions[]} shape that AWP indexers (Open402 directory
+     * crawler, agentwebprotocol.org) probe for. Free endpoints are
+     * listed alongside paid ones so a cold-start agent can plan the
+     * full free → paid call sequence from one document.
+     */
+    private volatile Map<String, Object> cachedAgentJson;
+
     @PostConstruct
     void buildDiscoveryCache() {
         this.cachedDocument = buildDiscoveryDocument();
+        this.cachedAgentJson = buildAgentJsonDocument();
     }
 
     @GetMapping(value = "/.well-known/x402", produces = MediaType.APPLICATION_JSON_VALUE)
@@ -95,6 +106,23 @@ public class WellKnownController {
     )
     public Map<String, Object> discoveryDocument() {
         return cachedDocument;
+    }
+
+    @GetMapping(value = "/.well-known/agent.json", produces = MediaType.APPLICATION_JSON_VALUE)
+    @SecurityRequirements // free, unauthenticated
+    @Operation(
+            summary = "Agent Web Protocol (AWP) manifest",
+            description = """
+                    AWP-shaped sibling to {@code /.well-known/x402}. Lists
+                    every public action (free + paid) with method, endpoint,
+                    parameters, and a per-action pointer to the x402
+                    payment descriptor for paid actions. Targeted at the
+                    Open402 directory crawler and other AWP-aware indexers
+                    that probe this path.
+                    """
+    )
+    public Map<String, Object> agentJsonDocument() {
+        return cachedAgentJson;
     }
 
     private Map<String, Object> buildDiscoveryDocument() {
@@ -158,6 +186,160 @@ public class WellKnownController {
         body.put("x402", x402);
         body.put("resourceDetails", resourceObjects);
         return body;
+    }
+
+    /**
+     * Builds the AWP {@code agent.json} document from the same paid-
+     * endpoint metadata that drives {@code /.well-known/x402}, plus a
+     * hardcoded list of free actions (free endpoints are not
+     * annotated for x402 since there's no price to declare).
+     *
+     * <p>Schema follows agentwebprotocol.org v0.2: {@code awp_version},
+     * {@code domain}, {@code intent}, {@code actions[]} with
+     * {@code id} / {@code method} / {@code endpoint} / {@code intent}
+     * / {@code parameters} / optional {@code payment} pointer.
+     */
+    private Map<String, Object> buildAgentJsonDocument() {
+        List<Map<String, Object>> freeActions = List.of(
+                action(
+                        "find-company",
+                        "GET",
+                        "/v1/companies",
+                        "Resolve a Korean company name (Korean or English) to a six-digit KRX ticker via trigram fuzzy search.",
+                        Map.of(
+                                "q", param("query", "string", true,
+                                        "Company name in Korean or English. Returns up to a few fuzzy matches with isExactMatch flag.")
+                        ),
+                        null
+                ),
+                action(
+                        "list-recent-filings",
+                        "GET",
+                        "/v1/disclosures/recent",
+                        "Market-wide metadata feed of the most recent DART filings. Use to discover rcptNo values without paying.",
+                        Map.of(
+                                "limit", param("query", "integer", false,
+                                        "Max filings to return (1-100, default 20)."),
+                                "since_hours", param("query", "integer", false,
+                                        "Look back this many hours (1-168, default 24).")
+                        ),
+                        null
+                )
+        );
+
+        List<Map<String, Object>> paidActions = handlerMapping.getHandlerMethods().entrySet().stream()
+                .filter(e -> e.getValue().hasMethodAnnotation(X402Paywall.class))
+                .sorted(Comparator.comparing(e -> pathPattern(e.getKey())))
+                .map(this::toAgentJsonAction)
+                .toList();
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("awp_version", "0.2");
+        body.put("domain", "api.koreafilings.com");
+        body.put("intent",
+                "Pay-per-call API for AI-summarised Korean DART corporate disclosures. " +
+                "Free company directory + recent feed for discovery; paid summaries " +
+                "for content via x402 (USDC on Base mainnet).");
+        // Free actions first so a cold-start agent reads the cheap
+        // discovery path before the paid ones — same ordering as the
+        // /v1/pricing workflow steps.
+        body.put("actions", concat(freeActions, paidActions));
+        // Top-level payment descriptor pointer. Per-action `payment`
+        // blocks point at this same doc; this duplicate field saves a
+        // round-trip for indexers that summarise the manifest at
+        // top level.
+        Map<String, Object> payment = new LinkedHashMap<>();
+        payment.put("scheme", "x402");
+        payment.put("discovery", "/.well-known/x402");
+        body.put("payment", payment);
+        return body;
+    }
+
+    private Map<String, Object> toAgentJsonAction(
+            Map.Entry<RequestMappingInfo, HandlerMethod> entry
+    ) {
+        HandlerMethod handler = entry.getValue();
+        X402Paywall annotation = handler.getMethodAnnotation(X402Paywall.class);
+        RequestMappingInfo info = entry.getKey();
+
+        String path = pathPattern(info);
+        String method = info.getMethodsCondition().getMethods().isEmpty()
+                ? "GET"
+                : info.getMethodsCondition().getMethods().iterator().next().name();
+
+        // Param descriptions mirror what the bazaar extension under the
+        // 402 `accepts[].extensions.bazaar.info.input` block declares.
+        // Hardcoded here because the @X402Paywall annotation only knows
+        // *which* params are required, not their meaning.
+        Map<String, Map<String, Object>> params = new LinkedHashMap<>();
+        if ("/v1/disclosures/by-ticker".equals(path)) {
+            params.put("ticker", param("query", "string", true,
+                    "Six-digit KRX ticker (e.g. 005930 for Samsung Electronics). " +
+                    "Resolve from a company name via the free /v1/companies?q={name} endpoint."));
+            params.put("limit", param("query", "integer", false,
+                    "Max filings to return (1-50, default 5). Final price is " +
+                    "0.005 × limit USDC. The agent is charged for limit, not " +
+                    "for the actual row count returned."));
+        } else if ("/v1/disclosures/summary".equals(path)) {
+            params.put("rcptNo", param("query", "string", true,
+                    "14-digit DART receipt number, e.g. 20260424900874. Obtain " +
+                    "from /v1/disclosures/recent or /v1/disclosures/by-ticker " +
+                    "response — never LLM-knowable."));
+        }
+
+        Map<String, Object> payment = new LinkedHashMap<>();
+        payment.put("scheme", "x402");
+        payment.put("priceUsdc", annotation.priceUsdc());
+        payment.put("priceMode", annotation.pricingMode().name().toLowerCase());
+        payment.put("discovery", "/.well-known/x402");
+
+        // Action id derived from the trailing path segments — keeps
+        // ids stable across endpoint additions and matches Python SDK
+        // method names (get_recent_filings, get_summary, ...).
+        String id = idFromPath(path);
+        return action(id, method, path, annotation.description(), params, payment);
+    }
+
+    private static String idFromPath(String path) {
+        // /v1/disclosures/by-ticker -> get-by-ticker
+        // /v1/disclosures/summary   -> get-summary
+        String[] segments = path.split("/");
+        String last = segments[segments.length - 1];
+        return "get-" + last;
+    }
+
+    private static Map<String, Object> action(
+            String id, String method, String endpoint,
+            String intent, Map<String, ?> parameters, Map<String, Object> payment
+    ) {
+        Map<String, Object> a = new LinkedHashMap<>();
+        a.put("id", id);
+        a.put("method", method);
+        a.put("endpoint", endpoint);
+        a.put("intent", intent);
+        if (parameters != null && !parameters.isEmpty()) {
+            a.put("parameters", parameters);
+        }
+        if (payment != null) {
+            a.put("payment", payment);
+        }
+        return a;
+    }
+
+    private static Map<String, Object> param(String in, String type, boolean required, String description) {
+        Map<String, Object> p = new LinkedHashMap<>();
+        p.put("in", in);
+        p.put("type", type);
+        p.put("required", required);
+        p.put("description", description);
+        return p;
+    }
+
+    private static <T> List<T> concat(List<T> a, List<T> b) {
+        List<T> out = new java.util.ArrayList<>(a.size() + b.size());
+        out.addAll(a);
+        out.addAll(b);
+        return out;
     }
 
     private Map<String, Object> toResourceObject(
