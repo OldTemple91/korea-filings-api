@@ -28,6 +28,25 @@ for (const f of filings) {
 console.log('paid:', client.lastSettlement?.transaction);
 ```
 
+A real summary returned from a live Base mainnet paid call against
+[Samsung Electronics' 2026-Q1 dividend filing](https://dart.fss.or.kr/dsaf001/main.do?rcpNo=20260430800106):
+
+```text
+[7/10] DIVIDEND_DECISION: Samsung Electronics decided on a quarterly
+  cash dividend of KRW 372 per common share and KRW 372 per preferred
+  share, totaling KRW 2,453,315,636,604. The dividend yield is 0.2%
+  for common shares and 0.3% for preferred shares. The record date is
+  March 31, 2026, with payment scheduled for May 29, 2026.
+paid: 0x<base-mainnet-tx-hash>...
+```
+
+The summary is built from the filing body itself (fetched lazily via
+DART's `/document.xml` ZIP, parsed and capped at 20,000 chars) rather
+than the title metadata only — quantitative events surface concrete
+amounts, percentages, dates, and counterparty names directly in
+`summaryEn`. Routine governance filings fall back to a shorter
+title-derived summary; the field is always present and never empty.
+
 ## Why this exists
 
 Most x402-paid HTTP APIs in the wild are TypeScript-first because that
