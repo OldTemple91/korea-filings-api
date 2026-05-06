@@ -325,27 +325,8 @@ MVP feature set:
 - Production deploy on a Linux VPS via Cloudflare Tunnel
 - Coinbase CDP facilitator (Ed25519 JWT auth) for mainnet settlement
 
-Current limitation: every summary the service produces today is
-generated from filing metadata only — title, date, filer, DART flag.
-That is enough to surface event type, importance, and ticker / sector
-tags ("first-pass screening"), but not enough to extract concrete
-numbers like rights-offering size, dilution %, or contract value. The
-LLM honestly admits this with phrases like "details are in the filing
-body" rather than fabricating figures.
+Roadmap items in flight:
 
-Coming next:
-
-- **v1.2 — deep filing analysis.** Pull the filing body via DART's
-  `/document.xml` ZIP endpoint, parse the XBRL templates for the
-  six highest-value event types (RIGHTS_OFFERING,
-  CONVERTIBLE_BOND_ISSUANCE, DEBT_ISSUANCE, ACQUISITION,
-  SUPPLY_CONTRACT_SIGNED, MAJOR_SHAREHOLDER_FILING), and extract
-  amounts, dilution %, counterparty, and dates into a structured
-  `keyFacts` field. New paid endpoint
-  `/v1/disclosures/deep?rcptNo=…` at a higher price tier (~0.020
-  USDC) — existing endpoints stay metadata-only at 0.005 USDC so
-  callers pick depth at call time. Roadmap detail in
-  [`docs/ROADMAP.md`](docs/ROADMAP.md#v12--deep-filing-analysis-planned).
 - POST `/v1/disclosures/filter` (sector + event-type query)
 - SSE `/v1/disclosures/stream` (real-time push)
 - Korean-language landing page

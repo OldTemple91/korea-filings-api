@@ -123,17 +123,6 @@ objects (or a `list[Summary]` for the batch endpoint). Each carries:
 returns `RecentFiling` records (`rcpt_no`, `ticker`, `corp_name`,
 `report_nm`, `rcept_dt`) — metadata only, no summary.
 
-> **Honest scope.** Today's summaries are generated from filing
-> *metadata* (title, date, filer, DART flag) only. That gives event
-> type / importance / sector / ticker reliably — first-pass
-> screening — but the LLM honestly says "details are in the filing
-> body" for quantitative events instead of fabricating numbers.
-> v1.2 (planned) introduces a `/v1/disclosures/deep?rcptNo=…`
-> endpoint at ~0.020 USDC that pulls the per-filing XBRL via DART's
-> `/document.xml` and template-extracts amounts, dilution %,
-> counterparty, and dates into a structured `keyFacts` field. See
-> the [roadmap](https://github.com/OldTemple91/korea-filings-api/blob/main/docs/ROADMAP.md#v12--deep-filing-analysis-planned).
-
 ## Getting a wallet and USDC
 
 Production use on Base mainnet:

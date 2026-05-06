@@ -262,10 +262,6 @@ console.log('paid:', client.lastSettlement?.transaction);</code></pre>
 <p>
   Live on <strong>Base mainnet</strong> — payments settle in real USDC via the Coinbase CDP facilitator. v1.1 (name-based agent flow) is shipped with x402 v2 transport-spec headers (<code>PAYMENT-SIGNATURE</code> / <code>PAYMENT-RESPONSE</code>): <a href="https://www.npmjs.com/package/koreafilings">TypeScript SDK 0.1.2</a> on npm, <a href="https://pypi.org/project/koreafilings/">Python SDK 0.3.1</a> and <a href="https://pypi.org/project/koreafilings-mcp/">MCP server 0.3</a> on PyPI, and the service is indexed at <a href="https://www.x402scan.com">x402scan</a>.
 </p>
-<p>
-  <strong>What's next — v1.2 deep filing analysis.</strong> Today's summaries come from filing metadata only (title, filer, date, DART flag), so quantitative events ("rights offering size", "supply contract value") come back as "details are in the filing body". v1.2 pulls the per-filing XBRL via DART's <code>/document.xml</code> and template-extracts the actual numbers for the six highest-value event types — RIGHTS_OFFERING, CONVERTIBLE_BOND_ISSUANCE, DEBT_ISSUANCE, ACQUISITION, SUPPLY_CONTRACT_SIGNED, MAJOR_SHAREHOLDER_FILING — into a structured <code>keyFacts</code> field. New paid endpoint <code>/v1/disclosures/deep?rcptNo=…</code> at ~0.020 USDC; existing endpoints stay metadata-only at 0.005 USDC so callers pick depth at call time. See the <a href="https://github.com/OldTemple91/korea-filings-api/blob/main/docs/ROADMAP.md#v12--deep-filing-analysis-planned">roadmap</a> for the full plan.
-</p>
-
 <footer>
   <p>
     <a href="https://api.koreafilings.com/swagger-ui/index.html">API docs</a>

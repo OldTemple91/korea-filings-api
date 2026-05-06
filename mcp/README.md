@@ -87,22 +87,6 @@ Free tools (`get_pricing`, `find_company`, `list_recent_filings`) work
 without a private key — useful to confirm the network and wallet, or to
 explore the feed, before funding a payer.
 
-## Honest scope
-
-Today's summaries are generated from filing **metadata** (title, date,
-filer, DART flag) only. That gives event type, importance score, and
-ticker / sector tags reliably — first-pass screening — but the LLM
-honestly says "details are in the filing body" for quantitative events
-like rights offerings, debt issuance, or supply contracts instead of
-fabricating numbers.
-
-v1.2 (planned) introduces a `get_disclosure_deep` tool at ~0.020 USDC
-that pulls the per-filing XBRL via DART's `/document.xml` endpoint and
-template-extracts amounts, dilution %, counterparty, and dates into a
-structured `keyFacts` field. Existing tools stay metadata-only at
-0.005 USDC so callers pick depth at call time. See the
-[roadmap](https://github.com/OldTemple91/korea-filings-api/blob/main/docs/ROADMAP.md#v12--deep-filing-analysis-planned).
-
 ## Local development
 
 ```bash

@@ -206,18 +206,13 @@ live, what's next, and the minimum setup to keep moving.
      carry signed nonces. Powers the SQL playbook in
      [`docs/ANALYTICS.md`](ANALYTICS.md).
 
-2. **v1.2 — planned, body-fetch + numerical extraction.** The
-   single biggest honest weakness of v1.1: every summary is
-   generated from filing metadata only, so quantitative events
-   (rights offerings, debt issuance, supply contracts) come back as
-   "details are in the filing body". v1.2 fixes this by pulling
-   per-filing XBRL via DART's `/document.xml` API, parsing
-   templated facts for the six highest-value event types, and
-   exposing them through a new `/v1/disclosures/deep?rcptNo=…`
-   endpoint at a higher price tier (~0.020 USDC) alongside a
-   `keyFacts` field on the summary DTO. Build trigger: at least a
-   week of v1.1 traffic showing which filing types agents actually
-   pay for. Detailed plan in
+2. **v1.2 — planned, body-fetch + numerical extraction.** Adds a
+   higher-tier endpoint that pulls per-filing XBRL via DART's
+   `/document.xml` API and extracts concrete numbers (amounts,
+   dilution %, counterparty, dates) for the six highest-value event
+   types into a structured `keyFacts` field. Build trigger: at
+   least a week of v1.1 traffic showing which filing types agents
+   actually pay for. Detailed plan in
    [`docs/ROADMAP.md`](ROADMAP.md#v12--deep-filing-analysis-planned).
 
 3. **Directory registrations**: x402scan ✅ (re-registered after v0.3
