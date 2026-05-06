@@ -22,8 +22,8 @@ live, what's next, and the minimum setup to keep moving.
   (Sepolia) + 6 mainnet (Base). Every settlement to date has been
   the maintainer's own `testclient/payer.py` regression run; **zero
   external paying wallets** have completed the 402 → sign → 200 loop
-  yet. The infrastructure works; awareness / TS SDK / HN are the next
-  bottlenecks.
+  yet. The infrastructure works; awareness / HN / Smithery are the
+  next bottlenecks (TS SDK landed today).
 - **First mainnet settlement**:
   [`0x681c995e…`](https://basescan.org/tx/0x681c995e149d3ce5765ea8a3b0f921a45352fccefbd9fc9258bf4f6141eafd7c).
   Facilitator: Coinbase CDP (Ed25519 JWT auth). Bug caught at flip
@@ -49,11 +49,17 @@ live, what's next, and the minimum setup to keep moving.
   Open402DirectoryCrawler, x402audit, OAI-SearchBot, Googlebot,
   flows-crawler).
 - **PyPI packages published** — `koreafilings` 0.3.1 + `koreafilings-mcp` 0.3.0.
+- **npm package published** — `koreafilings` 0.1.0 (TypeScript SDK,
+  ESM + CJS, viem-based EIP-712 signing). Brings the same surface
+  to the JS/TS agent ecosystem (LangChain.js, Vercel AI SDK,
+  Cloudflare Workers, browser-side agents) where Python coverage was
+  the previous gap.
 - **Directory registrations** — x402scan + Glama + mcp.so done;
   Smithery deferred (site outage at submission time, retry).
 - **Next**: HN Show HN post on the next available Tue/Wed at 22:00 KST.
-  TypeScript SDK is the highest-value adjacent build — Python is
-  covered, JS/TS is the bigger agent ecosystem.
+  TypeScript SDK landed today (npm `koreafilings@0.1.0`); the launch
+  copy now leads with a `npm install` example for the underserved
+  buyer segment, with the PyPI / MCP options below it.
 
 ## What's live
 
@@ -67,6 +73,7 @@ live, what's next, and the minimum setup to keep moving.
 | Health | https://api.koreafilings.com/actuator/health | Liveness/readiness. |
 | Paid summary | `GET /v1/disclosures/summary?rcptNo=…` | 0.005 USDC on Base mainnet via Coinbase CDP facilitator. |
 | Python SDK | https://pypi.org/project/koreafilings/ | `pip install koreafilings` |
+| TypeScript SDK | https://www.npmjs.com/package/koreafilings | `npm install koreafilings` |
 | MCP server | https://pypi.org/project/koreafilings-mcp/ | `uv tool install koreafilings-mcp` |
 | Source | https://github.com/OldTemple91/korea-filings-api | Private push via `OldTemple91`. |
 
@@ -187,13 +194,16 @@ live, what's next, and the minimum setup to keep moving.
    - **Grafana dashboard** — point a Grafana Cloud free-tier scrape at
      `/actuator/prometheus`. Four metrics that matter: calls/min,
      cache hit ratio, mean LLM cost per cache miss, payer diversity.
-   - **TypeScript SDK** — Python is covered, JS/TS is the bigger
-     agent ecosystem.
-   - **README ICP re-positioning** — current copy targets "AI agents,
-     quant hedge funds, global investment research platforms"; honest
-     ICP today is "x402-capable indie agent developer with tangential
-     Korea interest". Narrowing the message to match reality should
-     improve top-of-funnel match rate.
+   - ~~TypeScript SDK~~ — **shipped 2026-05-06 as `koreafilings@0.1.0` on npm**.
+     ESM + CJS, viem-based EIP-712 signing, native fetch (Node 18+ /
+     browsers / Workers / Deno).
+   - ~~README ICP re-positioning~~ — **shipped 2026-05-06**. Hero copy
+     and PRD `Target Users` rewritten to lead with delivery model
+     (pay-per-call, no procurement) and explicitly name three
+     non-target segments (Korean retail, traditional sell-side,
+     foreign institutional with Asia desks). Stretch goal updated
+     to a measurable signal: 1 external paying wallet returning
+     week-over-week ≥ 4 weeks.
    - **Business analytics prep** — RFM SQL on `payment_log`,
      `/actuator/prometheus` per-funnel-stage counters, pricing
      simulation doc. ANALYTICS.md covers the audit side; payment-side

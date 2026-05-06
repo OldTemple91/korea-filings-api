@@ -282,8 +282,20 @@ signals over 1,054 requests.** Every settled mainnet payment in
 regression run — no external wallet has completed the 402 → sign
 → 200 loop yet. The infrastructure works end-to-end (testclient
 proves it); the bottleneck is awareness in the x402-capable indie
-agent ecosystem. TS SDK + HN + Smithery registration are the
-highest-leverage moves now.
+agent ecosystem.
+
+**TS SDK + ICP repositioning shipped 2026-05-06.** Two follow-up
+moves landed the same day the audit finding above was written.
+`koreafilings@0.1.0` published to npm — ESM + CJS, viem-based
+EIP-712 signing, native fetch, runs unchanged in Node / browsers /
+Cloudflare Workers / Deno. Surface mirrors the Python SDK 1:1, so
+the same prose and the same agent flow work in either language.
+README, landing, PRD, and the HN draft were also rewritten to lead
+with the pay-per-call delivery model and to explicitly name three
+non-target segments (Korean retail, traditional sell-side, foreign
+institutional with Asia desks) so future contributors don't drift
+toward features none of them want. The remaining highest-leverage
+moves are HN Show HN and Smithery registration.
 
 ## Guardrails Throughout
 

@@ -27,21 +27,30 @@ https://koreafilings.com
 ```
 I built a paywalled API that turns Korean DART (전자공시) corporate disclosures into structured English signals, paid per call in USDC via the x402 protocol (https://www.x402.org/) on Base mainnet.
 
-The agent flow is one free call + one paid call:
+The agent flow is one free call + one paid call. TypeScript:
+
+  npm install koreafilings
+
+  import { KoreaFilings } from 'koreafilings'
+  const c = new KoreaFilings({ privateKey: '0x...', network: 'base' })
+  // Free: name → ticker, 3961 KRX-listed companies, fuzzy
+  const m = await c.findCompany('Samsung Electronics')
+  // Paid: 0.005 × limit USDC, declared dynamically in the 402
+  const f = await c.getRecentFilings(m[0].ticker, 5)
+  console.log('paid:', c.lastSettlement?.transaction)
+
+Or Python:
 
   pip install koreafilings
 
   from koreafilings import Client
   with Client(private_key="0x...", network="base") as c:
-      # Free: name → ticker resolution, 3961 KRX-listed companies
       matches = c.find_company("Samsung Electronics")
-      ticker = matches[0].ticker  # "005930"
-
-      # Paid: 0.005 × limit USDC, declared dynamically in the 402
-      filings = c.get_recent_filings(ticker, limit=5)
-      for f in filings:
-          print(f"[{f.importance_score}/10] {f.event_type}: {f.summary_en}")
+      filings = c.get_recent_filings(matches[0].ticker, limit=5)
       print("paid:", c.last_settlement.tx_hash)
+
+Or via MCP (Claude Desktop / Cursor / Continue) — `uv tool install
+koreafilings-mcp`, plug a wallet into the env, ask in English.
 
 First mainnet settlement: https://basescan.org/tx/0x681c995e149d3ce5765ea8a3b0f921a45352fccefbd9fc9258bf4f6141eafd7c
 
@@ -54,7 +63,8 @@ What's there:
 - Free recent-filings feed (metadata only) so an agent can browse before paying
 - Paid single-summary at 0.005 USDC and paid by-ticker batches at 0.005 × limit USDC, dynamic price declared in the 402 response
 - x402 v2 transport (PAYMENT-REQUIRED header) + bazaar extension declaring input/output schema so agents can autonomously invoke
-- MCP server (koreafilings-mcp 0.2.1 on PyPI) — five tools (find_company, list_recent_filings, get_pricing, get_recent_filings, get_disclosure_summary) usable from Claude Desktop / Cursor / Continue
+- TypeScript SDK (koreafilings 0.1.0 on npm) and Python SDK (koreafilings 0.3.1 on PyPI) — same surface in both languages, ESM + CJS for the TS one
+- MCP server (koreafilings-mcp 0.3.0 on PyPI) — five tools (find_company, list_recent_filings, get_pricing, get_recent_filings, get_disclosure_summary) usable from Claude Desktop / Cursor / Continue
 - OpenAPI at /v3/api-docs, discovery at /.well-known/x402
 - Indexed at https://www.x402scan.com/server/46ef920d-18db-4255-8ec1-f7233451bec7
 
@@ -81,7 +91,7 @@ OP here. A few notes on the parts I think are most interesting:
 
 The cache is the moat: every summary is generated once and stored as an immutable Postgres row. The first call for a given rcpt_no pays the LLM tokens; every subsequent call is a near-free DB lookup. The price stays flat at 0.005 USDC, so the LLM cost is amortized across however many agents care about that filing. Margins compound as adoption grows. This is also why I felt confident charging per call instead of per token or per month — the marginal cost on the cache-hit path approaches zero.
 
-Why a Java backend for a crypto-payments service: most x402 examples in the wild are TypeScript, and I wanted a worked reference proving the flow lands clean on the JVM too. The SDK, MCP server, and reference client are Python; the production server is Java. Both ends use JdkClientHttpConnector (not Reactor Netty — its TLS implementation rejects the Korean gov endpoint we poll for source data, learned that the hard way).
+Why a Java backend for a crypto-payments service: most x402 examples in the wild are TypeScript, and I wanted a worked reference proving the flow lands clean on the JVM too. The TypeScript and Python SDKs have the same shape; the MCP server is Python; the production server is Java. The repo and the npm/PyPI packages all use `JdkClientHttpConnector` on the server side and native fetch on the client side (Node 18+ / browsers / Workers / Deno) — no `node-fetch` dependency needed. Reactor Netty was tried and removed; its TLS implementation rejects the Korean gov endpoint we poll for source data, learned that the hard way.
 
 x402 v2 quirks I hit: the spec moved the PaymentRequired payload from the body into a base64-encoded PAYMENT-REQUIRED header in v2, but most existing clients (including the popular x402.org facilitator) still read the body. I dual-emit both. The "bazaar" extension (specs/extensions/bazaar.md) isn't optional in x402scan's strict-mode validator — my first two registration attempts were rejected before I added it.
 

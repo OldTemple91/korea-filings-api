@@ -350,7 +350,6 @@ Coming next:
   [`docs/ROADMAP.md`](docs/ROADMAP.md#v12--deep-filing-analysis-planned).
 - POST `/v1/disclosures/filter` (sector + event-type query)
 - SSE `/v1/disclosures/stream` (real-time push)
-- TypeScript SDK
 - Korean-language landing page
 - Slack / email alerts on settlement
 
