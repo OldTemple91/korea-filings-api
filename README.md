@@ -47,18 +47,18 @@ examples — a light governance event and a quantitative capital-raise:
 }
 ```
 
-A quantitative event (synthetic illustrative example — generic issuer):
+A quantitative event — [Samsung Electronics dividend decision](https://dart.fss.or.kr/dsaf001/main.do?rcpNo=20260430800106), returned verbatim from a live Base mainnet paid call (settled [on-chain](https://basescan.org/tx/0x5a0403ae18db0394cb6121e6ca26aac75f44f0bb8a5d0db5dab61e84d9995a20)):
 
 ```json
 {
-  "rcptNo": "20260506000847",
-  "summaryEn": "Issuer approved a rights offering of 4.25M new common shares at KRW 285,000 per share (3.2% discount to recent close), raising approximately KRW 1.21 trillion. Subscription rights allocated to existing shareholders on the May 28 record date; subscription window June 8–10. Net proceeds earmarked for an Argentine lithium-hydroxide refinery expansion. Dilution ~4.7% of pre-offering shares outstanding.",
+  "rcptNo": "20260430800106",
+  "summaryEn": "Samsung Electronics decided on a quarterly cash dividend of KRW 372 per common share and KRW 372 per preferred share, totaling KRW 2,453,315,636,604. The dividend yield is 0.2% for common shares and 0.3% for preferred shares. The record date is March 31, 2026, with payment scheduled for May 29, 2026.",
   "importanceScore": 7,
-  "eventType": "RIGHTS_OFFERING",
-  "sectorTags": ["Materials"],
-  "tickerTags": ["XXXXXX"],
-  "actionableFor": ["traders", "long_term_investors", "arbitrageurs"],
-  "generatedAt": "2026-05-06T11:32:14Z"
+  "eventType": "DIVIDEND_DECISION",
+  "sectorTags": ["Technology Hardware & Equipment"],
+  "tickerTags": ["005930"],
+  "actionableFor": ["traders", "long_term_investors"],
+  "generatedAt": "2026-05-06T07:29:45.911215Z"
 }
 ```
 

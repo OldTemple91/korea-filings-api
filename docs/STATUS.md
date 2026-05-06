@@ -18,7 +18,7 @@ live, what's next, and the minimum setup to keep moving.
 - **Weeks 1–5 complete.** Ingestion, summarisation, x402 paywall, public
   deployment, landing page, Python SDK, MCP server, OpenAPI docs — all
   live in production at `api.koreafilings.com`.
-- **Round-11 lazy + body fetch (in flight, 2026-05-06).** Eager LLM
+- **Round-11 lazy + body fetch (live, 2026-05-06).** Eager LLM
   calls at ingestion replaced with synchronous lazy generation on the
   first paid call, plus per-filing body fetch via DART's `/document.xml`
   ZIP. Summaries are now generated from filing body text (capped at
@@ -28,10 +28,14 @@ live, what's next, and the minimum setup to keep moving.
   `dart-document` Resilience4j circuit / retry / rate-limiter (30
   rpm) keeps the body endpoint isolated from `/list.json` polling.
   `disclosure.body` TEXT column added via V13. Test count 158 → 177
-  green. ROADMAP v1.2 collapsed into v1.1 — the body-fetch tier no
-  longer needs its own price tier because every paid call now uses
-  body when available, falling back to title-only on 404 / open
-  breaker / parse failure.
+  green. First body-aware mainnet settlement landed the same day on a
+  Samsung Electronics dividend filing — body-derived response carried
+  per-share KRW amount, total payout, dividend yields, record date,
+  and payment date that the metadata-only response had to defer to
+  the filing body itself. ROADMAP v1.2 collapsed into v1.1 — the
+  body-fetch tier no longer needs its own price tier because every
+  paid call now uses body when available, falling back to title-only
+  on 404 / open breaker / parse failure.
 - **On-chain x402 settlements verified** on both Sepolia (test) and
   Base mainnet (production). The 2026-05-06 TS SDK live test
   confirmed every layer of the paid path end-to-end including the
