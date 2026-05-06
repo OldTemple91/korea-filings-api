@@ -8,16 +8,30 @@ and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Nothing pending.
+
+## [0.1.3] — 2026-05-06
+
 ### Changed
 
 - README adds a real Base mainnet body-aware summary example
   ([Samsung Electronics 2026-Q1 dividend](https://dart.fss.or.kr/dsaf001/main.do?rcpNo=20260430800106))
   alongside the existing usage snippet, plus a short paragraph on
-  the round-11 (server-side) lazy body-fetch behaviour. No SDK code
-  changed — pure docs. **Publish a `0.1.3` patch to surface this
-  README on the npm package page**, since npm only re-pulls the
-  README on a new version publish; without the bump, agent builders
-  browsing npm still see the 0.1.2 README.
+  the round-11 (server-side) lazy body-fetch behaviour. The summary
+  now leads with concrete numbers extracted from the filing body
+  (KRW per-share amounts, total payout, dividend yields, record /
+  payment dates) instead of the round-10 metadata-only style that
+  deferred quantitative detail to "the filing body" itself.
+
+### Notes
+
+- Pure docs release — no SDK code changed. The runtime behaviour of
+  `findCompany` / `getRecentFilings` / `getSummary` / `lastSettlement`
+  is identical to 0.1.2; the lift comes from the server-side
+  round-11 ship (lazy body fetch + body-aware Gemini prompt).
+  Existing 0.1.2 callers see the new richer summaries automatically
+  without upgrading. The version bump exists so this README surfaces
+  on the npm package page (npm only re-pulls README on publish).
 
 ## [0.1.2] — 2026-05-06
 
