@@ -589,16 +589,35 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
      * payment-method shape doesn't expose a nonce.
      */
     /**
-     * Strip CR/LF / control chars from a string before it lands in a
-     * structured log line — defends against log forging where a
-     * malicious or compromised facilitator returns a multi-line
-     * `invalidReason` that appears as forged log entries downstream.
+     * Strip the full C0 control range, DEL, and the ANSI escape
+     * introducer from a string before it lands in a structured log
+     * line — defends against log forging where a malicious or
+     * compromised facilitator returns a multi-line {@code invalidReason}
+     * that appears as forged log entries, ANSI-coloured fake errors
+     * in terminal log viewers, or null bytes that corrupt
+     * structured-log JSON ingestion (Logstash, Loki, etc.).
+     *
+     * <p>The earlier shape only stripped {@code \r}, {@code \n}, and
+     * {@code \t}, leaving {@code \x1b[31m...\x1b[0m} ANSI sequences
+     * and {@code \0} null bytes intact — both of which an attacker
+     * with control over a facilitator response can use to forge
+     * apparent admin-level log lines or break log shippers.
      */
     static String sanitiseLogValue(String value) {
         if (value == null || value.isEmpty()) {
             return "unknown";
         }
-        return value.replaceAll("[\\r\\n\\t]", " ");
+        // Replaces:
+        //   \x00-\x1f — full C0 control range (CR, LF, TAB, NUL,
+        //               SOH, STX, ETX, BEL, BS, VT, FF, SO, SI,
+        //               DLE, DC1-4, NAK, SYN, ETB, CAN, EM, SUB,
+        //               ESC, FS, GS, RS, US — covers the ANSI
+        //               escape introducer at 0x1B as well as raw
+        //               nulls)
+        //   \x7f      — DEL
+        // Replacement is space rather than empty so token positions
+        // in the log line stay stable for grep / awk parsers.
+        return value.replaceAll("[\\x00-\\x1f\\x7f]", " ");
     }
 
     static String replayKey(PaymentPayload payload, String rawHeader) {

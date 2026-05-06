@@ -23,7 +23,12 @@ public class PaymentLog {
     @Column(name = "rcpt_no_accessed", length = 14, updatable = false)
     private String rcptNoAccessed;
 
-    @Column(name = "endpoint", length = 200, nullable = false, updatable = false)
+    // Widened from 200 in V12. Today's longest endpoint is under 60
+    // chars, but a structured-filter or multi-constraint query
+    // endpoint planned for v1.x could exceed 200 in the query-string
+    // tail and silently reconcile-fail the same way V11 was added
+    // to prevent. 500 is generous defence in depth.
+    @Column(name = "endpoint", length = 500, nullable = false, updatable = false)
     private String endpoint;
 
     @Column(name = "amount_usdc", nullable = false, updatable = false, precision = 12, scale = 6)
@@ -35,7 +40,12 @@ public class PaymentLog {
     @Column(name = "network", length = 40, nullable = false, updatable = false)
     private String network;
 
-    @Column(name = "facilitator_tx_id", length = 80, updatable = false)
+    // Widened from 80 in V12. The CDP facilitator currently returns a
+    // 66-character Ethereum tx hash (0x + 64 hex), but x402 v2 leaves
+    // the transaction reference format up to the facilitator and any
+    // future CAIP-prefixed shape would silently 22001 against the old
+    // cap. 200 decouples the column from the wire format.
+    @Column(name = "facilitator_tx_id", length = 200, updatable = false)
     private String facilitatorTxId;
 
     // Widened from 64 in V11 to fit the "nonce:" + 0x + 64-hex

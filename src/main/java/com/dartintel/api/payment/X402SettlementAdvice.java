@@ -275,8 +275,16 @@ public class X402SettlementAdvice implements ResponseBodyAdvice<Object> {
                 // flushes. Treat it exactly the same as the DB-
                 // unreachable branch below: log every reconciliation
                 // field, flag PaymentNotifier, surface to operator.
+                // "Funds in flight" rather than "landed on-chain" — the
+                // facilitator reported success, which means the settle
+                // call returned with a tx hash, but for fast-block
+                // chains like Base mainnet that hash may still be
+                // mempool-pending for a second or two when this log
+                // fires. The operator should reconcile against the
+                // on-chain state for the tx hash, not assume finality.
                 log.error("payment_log integrity violation (NOT duplicate) — "
-                        + "settlement landed on-chain but row was rejected: "
+                        + "facilitator returned success but row rejected, funds in flight, "
+                        + "manual reconciliation required: "
                         + "payer={} amount={} network={} tx={} sigHash={} endpoint={} reason={}",
                         verified.payer(), amountHuman, verified.requirement().network(),
                         settle.transaction(), shortHash(verified.signatureHash()),
