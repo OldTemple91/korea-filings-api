@@ -52,9 +52,20 @@ Or Python:
 Or via MCP (Claude Desktop / Cursor / Continue) — `uv tool install
 koreafilings-mcp`, plug a wallet into the env, ask in English.
 
-First mainnet settlement: https://basescan.org/tx/0x681c995e149d3ce5765ea8a3b0f921a45352fccefbd9fc9258bf4f6141eafd7c
+A real response from a Base mainnet paid call against Samsung Electronics' 2026-Q1 dividend filing (settled at https://basescan.org/tx/0x5a0403ae18db0394cb6121e6ca26aac75f44f0bb8a5d0db5dab61e84d9995a20):
 
-Stack: Java 21 / Spring Boot 3.4 / Postgres 16 with pg_trgm fuzzy search / Redis 7 on a Linux VPS behind Cloudflare Tunnel. Gemini 2.5 Flash-Lite for the summarisation, prompted with a 50-row Korean → English filing-type taxonomy + importance anchors so OTHER stays under 5%. Resilience4j circuit-breaks the LLM, the DART poller, and the facilitator independently.
+  "summaryEn": "Samsung Electronics decided on a quarterly cash dividend
+                of KRW 372 per common share and KRW 372 per preferred share,
+                totaling KRW 2,453,315,636,604. The dividend yield is 0.2%
+                for common shares and 0.3% for preferred shares. The record
+                date is March 31, 2026, with payment scheduled for May 29,
+                2026.",
+  "importanceScore": 7,
+  "eventType": "DIVIDEND_DECISION",
+  "tickerTags": ["005930"],
+  "actionableFor": ["traders", "long_term_investors"]
+
+Stack: Java 21 / Spring Boot 3.4 / Postgres 16 with pg_trgm fuzzy search / Redis 7 on a Linux VPS behind Cloudflare Tunnel. Gemini 2.5 Flash-Lite for the summarisation, prompted with a 50-row Korean → English filing-type taxonomy + importance anchors so OTHER stays under 5%. Resilience4j circuit-breaks the LLM, the DART poller, the document body fetcher, and the facilitator independently.
 
 What's there:
 
@@ -63,7 +74,7 @@ What's there:
 - Free recent-filings feed (metadata only) so an agent can browse before paying
 - Paid single-summary at 0.005 USDC and paid by-ticker batches at 0.005 × limit USDC, dynamic price declared in the 402 response
 - x402 v2 transport (PAYMENT-REQUIRED header) + bazaar extension declaring input/output schema so agents can autonomously invoke
-- TypeScript SDK (koreafilings 0.1.0 on npm) and Python SDK (koreafilings 0.3.1 on PyPI) — same surface in both languages, ESM + CJS for the TS one
+- TypeScript SDK (koreafilings 0.1.3 on npm) and Python SDK (koreafilings 0.3.2 on PyPI) — same surface in both languages, ESM + CJS for the TS one
 - MCP server (koreafilings-mcp 0.3.0 on PyPI) — five tools (find_company, list_recent_filings, get_pricing, get_recent_filings, get_disclosure_summary) usable from Claude Desktop / Cursor / Continue
 - OpenAPI at /v3/api-docs, discovery at /.well-known/x402
 - Indexed at https://www.x402scan.com/server/46ef920d-18db-4255-8ec1-f7233451bec7
