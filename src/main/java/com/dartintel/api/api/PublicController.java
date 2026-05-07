@@ -172,17 +172,31 @@ public class PublicController {
                 annotation.description(),
                 describeRequiredParams(path),
                 describeExampleCall(path, annotation),
-                // Same body-aware sample on both paid endpoints — the
-                // by-ticker response wraps an array of these inside
-                // ByTickerResponse, but the per-row shape is identical.
-                // Letting agents see "the actual numbers Gemini extracted
-                // from a real Korean filing on mainnet" before they pay
-                // closes the discovery → first-call gap that 24h post-
-                // round-11 logs flagged (140 OpenAPI scrapes + 22
-                // /.well-known/x402 hits → 0 external paid calls).
-                SampleResponses.sampleSummary(),
+                // Per-endpoint sample matching the actual top-level
+                // response shape: by-ticker returns ByTickerResponse
+                // (envelope with ticker / chargedFor / delivered /
+                // summaries), summary returns DisclosureSummaryDto
+                // directly. Round-12.1 fix — round-12 originally used
+                // the per-row shape on both endpoints, which made the
+                // /v1/pricing contract diverge from reality for the
+                // batch endpoint. Agents auto-parsing the spec now see
+                // exactly what `JSON.parse(response.body)` yields.
+                describeSampleResponse(path),
                 SampleResponses.SAMPLE_SETTLEMENT_TX_URL
         );
+    }
+
+    /**
+     * Pick the per-endpoint sample shape. Annotated paths drive the
+     * dispatch so a future paid endpoint that ships its own envelope
+     * type only needs an entry here, not a fallback through reflection.
+     */
+    private static Object describeSampleResponse(String path) {
+        return switch (path) {
+            case "/v1/disclosures/by-ticker" -> SampleResponses.sampleByTickerResponse();
+            case "/v1/disclosures/summary"   -> SampleResponses.sampleSummary();
+            default -> SampleResponses.sampleSummary();
+        };
     }
 
     /**

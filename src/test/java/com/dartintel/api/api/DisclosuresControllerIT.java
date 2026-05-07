@@ -553,6 +553,40 @@ class DisclosuresControllerIT {
     }
 
     @Test
+    void byTickerWithNonNumericLimitReturns400BeforePaywall() throws Exception {
+        // Round-12.1 — `?limit=abc` used to silently fall back to
+        // defaultCount (5) and emit a 402 at 0.005×5; the agent would
+        // sign an EIP-3009 authorisation against that price and only
+        // then learn @Min/@Max rejects with 400 on the retry. Pre-flight
+        // the count param the same way required-params already are.
+        mockMvc.perform(get("/v1/disclosures/by-ticker?ticker=005930&limit=abc"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("validation_failed"))
+                .andExpect(jsonPath("$.message").value(
+                        org.hamcrest.Matchers.containsString("limit must be an integer")))
+                .andExpect(jsonPath("$.agent_action_hint").value(
+                        org.hamcrest.Matchers.containsString("limit={integer in [1, 50]}")));
+    }
+
+    @Test
+    void byTickerWithLimitOutOfRangeReturns400BeforePaywall() throws Exception {
+        mockMvc.perform(get("/v1/disclosures/by-ticker?ticker=005930&limit=999"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("validation_failed"))
+                .andExpect(jsonPath("$.message").value(
+                        org.hamcrest.Matchers.containsString("out of range")));
+    }
+
+    @Test
+    void byTickerWithLimitZeroReturns400BeforePaywall() throws Exception {
+        mockMvc.perform(get("/v1/disclosures/by-ticker?ticker=005930&limit=0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("validation_failed"))
+                .andExpect(jsonPath("$.message").value(
+                        org.hamcrest.Matchers.containsString("out of range")));
+    }
+
+    @Test
     void byTickerWithoutTickerCarriesAgentActionHint() throws Exception {
         mockMvc.perform(get("/v1/disclosures/by-ticker"))
                 .andExpect(status().isBadRequest())

@@ -164,6 +164,43 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
             }
         }
 
+        // Pre-flight count validation for PER_RESULT pricing. Without
+        // this, ?limit=abc / ?limit=0 / ?limit=999 emits a 402 at a
+        // silently-defaulted/clamped price; the agent signs an
+        // EIP-3009 authorisation against that price and only then
+        // learns the controller's @Min(1)@Max(50) rejects with 400 —
+        // the same nonce-burning UX the round-12 required-param fix
+        // already closed. Apply the same pre-flight here so a bad
+        // limit gets a 400 BEFORE the agent commits to signing.
+        if (paywall.pricingMode() == X402Paywall.Mode.PER_RESULT
+                && !paywall.countQueryParam().isBlank()) {
+            String countParam = paywall.countQueryParam();
+            String raw = request.getParameter(countParam);
+            if (raw != null && !raw.isBlank()) {
+                Integer parsed;
+                try {
+                    parsed = Integer.valueOf(raw.trim());
+                } catch (NumberFormatException ignored) {
+                    parsed = null;
+                }
+                if (parsed == null) {
+                    writeBadRequest(response,
+                            "validation_failed",
+                            countParam + " must be an integer (got '" + raw + "')",
+                            countParamHint(countParam, paywall));
+                    return false;
+                }
+                if (parsed < 1 || parsed > paywall.maxCount()) {
+                    writeBadRequest(response,
+                            "validation_failed",
+                            countParam + " is out of range [1, " + paywall.maxCount()
+                                    + "] (got " + parsed + ")",
+                            countParamHint(countParam, paywall));
+                    return false;
+                }
+            }
+        }
+
         String resourceUrl = buildResourceUrl(request);
         String effectivePriceUsdc = computeEffectivePrice(paywall, request);
         PaymentRequirement requirement = buildRequirement(effectivePriceUsdc);
@@ -433,6 +470,22 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
                     "GET /v1/disclosures/sample shows the per-row response shape without paying.";
         }
         return "See https://api.koreafilings.com/v1/pricing for required parameters per endpoint.";
+    }
+
+    /**
+     * Hint for "your count multiplier was the wrong shape". Names the
+     * exact integer range the server clamps against so the agent can
+     * fix the request and retry without burning round-trips, and
+     * points at GET /v1/pricing for the canonical bounds (which are
+     * already in the {@code maxCount} field of each PaidEndpoint).
+     */
+    private static String countParamHint(String countParam, X402Paywall paywall) {
+        return "Set ?" + countParam + "={integer in [1, " + paywall.maxCount()
+                + "]}; default is " + paywall.defaultCount() + ". "
+                + "GET /v1/pricing.endpoints[].requiredParams describes the bounds for every "
+                + "paid endpoint. Larger values would cause the 402 challenge to advertise a "
+                + "price the controller would later reject — fixing the request shape now "
+                + "avoids signing an EIP-3009 authorisation against the wrong amount.";
     }
 
     private void writePaymentRequired(HttpServletResponse response, String resourceUrl,

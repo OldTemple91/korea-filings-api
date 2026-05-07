@@ -31,6 +31,17 @@ public record PricingResponse(
         List<PaidEndpoint> endpoints
 ) {
 
+    /**
+     * {@code sampleResponse} is typed {@link Object} (not
+     * {@link DisclosureSummaryDto}) because the by-ticker endpoint
+     * returns a {@link ByTickerResponse} envelope wrapping an array
+     * of summaries — different top-level shape from the single-summary
+     * endpoint. Round-12.1 fixed a contract drift where /v1/pricing
+     * advertised the per-row {@code DisclosureSummaryDto} shape on
+     * both endpoints; agents auto-generating parsers from the spec
+     * were getting the wrong top-level type for the batch endpoint.
+     * Jackson serialises both record types polymorphically.
+     */
     public record PaidEndpoint(
             String method,
             String path,
@@ -39,7 +50,7 @@ public record PricingResponse(
             String description,
             List<RequiredParam> requiredParams,
             String exampleCall,
-            DisclosureSummaryDto sampleResponse,
+            Object sampleResponse,
             String sampleSettlementTxUrl
     ) {
     }

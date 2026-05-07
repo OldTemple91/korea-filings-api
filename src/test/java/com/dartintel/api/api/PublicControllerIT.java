@@ -118,6 +118,28 @@ class PublicControllerIT {
     }
 
     @Test
+    void pricingByTickerSampleHasBatchEnvelopeShape() throws Exception {
+        // Round-12.1 — the by-ticker endpoint actually returns
+        // ByTickerResponse (ticker / count / chargedFor / delivered /
+        // summaries[]), not a bare DisclosureSummaryDto. Round-12
+        // originally attached the per-row shape to both paid endpoints;
+        // an agent auto-generating a parser from
+        // /v1/pricing.endpoints[].sampleResponse for the batch endpoint
+        // would then mis-parse the actual response. Sample shape must
+        // match the wire shape per endpoint.
+        mockMvc.perform(get("/v1/pricing"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.endpoints[?(@.path == '/v1/disclosures/by-ticker')].sampleResponse.ticker")
+                        .value(org.hamcrest.Matchers.hasItem("005930")))
+                .andExpect(jsonPath("$.endpoints[?(@.path == '/v1/disclosures/by-ticker')].sampleResponse.chargedFor")
+                        .value(org.hamcrest.Matchers.hasItem(3)))
+                .andExpect(jsonPath("$.endpoints[?(@.path == '/v1/disclosures/by-ticker')].sampleResponse.delivered")
+                        .value(org.hamcrest.Matchers.hasItem(1)))
+                .andExpect(jsonPath("$.endpoints[?(@.path == '/v1/disclosures/by-ticker')].sampleResponse.summaries[0].rcptNo")
+                        .value(org.hamcrest.Matchers.hasItem("20260430800106")));
+    }
+
+    @Test
     void pricingCarriesSampleResponseOnEachPaidEndpoint() throws Exception {
         // Round-12 surface lift — agents discovering /v1/pricing should
         // see "what does 0.005 USDC actually buy?" before signing

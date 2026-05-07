@@ -68,4 +68,31 @@ public final class SampleResponses {
                 Instant.parse("2026-05-06T07:29:45.911215Z")
         );
     }
+
+    /**
+     * The paid response an agent receives from
+     * {@code GET /v1/disclosures/by-ticker?ticker=…&limit=N}. Wraps
+     * the per-row {@link DisclosureSummaryDto} inside the batch
+     * envelope, so {@code /v1/pricing.endpoints[].sampleResponse}
+     * for the by-ticker entry advertises the exact top-level shape
+     * an agent will parse — not the per-row shape.
+     *
+     * <p>Uses {@code chargedFor=3, delivered=1} to demonstrate the
+     * field semantics: agents pay the {@code limit} they request
+     * (here 3) but the response carries however many summaries the
+     * server actually had cached for the ticker (here 1). Sets
+     * {@code count=1} as the legacy alias of {@code delivered}.
+     * The {@code summaries} array carries one row using the same
+     * Samsung Q1 dividend example as {@link #sampleSummary()} so
+     * agents see one consistent payload across every surface.
+     */
+    public static ByTickerResponse sampleByTickerResponse() {
+        return new ByTickerResponse(
+                "005930",
+                /* count (alias of delivered) */ 1,
+                /* chargedFor */ 3,
+                /* delivered */ 1,
+                List.of(sampleSummary())
+        );
+    }
 }
