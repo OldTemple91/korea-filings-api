@@ -38,31 +38,88 @@ import java.util.stream.Collectors;
 public class ApiExceptionHandler {
 
     @ExceptionHandler(ConstraintViolationException.class)
-    public ResponseEntity<Map<String, Object>> handleConstraintViolation(ConstraintViolationException ex) {
+    public ResponseEntity<Map<String, Object>> handleConstraintViolation(
+            ConstraintViolationException ex, HttpServletRequest request) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("error", "validation_failed");
         body.put("message", ex.getConstraintViolations().stream()
                 .map(v -> v.getPropertyPath() + " " + v.getMessage())
                 .collect(Collectors.joining("; ")));
+        body.put("agent_action_hint", validationHint(request));
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<Map<String, Object>> handleBodyValidation(MethodArgumentNotValidException ex) {
+    public ResponseEntity<Map<String, Object>> handleBodyValidation(
+            MethodArgumentNotValidException ex, HttpServletRequest request) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("error", "validation_failed");
         body.put("message", ex.getBindingResult().getFieldErrors().stream()
                 .map(f -> f.getField() + " " + f.getDefaultMessage())
                 .collect(Collectors.joining("; ")));
+        body.put("agent_action_hint", validationHint(request));
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
     }
 
     @ExceptionHandler(MissingServletRequestParameterException.class)
-    public ResponseEntity<Map<String, Object>> handleMissingParam(MissingServletRequestParameterException ex) {
+    public ResponseEntity<Map<String, Object>> handleMissingParam(
+            MissingServletRequestParameterException ex, HttpServletRequest request) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("error", "missing_parameter");
         body.put("message", "required parameter '" + ex.getParameterName() + "' is missing");
+        body.put("agent_action_hint", missingParamHint(ex.getParameterName(), request));
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
+    }
+
+    /**
+     * Build a path-aware "what would unblock the agent next" string
+     * for validation failures. Cuts the gap an agent would otherwise
+     * have to bridge by parsing the {@code message} field — which is
+     * a fielderror like "rcptNo must be exactly 14 digits" — and
+     * inferring whether it should re-call a free discovery endpoint
+     * to obtain a valid value. The hints below name the free
+     * endpoint to call directly.
+     */
+    private static String validationHint(HttpServletRequest request) {
+        String path = request.getRequestURI();
+        if (path != null && path.startsWith("/v1/disclosures/summary")) {
+            return "Get a valid 14-digit rcptNo from GET /v1/disclosures/recent (free) " +
+                    "or from a previous GET /v1/disclosures/by-ticker response, " +
+                    "then retry. Inspect the response shape without paying via " +
+                    "GET /v1/disclosures/sample.";
+        }
+        if (path != null && path.startsWith("/v1/disclosures/by-ticker")) {
+            return "Resolve a Korean company name to a 6-digit KRX ticker first via " +
+                    "GET /v1/companies?q={name} (free), then retry with the returned ticker. " +
+                    "Inspect the per-row response shape without paying via " +
+                    "GET /v1/disclosures/sample.";
+        }
+        if (path != null && path.startsWith("/v1/companies")) {
+            return "The query parameter q must be a non-empty string. Try a " +
+                    "Korean or English company name like 'Samsung Electronics' or '삼성전자'.";
+        }
+        return "See https://api.koreafilings.com/v1/pricing for the canonical " +
+                "free-then-paid call sequence and required parameters per endpoint.";
+    }
+
+    private static String missingParamHint(String paramName, HttpServletRequest request) {
+        String path = request.getRequestURI();
+        if ("rcptNo".equals(paramName)) {
+            return "Append ?rcptNo={14-digit DART receipt number}. " +
+                    "Get a valid value from GET /v1/disclosures/recent (free) or " +
+                    "from a previous /v1/disclosures/by-ticker response. " +
+                    "GET /v1/disclosures/sample shows the response shape without paying.";
+        }
+        if ("ticker".equals(paramName)) {
+            return "Append ?ticker={6-or-7-digit-KRX-ticker} (e.g. 005930 for Samsung Electronics). " +
+                    "Resolve a name to a ticker via GET /v1/companies?q={name} (free).";
+        }
+        if ("q".equals(paramName)) {
+            return "Append ?q={Korean or English company name}. " +
+                    "Trigram fuzzy match — partial names work.";
+        }
+        return "See https://api.koreafilings.com/v1/pricing for required parameters per endpoint." +
+                (path != null ? " (path: " + path + ")" : "");
     }
 
     /**
@@ -80,6 +137,9 @@ public class ApiExceptionHandler {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("error", "service_unavailable");
         body.put("message", "Replay-guard / cache layer is temporarily unreachable. Retry shortly.");
+        body.put("agent_action_hint", "Wait at least Retry-After seconds (10) before retrying " +
+                "the same request. Settlement-on-2xx ensures no payment is charged for a 503, " +
+                "so the same signed authorization stays valid for the retry.");
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                 .header(HttpHeaders.RETRY_AFTER, "10")
                 .header(HttpHeaders.CACHE_CONTROL, "no-store")
@@ -124,6 +184,10 @@ public class ApiExceptionHandler {
         body.put("method", request.getMethod());
         body.put("supported", supported == null ? List.of() : List.of(supported));
         body.put("hint", hint);
+        body.put("agent_action_hint", "Re-issue the same request with method " +
+                ((supported == null || supported.length == 0) ? "GET" : supported[0]) +
+                ". This service exposes only read endpoints; POST is never required. " +
+                "GET /v1/pricing has the canonical free-then-paid call sequence with verbs.");
         body.put("discovery", origin + "/.well-known/x402");
         return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED)
                 .header(HttpHeaders.ALLOW, allowHeader)
@@ -162,6 +226,9 @@ public class ApiExceptionHandler {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("error", "service_unavailable");
         body.put("message", "Persistent storage is temporarily unreachable. Retry shortly.");
+        body.put("agent_action_hint", "Wait at least Retry-After seconds (10) before retrying. " +
+                "Settlement-on-2xx ensures no payment is charged for a 503; the same signed " +
+                "authorization remains valid for the retry.");
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                 .header(HttpHeaders.RETRY_AFTER, "10")
                 .header(HttpHeaders.CACHE_CONTROL, "no-store")

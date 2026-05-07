@@ -4,6 +4,24 @@
 
 The intended agent flow is two calls: a free name → ticker resolution, then a paid `get_recent_filings(ticker, limit)`. Direct receipt-number lookup is also supported for callers that already have a 14-digit DART rcpt_no.
 
+## Quickstart (60 seconds, no wallet for the free path)
+
+```
+# (free) Resolve a Korean company name → ticker
+curl 'https://api.koreafilings.com/v1/companies?q=Samsung+Electronics'
+
+# (free) See the exact shape of a paid summary response without paying
+# — sourced from a real Base mainnet paid call, identical schema to what
+# GET /v1/disclosures/summary?rcptNo=... returns for any real rcptNo.
+curl 'https://api.koreafilings.com/v1/disclosures/sample'
+
+# (free) Inspect the 402 challenge for a paid endpoint without paying
+curl -i 'https://api.koreafilings.com/v1/disclosures/by-ticker?ticker=005930&limit=3'
+#   -> HTTP/2 402 + base64-encoded PaymentRequired payload in the
+#      PAYMENT-REQUIRED header. The body has the same payload as JSON
+#      so v1 SDK clients can parse it without inspecting headers.
+```
+
 ## Discovery
 
 - [/.well-known/x402](https://api.koreafilings.com/.well-known/x402): canonical x402 service descriptor — network, asset, recipient wallet, paid endpoint catalog with prices and methods.
@@ -16,6 +34,7 @@ The intended agent flow is two calls: a free name → ticker resolution, then a 
 - `GET /v1/companies?q={koreanOrEnglishName}` — trigram fuzzy search across 3,961 KRX-listed companies. Returns ticker, corp_code, market.
 - `GET /v1/companies/{ticker}` — direct six-digit ticker lookup.
 - `GET /v1/disclosures/recent?limit={n}&since_hours={h}` — market-wide metadata feed of the most recent DART filings.
+- `GET /v1/disclosures/sample` — constant sample of the paid response shape (real body-aware Base mainnet response), for SDK / schema verification without paying.
 
 ## Paid endpoints (x402, USDC on Base)
 

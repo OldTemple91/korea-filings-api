@@ -38,7 +38,9 @@ public record PricingResponse(
             String pricingMode,
             String description,
             List<RequiredParam> requiredParams,
-            String exampleCall
+            String exampleCall,
+            DisclosureSummaryDto sampleResponse,
+            String sampleSettlementTxUrl
     ) {
     }
 

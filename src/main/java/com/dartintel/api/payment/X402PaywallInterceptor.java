@@ -123,6 +123,28 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
             return true;
         }
 
+        // Standard rate-limit advisory headers on every paid endpoint
+        // response (whether the path is taking the 402, 400, or 200
+        // branch). The values reflect the upstream-bound rate limit on
+        // the cold-cache path: Gemini Flash-Lite is configured at
+        // 10 RPM via the `gemini` Resilience4j RateLimiter, which is
+        // the binding constraint for first-time-paid rcpt_nos. Cache
+        // hits are not subject to this limit (the LLM is never
+        // touched), but the conservative ceiling lets agents schedule
+        // safely without distinguishing cold vs warm paths up front.
+        // The 30 RPM `dart-document` budget is looser, so we surface
+        // gemini's 10 RPM as the canonical ceiling. Header conventions
+        // follow the de-facto X-RateLimit-* trio (Limit, Remaining,
+        // Reset) used by GitHub, Stripe, and most public APIs — every
+        // mature HTTP client library already knows how to read them.
+        // Remaining is approximated rather than proxied from the
+        // RateLimiter directly because Resilience4j's available-permit
+        // count is window-relative and not meaningful per-request.
+        response.setHeader("X-RateLimit-Limit", "10");
+        response.setHeader("X-RateLimit-Window-Seconds", "60");
+        response.setHeader("X-RateLimit-Scope",
+                "upstream-cold-path-bound (Gemini 10 RPM); cache hits unbounded");
+
         // Pre-paywall required-param check. Without this, a missing
         // required query param (e.g. /v1/disclosures/by-ticker without
         // `ticker`) produces a 402 at the default price, the agent
@@ -135,7 +157,9 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
             String value = request.getParameter(required);
             if (value == null || value.isBlank()) {
                 writeBadRequest(response,
-                        "Missing required query parameter: " + required);
+                        "missing_parameter",
+                        "required parameter '" + required + "' is missing",
+                        missingParamHintForPaidEndpoint(required));
                 return false;
             }
         }
@@ -179,7 +203,15 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
             // for "no payment provided" or "payment required after a settle
             // failure" — using it for garbage input prevents spec-aware
             // clients from branching on the malformed-payload code path.
-            writeBadRequest(response, "Malformed payment payload");
+            writeBadRequest(response,
+                    "malformed_payment",
+                    "Malformed payment payload",
+                    "The PAYMENT-SIGNATURE (or legacy X-PAYMENT) header value must be " +
+                            "base64-encoded JSON of an x402 PaymentPayload. The TypeScript / " +
+                            "Python SDKs build this for you. See " +
+                            "https://github.com/coinbase/x402/blob/main/specs/transports-v2/http.md " +
+                            "for the wire shape, or GET https://api.koreafilings.com/v1/disclosures/sample " +
+                            "for a free schema preview without payment.");
             return false;
         }
 
@@ -351,19 +383,56 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
      * header — clients that send garbage need to know they sent
      * garbage rather than think they were charged or rate-limited.
      */
-    private void writeBadRequest(HttpServletResponse response, String error) throws IOException {
+    /**
+     * Write a 400 envelope with the same shape that
+     * {@link com.dartintel.api.api.ApiExceptionHandler} emits for
+     * Bean-Validation and missing-param failures further down the
+     * stack. {@code error} is a stable machine-readable code,
+     * {@code message} is the human-facing description, and
+     * {@code agentActionHint} is the path-aware "what would unblock
+     * me" instruction the agent can act on without reading prose
+     * docs. Round-12 unified the two surfaces so a self-correcting
+     * client sees one consistent envelope across both paywall-
+     * preflight and post-controller validation failures.
+     */
+    private void writeBadRequest(HttpServletResponse response, String errorCode,
+                                 String message, String agentActionHint) throws IOException {
         response.setStatus(HttpStatus.BAD_REQUEST.value());
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
         // Per-request error envelope — never cache.
         response.setHeader("Cache-Control", "no-store");
         try {
-            byte[] body = objectMapper.writeValueAsBytes(Map.of("error", error));
-            response.getOutputStream().write(body);
+            java.util.LinkedHashMap<String, Object> body = new java.util.LinkedHashMap<>();
+            body.put("error", errorCode);
+            body.put("message", message);
+            body.put("agent_action_hint", agentActionHint);
+            response.getOutputStream().write(objectMapper.writeValueAsBytes(body));
         } catch (JsonProcessingException e) {
-            // Should not happen for the static map literal above.
             log.error("Failed to serialise 400 envelope: {}", e.getMessage());
         }
+    }
+
+    /**
+     * Path-aware hint for "you forgot a required query param on a
+     * paid endpoint." Mirrors the messages the
+     * {@link com.dartintel.api.api.ApiExceptionHandler} would emit
+     * for a free endpoint, so a self-correcting agent can recover
+     * from either branch without distinguishing them.
+     */
+    private static String missingParamHintForPaidEndpoint(String paramName) {
+        if ("rcptNo".equals(paramName)) {
+            return "Append ?rcptNo={14-digit DART receipt number}. Get a valid value " +
+                    "from GET /v1/disclosures/recent (free) or from a previous " +
+                    "/v1/disclosures/by-ticker response. " +
+                    "GET /v1/disclosures/sample shows the response shape without paying.";
+        }
+        if ("ticker".equals(paramName)) {
+            return "Append ?ticker={6-or-7-digit-KRX-ticker} (e.g. 005930 for Samsung Electronics). " +
+                    "Resolve a name to a ticker via GET /v1/companies?q={name} (free). " +
+                    "GET /v1/disclosures/sample shows the per-row response shape without paying.";
+        }
+        return "See https://api.koreafilings.com/v1/pricing for required parameters per endpoint.";
     }
 
     private void writePaymentRequired(HttpServletResponse response, String resourceUrl,

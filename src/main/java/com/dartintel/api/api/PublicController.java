@@ -1,6 +1,7 @@
 package com.dartintel.api.api;
 
 import com.dartintel.api.api.dto.PricingResponse;
+import com.dartintel.api.api.dto.SampleResponses;
 import com.dartintel.api.payment.X402Paywall;
 import com.dartintel.api.payment.X402Properties;
 import io.swagger.v3.oas.annotations.Operation;
@@ -170,7 +171,17 @@ public class PublicController {
                 annotation.pricingMode().name().toLowerCase(),
                 annotation.description(),
                 describeRequiredParams(path),
-                describeExampleCall(path, annotation)
+                describeExampleCall(path, annotation),
+                // Same body-aware sample on both paid endpoints — the
+                // by-ticker response wraps an array of these inside
+                // ByTickerResponse, but the per-row shape is identical.
+                // Letting agents see "the actual numbers Gemini extracted
+                // from a real Korean filing on mainnet" before they pay
+                // closes the discovery → first-call gap that 24h post-
+                // round-11 logs flagged (140 OpenAPI scrapes + 22
+                // /.well-known/x402 hits → 0 external paid calls).
+                SampleResponses.sampleSummary(),
+                SampleResponses.SAMPLE_SETTLEMENT_TX_URL
         );
     }
 

@@ -4,6 +4,7 @@ import com.dartintel.api.api.dto.ByTickerResponse;
 import com.dartintel.api.api.dto.DisclosureSummaryDto;
 import com.dartintel.api.api.dto.RecentFilingDto;
 import com.dartintel.api.api.dto.RecentFilingsResponse;
+import com.dartintel.api.api.dto.SampleResponses;
 import com.dartintel.api.ingestion.Disclosure;
 import com.dartintel.api.ingestion.DisclosureRepository;
 import com.dartintel.api.payment.X402Paywall;
@@ -86,6 +87,56 @@ public class DisclosuresController {
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.maxAge(java.time.Duration.ofSeconds(30)).cachePublic())
                 .body(new RecentFilingsResponse(filings));
+    }
+
+    /**
+     * Free hardcoded sample of the paid response shape, for agent /
+     * SDK developers who want to verify schema, summary length, and
+     * field semantics without funding a wallet first. Pulled from
+     * {@link SampleResponses}, which is sourced from a real Base
+     * mainnet paid call ({@code rcpt_no=20260430800106}, Samsung
+     * Electronics 2026-Q1 dividend, settled at the BaseScan tx in
+     * the {@code sampleSettlementTxUrl} field of {@code /v1/pricing}).
+     *
+     * <p>This endpoint is safe to call as often as desired — it
+     * returns a constant, never touches DART, never calls Gemini,
+     * never charges. Ship-day intent: collapse the gap that 24h of
+     * round-11 traffic logs revealed (140 OpenAPI scrapes + 22
+     * x402-discovery hits → 0 external paid calls). Agents can now
+     * see exactly what 0.005 USDC buys before signing anything.
+     */
+    @GetMapping("/sample")
+    @SecurityRequirements // free, unauthenticated — explicit sample endpoint
+    @Operation(
+            summary = "Free sample of the paid /summary response shape",
+            description = """
+                    Returns a constant body-aware example summary, sourced
+                    from a real Base mainnet paid call against Samsung
+                    Electronics' 2026-Q1 quarterly dividend filing
+                    (`rcpt_no=20260430800106`). Use this to inspect the
+                    response schema, summary length, importance/event
+                    taxonomy, and field semantics without funding a wallet
+                    or making a paid call.
+
+                    The shape is identical to what `GET /v1/disclosures/summary?rcptNo=...`
+                    returns for any real receipt number. The byTicker
+                    endpoint returns an array of objects with the same
+                    per-row shape.
+                    """,
+            responses = @ApiResponse(
+                    responseCode = "200",
+                    description = "Constant sample response — never paid, never charged.",
+                    content = @Content(schema = @Schema(implementation = DisclosureSummaryDto.class)))
+    )
+    public ResponseEntity<DisclosureSummaryDto> getSample() {
+        // Long Cache-Control because the value is immutable —
+        // changing the sample requires a code deploy. Letting
+        // Cloudflare cache this at the edge keeps the lookup off
+        // Tomcat for the typical agent crawler traffic shape we
+        // saw in the round-11 logs.
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.maxAge(java.time.Duration.ofHours(24)).cachePublic())
+                .body(SampleResponses.sampleSummary());
     }
 
     /**

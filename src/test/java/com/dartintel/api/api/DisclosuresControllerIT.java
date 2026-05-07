@@ -248,10 +248,14 @@ class DisclosuresControllerIT {
         // maps to HTTP 400, not 402. 402 is reserved for "no payment
         // provided" or "payment failed" — clients that send garbage need
         // a distinguishable code path.
+        // Round-12 unified the error envelope shape: $.error is now a
+        // stable code (`malformed_payment`), $.message is the human
+        // string, $.agent_action_hint is the recovery instruction.
         mockMvc.perform(get("/v1/disclosures/summary?rcptNo=20260423000001")
                         .header("X-PAYMENT", "not-valid-base64!@#"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value(containsString("Malformed")));
+                .andExpect(jsonPath("$.error").value("malformed_payment"))
+                .andExpect(jsonPath("$.message").value(containsString("Malformed")));
     }
 
     @Test
@@ -263,14 +267,16 @@ class DisclosuresControllerIT {
         // @RequestParam binding — burning a nonce for nothing.
         mockMvc.perform(get("/v1/disclosures/by-ticker?limit=3"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value(containsString("ticker")));
+                .andExpect(jsonPath("$.error").value("missing_parameter"))
+                .andExpect(jsonPath("$.message").value(containsString("ticker")));
     }
 
     @Test
     void summaryWithoutRcptNoReturns400BeforePaywall() throws Exception {
         mockMvc.perform(get("/v1/disclosures/summary"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value(containsString("rcptNo")));
+                .andExpect(jsonPath("$.error").value("missing_parameter"))
+                .andExpect(jsonPath("$.message").value(containsString("rcptNo")));
     }
 
     @Test
@@ -343,7 +349,8 @@ class DisclosuresControllerIT {
         mockMvc.perform(get("/v1/disclosures/by-ticker?ticker=005930&limit=3")
                         .header("PAYMENT-SIGNATURE", "not-valid-base64!@#"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value(containsString("Malformed")));
+                .andExpect(jsonPath("$.error").value("malformed_payment"))
+                .andExpect(jsonPath("$.message").value(containsString("Malformed")));
     }
 
     @Test
@@ -503,6 +510,81 @@ class DisclosuresControllerIT {
     private String validPaymentPayloadBase64(String nonce) throws Exception {
         return validPaymentPayloadBase64(nonce,
                 "http://localhost/v1/disclosures/summary?rcptNo=20260423000001");
+    }
+
+    // ----- round-12 agent UX additions -----
+
+    @Test
+    void sampleEndpointReturnsBodyAwareSummaryWithoutPayment() throws Exception {
+        // /v1/disclosures/sample collapses the discovery → first-paid-call
+        // gap that the round-11 24h logs flagged: agents can inspect the
+        // exact response shape (with body-aware Samsung dividend numbers)
+        // before signing anything. Free, never charges, never touches DART
+        // or Gemini.
+        mockMvc.perform(get("/v1/disclosures/sample"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.rcptNo").value("20260430800106"))
+                .andExpect(jsonPath("$.eventType").value("DIVIDEND_DECISION"))
+                .andExpect(jsonPath("$.importanceScore").value(7))
+                .andExpect(jsonPath("$.summaryEn").value(
+                        org.hamcrest.Matchers.containsString("KRW 372 per common share")))
+                .andExpect(jsonPath("$.summaryEn").value(
+                        org.hamcrest.Matchers.containsString("KRW 2,453,315,636,604")))
+                .andExpect(jsonPath("$.tickerTags[0]").value("005930"));
+    }
+
+    @Test
+    void summaryWithoutRcptNoCarriesAgentActionHint() throws Exception {
+        // Round-12 error envelope upgrade — the 400 for a missing required
+        // param now carries `agent_action_hint` pointing at the free
+        // discovery endpoint that would unblock the agent. Funnel
+        // self-recovery without docs. The paywall interceptor's
+        // pre-flight required-param check fires this 400 (before
+        // Spring's @RequestParam binding), so the envelope comes from
+        // X402PaywallInterceptor.writeBadRequest, which round-12
+        // unified with ApiExceptionHandler's shape.
+        mockMvc.perform(get("/v1/disclosures/summary"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("missing_parameter"))
+                .andExpect(jsonPath("$.agent_action_hint").value(
+                        org.hamcrest.Matchers.containsString("/v1/disclosures/recent")))
+                .andExpect(jsonPath("$.agent_action_hint").value(
+                        org.hamcrest.Matchers.containsString("/v1/disclosures/sample")));
+    }
+
+    @Test
+    void byTickerWithoutTickerCarriesAgentActionHint() throws Exception {
+        mockMvc.perform(get("/v1/disclosures/by-ticker"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("missing_parameter"))
+                .andExpect(jsonPath("$.agent_action_hint").value(
+                        org.hamcrest.Matchers.containsString("/v1/companies?q=")));
+    }
+
+    @Test
+    void malformedPaymentHeaderCarriesAgentActionHint() throws Exception {
+        // Existing test asserts 400 + "Malformed" in $.error — round-12
+        // upgraded the envelope to error code + message + hint, so
+        // assert the hint points at the wire-shape doc + sample endpoint.
+        mockMvc.perform(get("/v1/disclosures/summary?rcptNo=20260423000001")
+                        .header("PAYMENT-SIGNATURE", "not-valid-base64!@#"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("malformed_payment"))
+                .andExpect(jsonPath("$.agent_action_hint").value(
+                        org.hamcrest.Matchers.containsString("PaymentPayload")))
+                .andExpect(jsonPath("$.agent_action_hint").value(
+                        org.hamcrest.Matchers.containsString("/v1/disclosures/sample")));
+    }
+
+    @Test
+    void paidEndpoint402CarriesRateLimitAdvisoryHeaders() throws Exception {
+        // Round-12 — paid endpoint responses (including the 402 challenge)
+        // advertise the upstream-bound rate limit so agents can schedule
+        // batch traffic without hitting Gemini RPM ceiling.
+        mockMvc.perform(get("/v1/disclosures/summary?rcptNo=20260423000001"))
+                .andExpect(status().isPaymentRequired())
+                .andExpect(header().string("X-RateLimit-Limit", "10"))
+                .andExpect(header().string("X-RateLimit-Window-Seconds", "60"));
     }
 
     private String validPaymentPayloadBase64(String nonce, String resourceUrl) throws Exception {

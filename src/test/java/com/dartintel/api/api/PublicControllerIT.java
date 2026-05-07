@@ -117,6 +117,29 @@ class PublicControllerIT {
                 .andExpect(status().isOk());
     }
 
+    @Test
+    void pricingCarriesSampleResponseOnEachPaidEndpoint() throws Exception {
+        // Round-12 surface lift — agents discovering /v1/pricing should
+        // see "what does 0.005 USDC actually buy?" before signing
+        // anything. The sample is the body-aware Samsung Q1 dividend
+        // response from the round-11 ship-day mainnet test.
+        // jsonPath filters return JSONArray even on single-match, so
+        // wrap each value matcher with hasItem(...) to assert the
+        // single element inside.
+        mockMvc.perform(get("/v1/pricing"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.endpoints[?(@.path == '/v1/disclosures/summary')].sampleResponse.rcptNo")
+                        .value(org.hamcrest.Matchers.hasItem("20260430800106")))
+                .andExpect(jsonPath("$.endpoints[?(@.path == '/v1/disclosures/summary')].sampleResponse.eventType")
+                        .value(org.hamcrest.Matchers.hasItem("DIVIDEND_DECISION")))
+                .andExpect(jsonPath("$.endpoints[?(@.path == '/v1/disclosures/summary')].sampleResponse.summaryEn")
+                        .value(org.hamcrest.Matchers.hasItem(
+                                org.hamcrest.Matchers.containsString("KRW 372 per common share"))))
+                .andExpect(jsonPath("$.endpoints[?(@.path == '/v1/disclosures/summary')].sampleSettlementTxUrl")
+                        .value(org.hamcrest.Matchers.hasItem(
+                                org.hamcrest.Matchers.containsString("basescan.org/tx/0x5a0403ae"))));
+    }
+
     /**
      * Production traffic shows agents POSTing to our paid GET endpoints
      * (most x402 examples on the public web are LLM-inference services
