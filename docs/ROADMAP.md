@@ -388,6 +388,111 @@ round-9 / round-10 review fixes), 190 tests green (Java 158, TS
 32). Highest-leverage remaining moves: HN Show HN and Smithery
 registration.
 
+## x402 Ecosystem Expansion — distribution channels and how mainstream adoption arrives
+
+The pay-per-call x402 model only delivers revenue when an agent or
+end user can actually reach the paywall. Today (2026-05) that path
+runs through MCP-aware desktop clients (Claude Desktop, Cursor,
+Continue) plus hand-rolled SDK integrations — both of which assume
+the caller already controls a wallet funded with USDC on Base.
+Mainstream sellers and buyers do not. The expansion path below
+sketches how the friction layer is expected to peel off over the
+next several quarters and which channels the service should be
+present in at each stage. Each tier is ordered by friction the
+end user sees, not by current adoption volume — Tier 1 already
+works and is where direct effort lands, while Tiers 2–4 are mostly
+patience plays where the right move is to be discoverable when the
+unlock arrives.
+
+### Tier 1 — works today, requires user wallet
+
+| Channel | Friction the user sees | What we do |
+|---|---|---|
+| **agent.market** (Coinbase official x402 directory) | Coinbase Smart Wallet OAuth — single sign-in, no env vars / private keys | Submit metadata.json PR to `x402-foundation/x402` ecosystem listing. Single shot, ~5 business days review. |
+| **Smithery / 1-click MCP install** | MCP install automated; user still brings their own wallet for paid tools | Submit listing when site recovers (intermittent outages observed 2026-05). |
+| **Hand-rolled MCP install** | `uv tool install` + `claude_desktop_config.json` edit + private key in env. Verified working with the maintainer's own PAYER wallet on 2026-05-08. | README + dev.to writeup so the install path is documented; this is the SDK-developer entry point, not the mainstream entry. |
+| **Direct SDK use** | Agent builder writes `KoreaFilings({ privateKey, network })` themselves | Keep TS / Python / MCP SDKs healthy. Maintain published versions on npm + PyPI. |
+
+### Tier 2 — Q3–Q4 2026 (high-probability unlocks)
+
+#### Coinbase Agentic Browser ⭐⭐
+Coinbase is shipping a browser whose default behaviour is "agent
+makes the call, the embedded Smart Wallet pays for it." Browserbase
+infrastructure handles the headless side; the user types natural
+language and never touches a private key. **Currently closed beta.**
+
+Implication for us: once a service is on agent.market, the Agentic
+Browser surfaces it automatically. The work to capture Tier 2 is the
+same work as Tier 1 — get listed in agent.market.
+
+#### ChatGPT / Claude bundled wallet (rumored)
+Both Anthropic and OpenAI have publicly framed agent payments as a
+2026 work item but neither has shipped a user-facing wallet inside
+the consumer chat product yet. The likely shape:
+
+- User pays the existing subscription (Claude Pro / ChatGPT Plus) in
+  fiat to the model vendor.
+- Vendor maintains a USDC pool and pays x402-paywalled MCP tools on
+  the user's behalf, drawing from a quota inside the subscription.
+- For us this would mean a single registration step (be in the
+  vendor's MCP marketplace) and then any Claude Pro user calling our
+  tool is a paying customer with no wallet UX.
+
+Implication: stay registered with Smithery / Anthropic-adjacent MCP
+hubs so we are not the bottleneck when the announcement arrives.
+
+#### Hosted agent platforms (Manus / Heurist / Dify)
+B2B path. The platform sells subscriptions to end users in fiat /
+local payment rails (KRW for a Korean platform, USD for Manus); the
+platform owns a USDC pool and settles with x402 services on the
+user's behalf. Some platforms (Manus) have begun x402 integration;
+most have not.
+
+Action shape: partnership outreach when the platforms publicly
+support x402 — typically not actionable as a one-person effort
+until the platform exposes a self-serve listing. Patience play.
+
+### Tier 3 — B2B2C, organic timing
+
+#### Korea Filings as someone else's backend
+A SaaS or vertical product can use our SDK as one of several backends
+and resell to its own users in fiat. Our wallet ledger only sees the
+SaaS company's payer address; the SaaS company sees per-end-user
+receipts on its own books.
+
+The path here is purely "be a high-quality SDK with credible
+documentation." No specific marketing. Expected to materialise
+from organic GitHub discovery + dev.to/HN content over months.
+
+### Tier 4 — what we cannot influence directly
+
+- **OpenAI / Anthropic native wallet rollout timing** (Tier 2 #4-5).
+- **Coinbase's commercial roadmap for agent.market** — what categories,
+  what fee model, whether they introduce paid placements.
+- **Korean fiat / KakaoPay → USDC bridge** for native Korean agent
+  apps that want to charge end users in won and pay us in USDC.
+
+We track these passively. None block what we can ship now.
+
+### What this means in practice
+
+1. **Tier 1 #1 (agent.market) is the single biggest leverage move
+   available today** — it costs one PR plus a logo, and downstream
+   it auto-feeds Coinbase Agentic Browser whenever that opens up.
+2. **Tier 1 #2 (Smithery) is a queued retry** — site has had
+   intermittent access issues 2026-05; treat as low-priority noise
+   until the site is reliably reachable.
+3. **Tiers 2–4 are patience plays.** The temptation is to chase
+   them by building features; the actual work is to stay registered,
+   stay documented, and watch announcements.
+
+The ROADMAP's existing milestones (next paid endpoint, additional
+data sources) compete with distribution work for the operator's
+time. Distribution wins when revenue is at zero, because no
+additional feature lifts revenue in a vacuum. Once the first
+external paying wallet has a non-trivial monthly cadence, the
+balance shifts back toward features.
+
 ## Guardrails Throughout
 
 - Built on public DART data only — no proprietary or third-party code, data, or accounts referenced at any point.
