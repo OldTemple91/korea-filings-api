@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="Korea Filings — option F">
+  <!--
+    Option F — "Korean upward chart" — pure stock chart imagery,
+    no letterform. Three ascending candlesticks in the Korean
+    "price up" red, with a subtle trend-line connecting their
+    midpoints, against a dark institutional navy that financial
+    products use. The chart climbs from lower-left to upper-right
+    (universal "growth" composition) and the closing wicks at the
+    top of each candle form an implicit "K" diagonal if read as
+    silhouette. Pure financial-domain imagery — strongest "this is
+    a Korean stock-data product" first-glance recognition of the
+    set, lowest brand-name awareness (no letter visible).
+  -->
+  <rect width="256" height="256" rx="56" fill="#0F1F3A"/>
+
+  <!-- Trend line behind candles -->
+  <polyline points="56,180 96,140 144,108 200,68"
+            stroke="#ffffff" stroke-width="3" stroke-opacity="0.25"
+            fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Three ascending Korean-red candlesticks -->
+  <g fill="#E03131" stroke="#E03131">
+    <!-- Candle 1 (left, shortest) -->
+    <line x1="80" y1="148" x2="80" y2="120" stroke-width="3"/>
+    <rect x="68" y="148" width="24" height="44" rx="4"/>
+    <line x1="80" y1="192" x2="80" y2="208" stroke-width="3"/>
+
+    <!-- Candle 2 (middle) -->
+    <line x1="128" y1="100" x2="128" y2="76" stroke-width="3"/>
+    <rect x="116" y="100" width="24" height="68" rx="4"/>
+    <line x1="128" y1="168" x2="128" y2="186" stroke-width="3"/>
+
+    <!-- Candle 3 (right, tallest) -->
+    <line x1="184" y1="60" x2="184" y2="40" stroke-width="3"/>
+    <rect x="172" y="60" width="24" height="92" rx="4"/>
+    <line x1="184" y1="152" x2="184" y2="170" stroke-width="3"/>
+  </g>
+
+  <!-- Tiny upward trajectory arrowhead at top-right -->
+  <polyline points="196,72 208,60 200,52"
+            stroke="#E03131" stroke-width="6"
+            fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

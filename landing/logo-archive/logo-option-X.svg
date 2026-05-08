@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="Korea Filings — option X (institutional)">
+  <!--
+    Option X — Institutional B2B monogram, Bloomberg/Refinitiv lineage.
+    Bold custom "K" + two horizontal data accent lines (Bloomberg
+    ticker style: one Korean red for "live data", one neutral white
+    for "archived record"). Single mark, scales to 16-px favicon
+    cleanly. Reads as "data product" not "trading app".
+    Centred geometry: K body x = 80–186 (centre 133), data lines
+    x = 64–192 (centre 128). Slight K offset to balance optical
+    weight against the right-side empty space.
+  -->
+  <rect width="256" height="256" rx="56" fill="#0F1F3A"/>
+
+  <!-- Bold custom K (geometric, not serif Bloomberg-derivative) -->
+  <g fill="#ffffff">
+    <!-- Vertical stroke -->
+    <rect x="64" y="56" width="32" height="120" rx="4"/>
+    <!-- Top diagonal -->
+    <polygon points="96,116 168,56 196,56 124,116"/>
+    <!-- Bottom diagonal -->
+    <polygon points="96,116 168,176 196,176 124,116"/>
+  </g>
+
+  <!-- Two data accent lines, Bloomberg-ticker style -->
+  <g stroke-linecap="round">
+    <line x1="64" y1="208" x2="192" y2="208" stroke="#E03131" stroke-width="8"/>
+    <line x1="64" y1="226" x2="160" y2="226" stroke="#ffffff" stroke-width="5" stroke-opacity="0.5"/>
+  </g>
+</svg>

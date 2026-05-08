@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="Korea Filings">
+  <!--
+    Option 1 — Bold geometric K monogram on Base mainnet blue.
+    Single mark, no decoration. Reads as "K" (Korea) from afar; the
+    open-right negative space subtly suggests an outbound chevron
+    (>) — agent / data flowing out. Same blue as the Base ecosystem
+    so the affiliation is implicit without literal "402" text.
+  -->
+  <rect width="256" height="256" rx="56" fill="#0052FF"/>
+  <g stroke="#ffffff" stroke-width="36" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <line x1="80" y1="56" x2="80" y2="200"/>
+    <line x1="80" y1="128" x2="196" y2="56"/>
+    <line x1="80" y1="128" x2="196" y2="200"/>
+  </g>
+</svg>

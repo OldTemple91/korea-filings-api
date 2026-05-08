@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="Korea Filings">
+  <!--
+    Korea Filings logo — three-candle Korean stock-chart narrative
+    in the classic "bull flag breakout" sequence:
+      red (rally) → blue (pull-back) → red (breakout)
+    Korean colour convention applied:
+      red  #E03131 = price up   (한국: 상승)
+      blue #1971C2 = price down (한국: 하락)
+    Geometry:
+      - canvas 256×256, rx 56
+      - three candles centred at x = 72, 128, 184 (56-px spacing,
+        symmetric around canvas centre 128)
+      - body width 28, wick stroke 4
+      - vertical bounding box y = 60..196 → centre y = 128
+      - trend line traces close prices, so the line itself reads
+        "rally → pause → breakout" (the V shape is intentional, it
+        is the pattern, not noise)
+    Background is the institutional dark-navy used by Bloomberg
+    Terminal and Refinitiv Eikon.
+  -->
+  <rect width="256" height="256" rx="56" fill="#0F1F3A"/>
+
+  <!-- Trend line — connects close prices: red top, blue bottom, red top -->
+  <polyline points="72,142 128,164 184,76"
+            stroke="#ffffff" stroke-width="3" stroke-opacity="0.22"
+            fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Candle 1 — left, RED (Korean up, opening rally) -->
+  <g fill="#E03131" stroke="#E03131" stroke-linecap="round">
+    <line x1="72" y1="126" x2="72" y2="142" stroke-width="4"/>
+    <rect x="58" y="142" width="28" height="38" rx="4"/>
+    <line x1="72" y1="180" x2="72" y2="196" stroke-width="4"/>
+  </g>
+
+  <!-- Candle 2 — middle, BLUE (Korean down, pullback / consolidation) -->
+  <g fill="#1971C2" stroke="#1971C2" stroke-linecap="round">
+    <line x1="128" y1="96" x2="128" y2="112" stroke-width="4"/>
+    <rect x="114" y="112" width="28" height="52" rx="4"/>
+    <line x1="128" y1="164" x2="128" y2="180" stroke-width="4"/>
+  </g>
+
+  <!-- Candle 3 — right, RED (Korean up, breakout, tallest body) -->
+  <g fill="#E03131" stroke="#E03131" stroke-linecap="round">
+    <line x1="184" y1="60" x2="184" y2="76" stroke-width="4"/>
+    <rect x="170" y="76" width="28" height="92" rx="4"/>
+    <line x1="184" y1="168" x2="184" y2="184" stroke-width="4"/>
+  </g>
+</svg>

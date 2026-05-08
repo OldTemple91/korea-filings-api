@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="Korea Filings — option D">
+  <!--
+    Option D — Stylized Won (₩) symbol.
+    The ₩ glyph is the most universally recognised "this is Korean
+    money" cue globally. Drawn here as a bold geometric mark with
+    rounded stroke caps so it reads as branded type rather than a
+    Unicode character. Single ascending accent line at the bottom
+    suggests upward market movement (growth) in the same red the
+    Korean stock market uses for "up" — Korean financial idiom built
+    into the colour choice. Background is the dark institutional
+    navy used by Bloomberg / Refinitiv financial-data products.
+  -->
+  <rect width="256" height="256" rx="56" fill="#0F1F3A"/>
+
+  <!-- Stylized ₩ symbol -->
+  <g stroke="#ffffff" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <!-- W shape: 4 connected diagonal strokes -->
+    <polyline points="56,72 84,184 128,72 172,184 200,72"/>
+    <!-- Two horizontal bars (signature of ₩) -->
+    <line x1="48" y1="116" x2="208" y2="116"/>
+    <line x1="48" y1="142" x2="208" y2="142"/>
+  </g>
+
+  <!-- Korean "up" red ascending accent line -->
+  <line x1="64" y1="216" x2="192" y2="200"
+        stroke="#E03131" stroke-width="8" stroke-linecap="round"/>
+</svg>

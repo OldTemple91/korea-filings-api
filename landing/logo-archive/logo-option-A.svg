@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="Korea Filings — option A">
+  <!--
+    Option A — "Stacked records" mark.
+    Three horizontal bars decreasing in width form an abstract
+    "filing/record stack" silhouette with a K-letter feel from afar.
+    Bloomberg-style data-line motif applied to a Korean filings
+    context. Single color, instantly scaleable to favicon size.
+    Reads as "records" / "data feed" without literal paper imagery.
+  -->
+  <rect width="256" height="256" rx="56" fill="#0a0a0a"/>
+  <g fill="#ffffff">
+    <rect x="56"  y="64"  width="144" height="22" rx="4"/>
+    <rect x="56"  y="116" width="112" height="22" rx="4"/>
+    <rect x="56"  y="168" width="80"  height="22" rx="4"/>
+  </g>
+  <!-- single accent dot referencing Korean origin -->
+  <circle cx="216" cy="40" r="8" fill="#CD2E3A"/>
+</svg>

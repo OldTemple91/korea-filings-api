@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="Korea Filings — option Y (hybrid)">
+  <!--
+    Option Y — Hybrid. Letter monogram (brand recognition, B2B
+    institutional) + abstracted ascending price line (financial-domain
+    cue without the retail "candlestick app" feel). The chart trace
+    is a single 4-point ascending polyline in Korean red — the
+    recognisable "growth" arc — placed in the lower-right quadrant
+    so it reads as a small chart-glyph beside the K, not a full
+    candlestick chart. Trade-off vs option X: keeps the financial-
+    domain cue our previous candlestick designs were trying to
+    deliver, but in a form that does not put us in the retail-trading
+    visual category.
+  -->
+  <rect width="256" height="256" rx="56" fill="#0F1F3A"/>
+
+  <!-- Bold K monogram (institutional letter mark) -->
+  <g fill="#ffffff">
+    <rect x="48" y="60" width="28" height="136" rx="4"/>
+    <polygon points="76,128 144,60 176,60 108,128"/>
+    <polygon points="76,128 144,196 176,196 108,128"/>
+  </g>
+
+  <!-- Tiny ascending price line + dots, lower-right -->
+  <g>
+    <polyline points="148,184 168,164 188,148 208,116"
+              stroke="#E03131" stroke-width="5"
+              fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="148" cy="184" r="5" fill="#1971C2"/>
+    <circle cx="168" cy="164" r="5" fill="#E03131"/>
+    <circle cx="188" cy="148" r="5" fill="#E03131"/>
+    <circle cx="208" cy="116" r="5" fill="#E03131"/>
+  </g>
+</svg>

@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="Korea Filings — option Z (F2 institutional refinement)">
+  <!--
+    Option Z — Current F2 candlestick layout, refined to be more
+    institutional and less retail-trading-app:
+      - colours muted to deeper / more financial tones
+      - candle bodies thinner so silhouette reads as "abstract bars"
+        more than "active trading candle"
+      - background deeper (#0a1428) for institutional terminal feel
+      - small "KF" wordmark added top-left for brand recognition that
+        the pure F2 lacked
+      - trend line removed so the mark feels less chart-busy
+    Goal: keep the Korean red/blue narrative, lose the "Webull-style
+    retail app" first-impression risk.
+    Centring: candle group x 64..192 → centre 128 ✓; y 60..196 → centre 128 ✓.
+  -->
+  <rect width="256" height="256" rx="56" fill="#0a1428"/>
+
+  <!-- Brand wordmark, top-left -->
+  <text x="32" y="52"
+        font-family="-apple-system, BlinkMacSystemFont, 'Inter', sans-serif"
+        font-size="22" font-weight="700" fill="#ffffff" letter-spacing="2"
+        opacity="0.75">KF</text>
+
+  <!-- Three thin candles — narrative same as F2 (red→blue→red) but slimmer -->
+
+  <!-- Candle 1 — left, RED (rally) -->
+  <g fill="#C92A2A" stroke="#C92A2A" stroke-linecap="round">
+    <line x1="78" y1="126" x2="78" y2="142" stroke-width="3"/>
+    <rect x="68" y="142" width="20" height="38" rx="3"/>
+    <line x1="78" y1="180" x2="78" y2="196" stroke-width="3"/>
+  </g>
+
+  <!-- Candle 2 — middle, BLUE (pullback) -->
+  <g fill="#1864AB" stroke="#1864AB" stroke-linecap="round">
+    <line x1="128" y1="96" x2="128" y2="112" stroke-width="3"/>
+    <rect x="118" y="112" width="20" height="52" rx="3"/>
+    <line x1="128" y1="164" x2="128" y2="180" stroke-width="3"/>
+  </g>
+
+  <!-- Candle 3 — right, RED (breakout) -->
+  <g fill="#C92A2A" stroke="#C92A2A" stroke-linecap="round">
+    <line x1="178" y1="60" x2="178" y2="76" stroke-width="3"/>
+    <rect x="168" y="76" width="20" height="92" rx="3"/>
+    <line x1="178" y1="168" x2="178" y2="184" stroke-width="3"/>
+  </g>
+</svg>
