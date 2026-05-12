@@ -1,4 +1,4 @@
-# STATUS — where we left off (2026-05-06, post-round-10)
+# STATUS — where we left off (2026-05-12, post-round-13)
 
 Read this first when picking up on a different machine. Summarises what is
 live, what's next, and the minimum setup to keep moving.
@@ -18,6 +18,30 @@ live, what's next, and the minimum setup to keep moving.
 - **Weeks 1–5 complete.** Ingestion, summarisation, x402 paywall, public
   deployment, landing page, Python SDK, MCP server, OpenAPI docs — all
   live in production at `api.koreafilings.com`.
+- **Round-13 — AgentCash discovery surface polish (live, 2026-05-12).**
+  Direct testing showed the service was already indexed in the
+  AgentCash catalog (the rotating Azure / AWS `node` UA crawlers seen
+  in `request_audit` from 2026-05-07 onward turned out to be the
+  catalog refresh layer), but only as "newer, unvetted" — visible
+  with `agentcash search ... --broad` (ranks 1 – 8 on `"DART
+  disclosure"`) and on the website's "Search Live Capabilities"
+  panel, hidden behind the default-trust filter that the CLI and
+  most agent hosts apply. Three small fixes shipped to remove the
+  obvious anti-signals: (1) advertised the already-live
+  `/llms.txt` as `service.llms_txt` + root `llms_txt` in
+  `/.well-known/x402`; (2) added root-level `name` + `url` so
+  catalog crawlers display the brand instead of the bare origin
+  host; (3) removed the cosmetic
+  `apiKey`-typed `x402Payment` / `x402PaymentLegacy` OpenAPI
+  security schemes that made `agentcash discover` label every paid
+  endpoint as `apiKey + paid` and therefore filter the service out
+  of "no API key" agent searches. Per-operation
+  `x-payment-info` extension remains attached by
+  `X402OpenApiCustomizer` so paid classification is unaffected.
+  No new endpoints, no schema migration; the discovery JSON shape
+  picks up three new fields. Next move on this lever is a single
+  Merit Systems Discord ping with the diff attached to request
+  default-tier promotion.
 - **Round-11 lazy + body fetch (live, 2026-05-06).** Eager LLM
   calls at ingestion replaced with synchronous lazy generation on the
   first paid call, plus per-filing body fetch via DART's `/document.xml`

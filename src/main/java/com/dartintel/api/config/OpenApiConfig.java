@@ -1,12 +1,9 @@
 package com.dartintel.api.config;
 
-import io.swagger.v3.oas.models.Components;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.info.Contact;
 import io.swagger.v3.oas.models.info.Info;
 import io.swagger.v3.oas.models.info.License;
-import io.swagger.v3.oas.models.security.SecurityRequirement;
-import io.swagger.v3.oas.models.security.SecurityScheme;
 import io.swagger.v3.oas.models.servers.Server;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -20,21 +17,41 @@ import java.util.List;
  * (SDK codegen, Postman collections, registrars like x402scan) expect real
  * metadata: title, licence, contact, servers.
  *
- * <p>The {@code x402Payment} security scheme documents that paid endpoints
- * expect a base64-encoded signed payload in the {@code PAYMENT-SIGNATURE}
- * header (v2 transport spec). It is intentionally declared as a
- * {@link SecurityScheme.Type#APIKEY} scheme because OpenAPI has no native
- * notion of an EIP-712-signed wallet authorisation; calling it "apiKey in
- * header" lets Swagger UI surface the field while the narrative description
- * points readers to the x402 spec for the real shape. A second
- * {@code x402PaymentLegacy} scheme advertises the {@code X-PAYMENT} header
- * accepted for backward compatibility with 0.2.x SDK / MCP releases.
+ * <h2>No OpenAPI security scheme is declared for x402 payment</h2>
+ *
+ * <p>Earlier rounds declared an {@code x402Payment} security scheme of type
+ * {@code apiKey in header: PAYMENT-SIGNATURE} (plus a legacy
+ * {@code X-PAYMENT} sibling) so Swagger UI could expose an "Authorize" box.
+ * That was removed in round-13 once direct testing showed
+ * {@code agentcash discover} was labelling every paid endpoint as
+ * {@code apiKey + paid} based on those declarations. Agents filtering for
+ * "pure paid, no API key required" silently dropped Korea Filings from
+ * their candidate set, and the discovery surface mis-described the
+ * service: there is no API key, there are no signups, the wallet that
+ * signs the {@code PAYMENT-SIGNATURE} header <em>is</em> the identity.
+ *
+ * <p>The canonical descriptors for the payment requirement now live in
+ * three already-public places that catalogs already read:
+ *
+ * <ul>
+ *   <li>The {@code /.well-known/x402} discovery document
+ *       ({@link com.dartintel.api.api.WellKnownController}) for x402scan
+ *       and AgentCash.</li>
+ *   <li>The {@code x-payment-info} OpenAPI extension attached per-operation
+ *       by {@link X402OpenApiCustomizer} for tools that want machine-
+ *       readable pricing at the operation level.</li>
+ *   <li>The HTTP 402 challenge ({@link com.dartintel.api.payment.X402PaywallInterceptor})
+ *       which always carries the canonical {@code PaymentRequired} body
+ *       at request time.</li>
+ * </ul>
+ *
+ * <p>Swagger UI loses the "Authorize" prompt as a side effect, which is
+ * fine because no human can actually paste a valid base64 signed EIP-3009
+ * payload into it anyway — x402 calls require an SDK or wallet-signing
+ * MCP host.
  */
 @Configuration
 public class OpenApiConfig {
-
-    private static final String X402_SCHEME = "x402Payment";
-    private static final String X402_LEGACY_SCHEME = "x402PaymentLegacy";
 
     @Bean
     public OpenAPI openAPI(
@@ -58,6 +75,9 @@ public class OpenApiConfig {
 
                                 **No API keys. No signup. No monthly fees.** The wallet
                                 that signs the `PAYMENT-SIGNATURE` header *is* the identity.
+                                See `/.well-known/x402` for the canonical payment descriptor
+                                and `x-payment-info` on each paid operation for per-route
+                                pricing metadata.
                                 """
                         )
                         .version(appVersion)
@@ -70,47 +90,6 @@ public class OpenApiConfig {
                                 .url("https://github.com/OldTemple91/korea-filings-api/blob/main/LICENSE")))
                 .servers(List.of(
                         new Server().url("https://api.koreafilings.com").description("Production"),
-                        new Server().url("http://localhost:8080").description("Local development")))
-                .components(new Components()
-                        .addSecuritySchemes(X402_SCHEME, new SecurityScheme()
-                                .type(SecurityScheme.Type.APIKEY)
-                                .in(SecurityScheme.In.HEADER)
-                                .name("PAYMENT-SIGNATURE")
-                                .description(
-                                        """
-                                        Base64-encoded signed x402 payment payload (v2 transport
-                                        spec). When this header is absent the server replies
-                                        with HTTP 402: the `PAYMENT-REQUIRED` response header
-                                        carries the base64-encoded `PaymentRequired` payload,
-                                        and a JSON-encoded copy of the same payload is in the
-                                        body for v1-era clients. Sign an EIP-3009
-                                        TransferWithAuthorization for the declared amount and
-                                        re-send the same request with this header set.
-
-                                        On a successful 2xx response, the server attaches a
-                                        `PAYMENT-RESPONSE` header carrying the base64-encoded
-                                        settlement proof (transaction hash, network, payer).
-
-                                        See https://github.com/coinbase/x402/blob/main/specs/transports-v2/http.md
-                                        for the canonical spec and
-                                        https://github.com/OldTemple91/korea-filings-api for
-                                        the reference Python SDK.
-                                        """
-                                ))
-                        .addSecuritySchemes(X402_LEGACY_SCHEME, new SecurityScheme()
-                                .type(SecurityScheme.Type.APIKEY)
-                                .in(SecurityScheme.In.HEADER)
-                                .name("X-PAYMENT")
-                                .description(
-                                        """
-                                        Legacy v1 transport header. Accepted for backward
-                                        compatibility with `koreafilings` 0.2.x SDK and
-                                        `koreafilings-mcp` 0.2.x clients that send the v1
-                                        header name. New integrations should use
-                                        `PAYMENT-SIGNATURE` instead. Either header is
-                                        acceptable; do not send both.
-                                        """
-                                )))
-                .addSecurityItem(new SecurityRequirement().addList(X402_SCHEME));
+                        new Server().url("http://localhost:8080").description("Local development")));
     }
 }

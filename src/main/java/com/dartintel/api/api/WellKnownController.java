@@ -59,6 +59,16 @@ public class WellKnownController {
             "https://github.com/OldTemple91/korea-filings-api";
     private static final String SERVICE_OPENAPI =
             PUBLIC_BASE_URL + "/openapi.json";
+    /**
+     * Agent-facing quickstart already served at {@code /llms.txt} since
+     * round-12. Advertising the URL in the discovery document is the
+     * canonical "I am agent-friendly" signal — every vetted Korean /
+     * financial-data origin in the AgentCash catalog
+     * (printmoneylab, etc.) exposes one, and indexers like x402scan
+     * appear to read it as a vetting input.
+     */
+    private static final String SERVICE_LLMS_TXT =
+            PUBLIC_BASE_URL + "/llms.txt";
 
     private final X402Properties x402Properties;
     private final RequestMappingHandlerMapping handlerMapping;
@@ -153,6 +163,7 @@ public class WellKnownController {
         service.put("homepage", SERVICE_HOMEPAGE);
         service.put("repository", SERVICE_REPOSITORY);
         service.put("openapi", SERVICE_OPENAPI);
+        service.put("llms_txt", SERVICE_LLMS_TXT);
 
         Map<String, Object> x402 = new LinkedHashMap<>();
         x402.put("scheme", "exact");
@@ -177,6 +188,14 @@ public class WellKnownController {
         Map<String, Object> body = new LinkedHashMap<>();
         // === Spec-required fields (strict types) ===
         body.put("version", 1);
+        // Root-level `name` and `url` mirror what every vetted entry in
+        // the AgentCash catalog exposes (printmoneylab, strale.io,
+        // achillesalpha, …). Catalog crawlers display the root `name`
+        // as the human-readable origin label; before round-13 the
+        // brand identity sat one level down under `service.name` and
+        // crawlers fell back to the bare origin host instead.
+        body.put("name", SERVICE_NAME);
+        body.put("url", PUBLIC_BASE_URL);
         body.put("resources", resources);
         body.put("description", SERVICE_DESCRIPTION);
         body.put("instructions",
@@ -199,6 +218,12 @@ public class WellKnownController {
         body.put("service", service);
         body.put("x402", x402);
         body.put("resourceDetails", resourceObjects);
+        // Root-level `llms_txt` is duplicated from `service.llms_txt`
+        // because the AgentCash discovery scanner reads the root-level
+        // field, while x402scan and the AWP indexer read the nested
+        // service block. Surfacing the same URL in both spots avoids
+        // having to know which crawler is reading us.
+        body.put("llms_txt", SERVICE_LLMS_TXT);
         return body;
     }
 

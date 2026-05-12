@@ -409,6 +409,7 @@ unlock arrives.
 | Channel | Friction the user sees | What we do |
 |---|---|---|
 | **agent.market** (Coinbase official x402 directory) | Coinbase Smart Wallet OAuth — single sign-in, no env vars / private keys | Submit metadata.json PR to `x402-foundation/x402` ecosystem listing. Single shot, ~5 business days review. |
+| **AgentCash** (Merit Systems, biggest independent x402 client) | `agentcash` CLI manages the wallet; agent just calls `agentcash fetch` and pays automatically | Discovery is automatic — the catalog crawler probes `/.well-known/x402` + `openapi.json` on a daily cadence (six rotating Azure / AWS IPs each running the same four-step schema probe were observed in `request_audit` from 2026-05-07 onward, and `agentcash search ... --broad` already returns the service's endpoints at scores 0.39 – 0.57). The remaining work is **getting promoted out of the "unvetted / broad-only" tier into the default-trust catalog** so a non-`--broad` search surfaces the service. Round-13 shipped the discovery-surface polish (root-level `name` + `url`, advertised `llms_txt`, removal of the cosmetic `apiKey` OpenAPI security scheme that made `agentcash discover` mislabel the service as `apiKey+paid`); the remaining lever is a direct Merit Systems Discord ping with that diff attached. |
 | **Smithery / 1-click MCP install** | MCP install automated; user still brings their own wallet for paid tools | Submit listing when site recovers (intermittent outages observed 2026-05). |
 | **Hand-rolled MCP install** | `uv tool install` + `claude_desktop_config.json` edit + private key in env. Verified working with the maintainer's own PAYER wallet on 2026-05-08. | README + dev.to writeup so the install path is documented; this is the SDK-developer entry point, not the mainstream entry. |
 | **Direct SDK use** | Agent builder writes `KoreaFilings({ privateKey, network })` themselves | Keep TS / Python / MCP SDKs healthy. Maintain published versions on npm + PyPI. |
@@ -479,10 +480,18 @@ We track these passively. None block what we can ship now.
 1. **Tier 1 #1 (agent.market) is the single biggest leverage move
    available today** — it costs one PR plus a logo, and downstream
    it auto-feeds Coinbase Agentic Browser whenever that opens up.
-2. **Tier 1 #2 (Smithery) is a queued retry** — site has had
+2. **Tier 1 #2 (AgentCash) is a parallel slot** — the service is
+   already in the catalog (verified `agentcash discover` returns 9
+   endpoints and `agentcash search "DART disclosure" --broad`
+   places the service at ranks 1 – 8). Promotion to the default-
+   trust tier appears manual (CLI bundle has `approve`/`approved`
+   tokens, no auto-threshold strings). Round-13 closed the
+   discovery-surface polish gaps; the remaining move is a single
+   Merit Systems Discord ping referencing the diff.
+3. **Tier 1 #3 (Smithery) is a queued retry** — site has had
    intermittent access issues 2026-05; treat as low-priority noise
    until the site is reliably reachable.
-3. **Tiers 2–4 are patience plays.** The temptation is to chase
+4. **Tiers 2–4 are patience plays.** The temptation is to chase
    them by building features; the actual work is to stay registered,
    stay documented, and watch announcements.
 
