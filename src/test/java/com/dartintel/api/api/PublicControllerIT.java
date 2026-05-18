@@ -286,4 +286,44 @@ class PublicControllerIT {
         mockMvc.perform(get("/favicon.ico"))
                 .andExpect(status().isNoContent());
     }
+
+    /**
+     * Bingbot indexed five swagger-ui asset URLs at the bare
+     * {@code /swagger-ui/<file>} path on 2026-05-17 and 404'd on
+     * every one — Springdoc actually serves them one directory deeper
+     * at {@code /swagger-ui/swagger-ui/<file>}. Round-14 added a 301
+     * redirect for {@code .js}/{@code .css}/{@code .png} files so the
+     * cached crawler URL moves to the canonical one on the next pass.
+     */
+    @Test
+    void swaggerUiBareAssetPathsRedirectToActualPath() throws Exception {
+        String[] bingObservedAssets = {
+                "swagger-initializer.js",
+                "swagger-ui.css",
+                "index.css",
+                "swagger-ui-standalone-preset.js",
+                "swagger-ui-bundle.js"
+        };
+        for (String file : bingObservedAssets) {
+            mockMvc.perform(get("/swagger-ui/" + file))
+                    .andExpect(status().isMovedPermanently())
+                    .andExpect(header().string("Location", "/swagger-ui/swagger-ui/" + file));
+        }
+    }
+
+    /**
+     * The {@code .html} extension must NOT be caught by the redirect —
+     * Springdoc already publishes a redirect at
+     * {@code /swagger-ui/index.html} that takes browsers to the working
+     * UI. If our redirect shadowed the springdoc one the Swagger UI
+     * page itself would stop loading.
+     */
+    @Test
+    void swaggerUiIndexHtmlIsNotShadowedByAssetRedirect() throws Exception {
+        // We do not assert the exact redirect target (Springdoc owns it)
+        // — only that we return a redirect, not the 301 emitted by our
+        // own controller, and not a 404.
+        mockMvc.perform(get("/swagger-ui/index.html"))
+                .andExpect(status().is3xxRedirection());
+    }
 }

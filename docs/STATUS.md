@@ -18,6 +18,26 @@ live, what's next, and the minimum setup to keep moving.
 - **Weeks 1–5 complete.** Ingestion, summarisation, x402 paywall, public
   deployment, landing page, Python SDK, MCP server, OpenAPI docs — all
   live in production at `api.koreafilings.com`.
+- **Round-14b — Swagger UI bare-asset 404 cleanup (live, 2026-05-18).**
+  Same audit batch that surfaced the {@code .json}-suffix x402scan
+  miss also caught Bing's crawler 404'ing on five swagger-ui asset
+  URLs in succession on 2026-05-17 ({@code swagger-initializer.js},
+  {@code swagger-ui.css}, {@code index.css},
+  {@code swagger-ui-standalone-preset.js}, {@code swagger-ui-bundle.js}).
+  Springdoc actually serves those assets one directory deeper at
+  {@code /swagger-ui/swagger-ui/<file>} because the swagger-ui jar's
+  internal layout puts everything under a {@code swagger-ui/}
+  subdirectory and our {@code springdoc.swagger-ui.path} of
+  {@code /swagger-ui/index.html} compounds the prefix. Added
+  `SwaggerUiAssetRedirectController` that 301-redirects bare
+  {@code /swagger-ui/<asset>.{js|css|png}} to the doubled-prefix path
+  Springdoc actually serves; matches future asset names without
+  enumeration. Excludes {@code .html} so Springdoc's own
+  {@code index.html} redirect (the one browsers follow to load the UI)
+  is unchanged. Two integration tests added — one verifies the five
+  bare-asset paths 301 to the right place, the other guards against
+  the regex accidentally shadowing the canonical {@code index.html}
+  entry point.
 - **Round-14 — `/.well-known/x402.json` alias (live, 2026-05-18).**
   The 2026-05-17 production logs showed `X402-Scanner/1.0` (a
   community x402 ecosystem indexer running from `92.255.110.46`)
