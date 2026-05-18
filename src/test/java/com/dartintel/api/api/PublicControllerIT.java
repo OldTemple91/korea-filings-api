@@ -229,6 +229,45 @@ class PublicControllerIT {
     }
 
     /**
+     * Canonical x402 discovery document. Verifies the spec-required
+     * top-level shape (numeric {@code version}, {@code resources}
+     * URL array, root-level {@code name} + {@code url}, the
+     * {@code llms_txt} agent-friendliness pointer added in round-13)
+     * and the nested {@code service} + {@code x402} extensions that
+     * vetted catalog entries expose.
+     */
+    @Test
+    void wellKnownX402ReturnsDiscoveryDocument() throws Exception {
+        mockMvc.perform(get("/.well-known/x402"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.version").value(1))
+                .andExpect(jsonPath("$.name").value("Korea Filings"))
+                .andExpect(jsonPath("$.url").value("https://api.koreafilings.com"))
+                .andExpect(jsonPath("$.resources").isArray())
+                .andExpect(jsonPath("$.llms_txt").value("https://api.koreafilings.com/llms.txt"))
+                .andExpect(jsonPath("$.service.name").value("Korea Filings"))
+                .andExpect(jsonPath("$.service.llms_txt").value("https://api.koreafilings.com/llms.txt"))
+                .andExpect(jsonPath("$.x402.scheme").value("exact"));
+    }
+
+    /**
+     * Some x402 indexers in the wild (observed: X402-Scanner/1.0 in
+     * the 2026-05-17 production logs) probe {@code /.well-known/x402.json}
+     * — with the {@code .json} suffix — and 404 on the canonical
+     * extension-less path. Round-14 added the {@code .json} alias so
+     * those crawlers reach the same document instead of falling through.
+     */
+    @Test
+    void wellKnownX402JsonAliasReturnsSameDocument() throws Exception {
+        mockMvc.perform(get("/.well-known/x402.json"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.version").value(1))
+                .andExpect(jsonPath("$.name").value("Korea Filings"))
+                .andExpect(jsonPath("$.url").value("https://api.koreafilings.com"))
+                .andExpect(jsonPath("$.llms_txt").value("https://api.koreafilings.com/llms.txt"));
+    }
+
+    /**
      * Casual visits to the API host (humans pasting api.koreafilings.com
      * into a browser, search engine bots) used to 404 — now 302 to
      * the marketing landing page. Indirectly proves the

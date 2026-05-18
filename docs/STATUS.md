@@ -1,4 +1,4 @@
-# STATUS — where we left off (2026-05-12, post-round-13)
+# STATUS — where we left off (2026-05-18, post-round-14)
 
 Read this first when picking up on a different machine. Summarises what is
 live, what's next, and the minimum setup to keep moving.
@@ -18,6 +18,35 @@ live, what's next, and the minimum setup to keep moving.
 - **Weeks 1–5 complete.** Ingestion, summarisation, x402 paywall, public
   deployment, landing page, Python SDK, MCP server, OpenAPI docs — all
   live in production at `api.koreafilings.com`.
+- **Round-14 — `/.well-known/x402.json` alias (live, 2026-05-18).**
+  The 2026-05-17 production logs showed `X402-Scanner/1.0` (a
+  community x402 ecosystem indexer running from `92.255.110.46`)
+  probing `/.well-known/x402.json` — with the `.json` suffix — and
+  receiving a 404 because the canonical x402 discovery convention is
+  extension-less. Round-14 mounted the existing `WellKnownController`
+  discovery handler at both `/.well-known/x402` and the
+  `.json`-suffixed alias so suffix-expecting crawlers reach the same
+  document instead of falling through. No new fields, no schema
+  change; one-line `@GetMapping` value extension. Two integration
+  tests added (one for each path) — the canonical path also picked
+  up its first direct GET coverage in the process, since prior tests
+  only referenced the URL inside other endpoints' responses.
+  Distribution-pivot context: `x402-foundation/x402` PR #2236 was
+  closed 2026-05-14 by the Coinbase x402 team — the official
+  agent.market ecosystem page is being sunset in favour of four
+  community-maintained directories (`x402scan.com`, `Agentic.Market`,
+  `Pay.sh`, `app.ampersend.ai/discover`). All of the round-12 +
+  round-13 discovery-surface investment still applies; the rest of
+  the catalog work is now done by being correctly indexed in each
+  community aggregator (status: AgentCash unvetted, Agentic.Market
+  not yet auto-indexed despite Bazaar extension being live + 8
+  CDP-facilitator settlements on file, Pay.sh requires Solana
+  settlement and is therefore out of scope, Ampersend Discover is a
+  passive autonomous indexer). Round-14's alias closes one small
+  gate to the catalog crawlers and is the only code change required
+  for the directory pivot — every remaining lever (Merit Systems
+  Discord ping for AgentCash promotion, Coinbase Bazaar indexing
+  diagnostic) is a process question, not an engineering one.
 - **Round-13 — AgentCash discovery surface polish (live, 2026-05-12).**
   Direct testing showed the service was already indexed in the
   AgentCash catalog (the rotating Azure / AWS `node` UA crawlers seen

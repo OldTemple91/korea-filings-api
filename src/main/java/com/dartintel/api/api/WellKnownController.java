@@ -103,7 +103,10 @@ public class WellKnownController {
         this.cachedAgentJson = buildAgentJsonDocument();
     }
 
-    @GetMapping(value = "/.well-known/x402", produces = MediaType.APPLICATION_JSON_VALUE)
+    @GetMapping(
+            value = {"/.well-known/x402", "/.well-known/x402.json"},
+            produces = MediaType.APPLICATION_JSON_VALUE
+    )
     @SecurityRequirements // free, unauthenticated
     @Operation(
             summary = "x402 service discovery document",
@@ -112,6 +115,13 @@ public class WellKnownController {
                     merchant wallet and the USDC asset address. Used by
                     x402 ecosystem indexers (x402scan, etc.) to register
                     the service without probing each endpoint.
+
+                    Served at both {@code /.well-known/x402} and the
+                    {@code .json}-suffixed alias. The canonical x402
+                    discovery convention is the extension-less path, but
+                    some indexers in the wild (observed: X402-Scanner/1.0
+                    from 2026-05-17 logs) probe the {@code .json} suffix
+                    first and 404 on the canonical path, so we accept both.
                     """
     )
     public Map<String, Object> discoveryDocument() {
