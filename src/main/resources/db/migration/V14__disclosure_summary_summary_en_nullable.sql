@@ -1,0 +1,28 @@
+-- Round-15c: rule-based DisclosureClassifier writes a stub
+-- disclosure_summary row at ingestion time so the free /recent feed
+-- carries importance / event_type / sector / ticker tags from day one,
+-- without waiting for a paid call to trigger LLM summarisation. The
+-- stub row has every classification field populated by the classifier
+-- but the LLM-only fields are blank:
+--
+--   summary_en   = NULL          (rule classifier has no English text)
+--   model_used   = 'rule-v1'     (so audit queries can split rule vs LLM rows)
+--   input_tokens = 0             (no LLM call yet)
+--   output_tokens= 0
+--   cost_usd     = 0.00000000
+--   prompt_version = 0           (sentinel for "classifier, not LLM")
+--
+-- When a paid /summary or /by-ticker call later triggers
+-- SummaryService.summarize(rcpt_no), the same row is UPDATED in place:
+-- summary_en gets the LLM English text, model_used flips to the actual
+-- model id (gemini-2.5-flash-lite), token / cost / prompt_version
+-- columns get the LLM run's real values, and the classification
+-- fields may be refined.
+--
+-- Only summary_en needs to relax its NOT NULL — every other LLM-only
+-- column has a sensible 0 default that the classifier path writes.
+-- Doing the minimum here keeps the existing constraint shape intact
+-- for the LLM-written rows and means existing 6,211 summaries are
+-- untouched.
+
+ALTER TABLE disclosure_summary ALTER COLUMN summary_en DROP NOT NULL;

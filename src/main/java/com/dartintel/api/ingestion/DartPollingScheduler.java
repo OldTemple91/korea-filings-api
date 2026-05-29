@@ -1,6 +1,9 @@
 package com.dartintel.api.ingestion;
 
 import com.dartintel.api.company.CompanyService;
+import com.dartintel.api.summarization.DisclosureClassifier;
+import com.dartintel.api.summarization.DisclosureSummary;
+import com.dartintel.api.summarization.DisclosureSummaryRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -48,6 +51,7 @@ public class DartPollingScheduler {
 
     private final DartClient dartClient;
     private final DisclosureRepository disclosureRepository;
+    private final DisclosureSummaryRepository summaryRepository;
     private final StringRedisTemplate redisTemplate;
     private final DartProperties props;
     private final CompanyService companyService;
@@ -126,12 +130,22 @@ public class DartPollingScheduler {
                     filing.rm(),
                     ticker
             ));
-            // v1.1 lazy pivot: ingestion is metadata-only. Summary
-            // generation now happens inside DisclosuresController on
-            // the first paid call for each rcpt_no, with body fetch
-            // + LLM run guarded by a single-flight Redis lock. The
-            // SummaryJobQueue is no longer pushed to from here — see
-            // ARCHITECTURE.md "Lazy summarisation" for the data flow.
+            // Round-15c: alongside the bare disclosure row, write a
+            // classifier-derived stub into disclosure_summary so the
+            // free /v1/disclosures/recent feed carries
+            // importanceScore / eventType / tickerTags / actionableFor
+            // from ingestion time — no LLM call, no cost. The English
+            // summary text (summaryEn) stays NULL on the stub and is
+            // overlaid by SummaryService.summarize on the first paid
+            // call via DisclosureSummary.overlayLlmSummary. The
+            // existing round-11 lazy-summarisation flow is otherwise
+            // unchanged: still single-flight via Redis lock, still
+            // synchronous inside the paid request, still
+            // settlement-on-2xx.
+            DisclosureClassifier.Classification classification =
+                    DisclosureClassifier.classify(filing.reportNm(), ticker);
+            summaryRepository.save(
+                    DisclosureSummary.fromClassification(filing.rcptNo(), classification));
             newCount++;
             if (filingDate.isAfter(maxDate)) {
                 maxDate = filingDate;

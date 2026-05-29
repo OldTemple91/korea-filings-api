@@ -1,6 +1,8 @@
 package com.dartintel.api.ingestion;
 
 import com.dartintel.api.company.CompanyService;
+import com.dartintel.api.summarization.DisclosureSummary;
+import com.dartintel.api.summarization.DisclosureSummaryRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -10,6 +12,8 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -41,6 +45,9 @@ class DartPollingSchedulerTest {
     @Mock
     CompanyService companyService;
 
+    @Mock
+    DisclosureSummaryRepository summaryRepository;
+
     DartPollingScheduler scheduler;
 
     @BeforeEach
@@ -53,7 +60,8 @@ class DartPollingSchedulerTest {
                 new DartProperties.Polling(true, 30000, 1, 100)
         );
         scheduler = new DartPollingScheduler(
-                dartClient, disclosureRepository, redisTemplate, props, companyService);
+                dartClient, disclosureRepository, summaryRepository,
+                redisTemplate, props, companyService);
         when(redisTemplate.opsForValue()).thenReturn(valueOps);
         // Default to "no ticker mapping" so existing tests stay
         // unaffected. Tests that care about ticker resolution can
@@ -143,5 +151,43 @@ class DartPollingSchedulerTest {
 
         verify(disclosureRepository, never()).save(any());
         verify(valueOps, never()).set(eq(DartPollingScheduler.CURSOR_KEY), anyString());
+    }
+
+    /**
+     * Round-15c: every freshly-persisted filing also gets a stub
+     * {@code disclosure_summary} row written by
+     * {@link com.dartintel.api.summarization.DisclosureClassifier},
+     * carrying importance / event type / ticker tags but with
+     * {@code summaryEn} deliberately blank. The first paid call
+     * later overlays the LLM-derived fields on top of the same row.
+     */
+    @Test
+    void persistedFilingsAlsoWriteAClassifierSummaryRow() {
+        when(valueOps.get(DartPollingScheduler.CURSOR_KEY)).thenReturn("20260422");
+        when(disclosureRepository.existsByRcptNo(anyString())).thenReturn(false);
+        when(dartClient.fetchList(any())).thenReturn(new DartListResponse(
+                DartPollingScheduler.DART_STATUS_OK, "정상",
+                1, 100, 1, 1,
+                List.of(new DartListResponse.DartFiling(
+                        "20260423000099", "00126380", "삼성전자",
+                        "005930", "Y",
+                        "주요사항보고서(유상증자결정)", "삼성전자",
+                        "20260423", "유"))));
+
+        scheduler.poll();
+
+        // The classifier should have written a stub row alongside
+        // the disclosure save — same rcpt_no, eventType from the
+        // RIGHTS_OFFERING rule, no summary text yet.
+        verify(summaryRepository).save(argThat((DisclosureSummary s) -> {
+            assertThat(s.getRcptNo()).isEqualTo("20260423000099");
+            assertThat(s.getEventType()).isEqualTo("RIGHTS_OFFERING");
+            assertThat(s.getImportanceScore()).isEqualTo(7);
+            assertThat(s.getSummaryEn()).isNull();
+            assertThat(s.hasLlmSummary()).isFalse();
+            assertThat(s.getModelUsed()).isEqualTo(DisclosureSummary.RULE_BASED_MODEL_ID);
+            assertThat(s.getPromptVersion()).isEqualTo(DisclosureSummary.RULE_BASED_PROMPT_VERSION);
+            return true;
+        }));
     }
 }

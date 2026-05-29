@@ -34,9 +34,21 @@ public class SummaryWriter {
     private final DisclosureSummaryRepository summaryRepository;
     private final LlmAuditRepository auditRepository;
 
+    /**
+     * "Has an LLM-generated summary been written for this rcpt_no?"
+     * — the semantic the lazy-summarisation flow in
+     * {@link SummaryService} needs. A round-15c classifier row
+     * (importance / event type / tags from rules, but no English
+     * summary text) deliberately returns {@code false} so the LLM
+     * still runs on the first paid call and overlays the classifier
+     * fields with refined LLM output via
+     * {@link DisclosureSummary#overlayLlmSummary}.
+     */
     @Transactional(readOnly = true)
     public boolean summaryExists(String rcptNo) {
-        return summaryRepository.existsByRcptNo(rcptNo);
+        return summaryRepository.findById(rcptNo)
+                .map(DisclosureSummary::hasLlmSummary)
+                .orElse(false);
     }
 
     @Transactional(readOnly = true)
@@ -82,9 +94,38 @@ public class SummaryWriter {
      */
     static final short PROMPT_VERSION = 1;
 
+    /**
+     * Persists an LLM-generated summary for {@code rcptNo}. When a
+     * round-15c classifier row already exists for the same key
+     * (every freshly-ingested filing from 2026-05-29 onward), the
+     * existing row is updated in place via
+     * {@link DisclosureSummary#overlayLlmSummary} — preserves
+     * {@code generated_at} and lets the LLM refine the classifier's
+     * initial importance / event-type estimate. When no row exists
+     * (legacy rcpt_nos from before round-15c shipped), a fresh row
+     * is inserted with the same shape the pre-15c code wrote.
+     */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void recordSummary(String rcptNo, SummaryEnvelope env) {
         SummaryResult r = env.result();
+        DisclosureSummary existing = summaryRepository.findById(rcptNo).orElse(null);
+        if (existing != null) {
+            existing.overlayLlmSummary(
+                    truncate(r.summaryEn(), SUMMARY_EN_MAX),
+                    r.importanceScore(),
+                    r.eventType(),
+                    nullSafe(r.sectorTags()),
+                    nullSafe(r.tickerTags()),
+                    nullSafe(r.actionableFor()),
+                    env.model(),
+                    env.inputTokens(),
+                    env.outputTokens(),
+                    env.costUsd(),
+                    PROMPT_VERSION
+            );
+            summaryRepository.save(existing);
+            return;
+        }
         summaryRepository.save(new DisclosureSummary(
                 rcptNo,
                 truncate(r.summaryEn(), SUMMARY_EN_MAX),

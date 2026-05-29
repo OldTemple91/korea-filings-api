@@ -18,6 +18,38 @@ live, what's next, and the minimum setup to keep moving.
 - **Weeks 1–5 complete.** Ingestion, summarisation, x402 paywall, public
   deployment, landing page, Python SDK, MCP server, OpenAPI docs — all
   live in production at `api.koreafilings.com`.
+- **Round-15c — rule-based classifier at ingestion (live, 2026-05-29).**
+  Round-15b's enrichment did the right thing for the cached path
+  but had nothing to enrich in production: the same funnel review
+  showed zero cache writes since the round-12 self-test era because
+  round-11's lazy-summarisation model only writes a
+  {@code disclosure_summary} row when an agent actually pays for a
+  summary, and the streak is 21 days. The free {@code /recent}
+  feed therefore carried no AI metadata on freshly-ingested
+  filings — defeating the very enrichment 15b shipped. Round-15c
+  closes the gap without spending LLM dollars by deriving
+  {@code importanceScore} / {@code eventType} / {@code tickerTags}
+  / {@code actionableFor} from the DART {@code report_nm} via a
+  rule-based classifier whose 80+ pattern table was extracted from
+  the 6,211 LLM-classified rows already in the production cache
+  (`SELECT report_nm, event_type, AVG(importance_score) FROM
+  disclosure_summary JOIN disclosure …`). The classifier runs
+  in-process at ingestion inside the same {@code persistBatch}
+  transaction, costs zero ongoing dollars, adds zero latency to the
+  poll loop, and writes a "stub" {@code disclosure_summary} row
+  with {@code summary_en = NULL}, {@code model_used = 'rule-v1'},
+  {@code prompt_version = 0}. The first paid call then triggers the
+  existing {@code SummaryService.summarize} flow which calls the LLM
+  and UPDATEs the same row in place via
+  {@code DisclosureSummary.overlayLlmSummary} — preserving
+  {@code generated_at} and letting the LLM refine the classifier's
+  initial importance estimate. V14 migration relaxes
+  {@code summary_en NOT NULL}; nothing else changes shape. The
+  margin engine ({@code summarize-once, cache-forever}) is
+  unaffected — the LLM still runs at most once per
+  {@code rcpt_no}. Effect: from the moment 15c ships, every new
+  DART filing surfaces with importance + event type on {@code /recent}
+  without anyone paying first.
 - **Round-15 — free-API observability + enriched /recent (live, 2026-05-29).**
   Funnel review on 2026-05-28 revealed two related blind spots. The
   audit table was undercounting actual agent activity by orders of
