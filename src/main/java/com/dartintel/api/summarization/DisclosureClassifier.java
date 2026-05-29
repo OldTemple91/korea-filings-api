@@ -275,6 +275,13 @@ public final class DisclosureClassifier {
             new Rule("사업보고서", "PERIODIC_REPORT", 1, List.of("long_term_investors")),
             new Rule("주주명부폐쇄기간또는기준일설정", "RECORD_DATE_NOTICE", 1, List.of("traders")),
             new Rule("주주명부폐쇄(기준일)결정", "RECORD_DATE_NOTICE", 1, List.of("traders")),
+            // Korea Fair Trade Commission chaebol-structure annual /
+            // quarterly disclosure. Showed up as the dominant OTHER
+            // bucket in the first 10 minutes of live classifier
+            // traffic (5 of 8 rows). Listed at low importance — the
+            // 6,211-row LLM cache shows three CONGLOMERATE_DISCLOSURE
+            // examples averaging importance 3.
+            new Rule("대규모기업집단현황공시", "CONGLOMERATE_DISCLOSURE", 3, List.of("long_term_investors")),
 
             // --- Capital structure (importance 5) — checked late so
             //     the more-specific 주요사항보고서(감자결정) wins above.

@@ -65,6 +65,7 @@ class DisclosureClassifierTest {
             사채원리금미지급발생,                                     BOND_DEFAULT,             9
             타인에대한채무보증결정,                                   DEBT_GUARANTEE,           5
             자산유동화관련중요사항발생등보고서(기타),                  ASSET_BACKED_SECURITIES,  5
+            대규모기업집단현황공시[연1회공시및1/4분기용(개별회사)],     CONGLOMERATE_DISCLOSURE,  3
             """)
     void knownProductionPatternsClassifyToExpectedShape(
             String reportNm, String expectedEventType, int expectedImportance
