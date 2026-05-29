@@ -1,4 +1,4 @@
-# STATUS — where we left off (2026-05-18, post-round-14)
+# STATUS — where we left off (2026-05-29, post-round-15)
 
 Read this first when picking up on a different machine. Summarises what is
 live, what's next, and the minimum setup to keep moving.
@@ -18,6 +18,35 @@ live, what's next, and the minimum setup to keep moving.
 - **Weeks 1–5 complete.** Ingestion, summarisation, x402 paywall, public
   deployment, landing page, Python SDK, MCP server, OpenAPI docs — all
   live in production at `api.koreafilings.com`.
+- **Round-15 — free-API observability + enriched /recent (live, 2026-05-29).**
+  Funnel review on 2026-05-28 revealed two related blind spots. The
+  audit table was undercounting actual agent activity by orders of
+  magnitude — `RequestAuditFilter` skipped every GET 2xx, so the
+  3,465 lifetime successful reads of `/.well-known/x402` visible in
+  Prometheus translated to literal zero rows in `request_audit`;
+  IPs / UAs / params for who actually consumed the free API were
+  lost. And the free `/recent` feed was effectively "what's the
+  Korean filing system saying right now" with no signal about which
+  rows were worth paying for. Round-15a opted the canonical free
+  paths back into the audit table (`/v1/companies`,
+  `/v1/disclosures/recent`, `/v1/disclosures/sample`,
+  `/v1/pricing`, `/.well-known/x402`, `/.well-known/x402.json`,
+  `/.well-known/agent.json`, `/llms.txt`) — adding maybe 100–200
+  audit rows per day, comparable to the existing noise floor and far
+  below the 6k+ daily POST 405 the broken axios bot already absorbs.
+  Round-15b widened `RecentFilingDto` so rows whose summary is
+  already cached carry the AI-derived classification
+  (`importanceScore`, `eventType`, `sectorTags`, `tickerTags`,
+  `actionableFor`) — zero new LLM cost (the data is already in
+  `disclosure_summary`), zero new endpoints, no schema migration.
+  The paid `summaryEn` text is deliberately not surfaced; the free
+  feed reveals enough metadata for an agent to rank-order which
+  filings warrant a 0.005 USDC summary call, not enough to
+  substitute for the paid product. Filings without a cached summary
+  omit the AI fields entirely (`@JsonInclude(NON_NULL)`) so existing
+  agents see a byte-identical response shape. The combined goal is
+  to lift the `0.05%` discovery → search conversion observed in the
+  funnel review by giving free-feed readers a reason to come back.
 - **Round-14b — Swagger UI bare-asset 404 cleanup (live, 2026-05-18).**
   Same audit batch that surfaced the {@code .json}-suffix x402scan
   miss also caught Bing's crawler 404'ing on five swagger-ui asset

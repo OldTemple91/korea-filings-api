@@ -56,16 +56,36 @@ public class DisclosuresController {
      * happened, then either pay for a single summary via
      * {@code /{rcptNo}/summary} or for a company-scoped batch via
      * {@code /by-ticker/{ticker}}.
+     *
+     * <p>Round-15b enriched the per-row shape: when a filing's summary
+     * is already in the cache, the row carries the AI-derived
+     * classification fields ({@code importanceScore}, {@code eventType},
+     * {@code sectorTags}, {@code tickerTags}, {@code actionableFor})
+     * alongside the raw DART metadata. The cached fields cost the
+     * operator nothing (no extra LLM call, no extra DB write — the
+     * data is already in {@code disclosure_summary}) and let agents
+     * rank-order which filings are worth paying 0.005 USDC for. The
+     * actual English summary text stays paid.
      */
     @GetMapping("/recent")
     @SecurityRequirements // unauthenticated, no payment required
     @Operation(
-            summary = "List recent DART filings (metadata only, free)",
+            summary = "List recent DART filings (metadata, free; AI classification when cached)",
             description = """
                     Returns the most-recent DART filings across every listed
-                    Korean company in metadata-only form (no AI summary). Useful
-                    as a discovery feed before deciding which filings warrant a
-                    paid summary call.
+                    Korean company. Always free, always metadata-only — the
+                    paraphrased English summary still requires the paid
+                    `/v1/disclosures/summary` or `/v1/disclosures/by-ticker`
+                    call.
+
+                    When a filing's summary has already been generated and
+                    cached (which happens lazily on the first paid call,
+                    globally), the row also carries the AI-derived
+                    classification fields — `importanceScore` (1–10),
+                    `eventType`, `sectorTags`, `tickerTags`, `actionableFor` —
+                    so an agent can rank-order which filings warrant a paid
+                    summary without first paying for any. Filings that have
+                    not yet been summarised omit those fields entirely.
                     """
     )
     public ResponseEntity<RecentFilingsResponse> getRecent(
@@ -75,10 +95,24 @@ public class DisclosuresController {
             @RequestParam(value = "since_hours", defaultValue = "24") @Min(1) @Max(168) int sinceHours
     ) {
         Instant threshold = Instant.now().minus(sinceHours, ChronoUnit.HOURS);
-        List<RecentFilingDto> filings = disclosureRepository
-                .findRecentSince(threshold, PageRequest.of(0, limit))
+        List<Disclosure> recent = disclosureRepository
+                .findRecentSince(threshold, PageRequest.of(0, limit));
+        // Single bulk lookup against the summary cache, same pattern as
+        // /by-ticker. Read-only — never triggers an LLM call. Filings
+        // without a cached summary just stay un-enriched; the response
+        // still carries the bare DART metadata as before.
+        Map<String, DisclosureSummary> cached = summaryRepository
+                .findAllById(recent.stream().map(Disclosure::getRcptNo).toList())
                 .stream()
-                .map(RecentFilingDto::from)
+                .collect(java.util.stream.Collectors.toMap(
+                        DisclosureSummary::getRcptNo,
+                        s -> s,
+                        (a, b) -> a));
+        List<RecentFilingDto> filings = recent.stream()
+                .map(d -> {
+                    DisclosureSummary s = cached.get(d.getRcptNo());
+                    return s == null ? RecentFilingDto.from(d) : RecentFilingDto.from(d, s);
+                })
                 .toList();
         // Public market-wide feed — same shape per `(limit, sinceHours)`
         // tuple for any caller. A 30-second TTL matches the DART poll

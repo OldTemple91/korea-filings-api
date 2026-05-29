@@ -12,6 +12,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.time.Instant;
+import java.util.Set;
 import java.util.TreeSet;
 
 /**
@@ -62,6 +63,49 @@ public class RequestAuditFilter extends OncePerRequestFilter {
     static final String LOG_TAG = "REQ_AUDIT";
 
     /**
+     * Free GET paths whose successful (2xx) responses we want to keep
+     * in {@code request_audit} on top of the default "non-GET or
+     * 4xx/5xx" rule.
+     *
+     * <p>Originally the audit filter skipped every GET 2xx to keep the
+     * table small — sensible when "almost every successful GET is a
+     * browser hitting the landing page". But that turned the table
+     * blind to actual agent activity on our free surface: the 2026-05-28
+     * funnel review showed 3,465 lifetime successful reads of
+     * {@code /.well-known/x402} in Prometheus, against literal zero
+     * GET 200 rows in {@code request_audit} — IPs / UAs / params for
+     * who actually consumed the free API were lost. Round-15a opts in
+     * the specific paths we care about (discovery docs, name search,
+     * sample, pricing, recent feed). Volume is bounded: lifetime hit
+     * counts above translate to roughly 100–200 audit rows per day
+     * even at peak, which is comparable to the existing noise floor
+     * and far below the 6k+ daily POST 405 from the broken axios bot
+     * that the table already absorbs.
+     *
+     * <p>Explicit omissions:
+     * <ul>
+     *   <li>{@code /openapi.json}, {@code /v3/api-docs} — SDK
+     *       generators and OpenAPI registry poll these dozens of times
+     *       per day; the IP/UA distribution is dominated by automation,
+     *       not consumer activity.</li>
+     *   <li>{@code /swagger-ui/...} static assets — pure transport, no
+     *       signal.</li>
+     *   <li>{@code /favicon.ico}, {@code /actuator/*} — uninteresting
+     *       infrastructure noise.</li>
+     * </ul>
+     */
+    static final Set<String> AUDIT_GET_2XX_PATHS = Set.of(
+            "/v1/companies",
+            "/v1/disclosures/recent",
+            "/v1/disclosures/sample",
+            "/v1/pricing",
+            "/.well-known/x402",
+            "/.well-known/x402.json",
+            "/.well-known/agent.json",
+            "/llms.txt"
+    );
+
+    /**
      * Optional persister. Present only when {@code audit.requests.persist=true};
      * {@link ObjectProvider} resolves to empty when the bean isn't
      * registered, so the filter degrades gracefully to log-only mode.
@@ -86,7 +130,13 @@ public class RequestAuditFilter extends OncePerRequestFilter {
                 int status = response.getStatus();
                 String method = request.getMethod();
                 if ("GET".equalsIgnoreCase(method) && status < 400) {
-                    return;
+                    // Round-15a: keep GET 2xx for the explicitly-tracked
+                    // free paths (see AUDIT_GET_2XX_PATHS). All other
+                    // GET 2xx — landing page bounces, springdoc polls,
+                    // static assets, /actuator/* — still skip.
+                    if (!AUDIT_GET_2XX_PATHS.contains(request.getRequestURI())) {
+                        return;
+                    }
                 }
                 log.info("{} {}", LOG_TAG, formatLine(request, status));
                 // Best-effort persistence to the request_audit table.

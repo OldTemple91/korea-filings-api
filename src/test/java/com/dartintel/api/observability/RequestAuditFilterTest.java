@@ -216,4 +216,47 @@ class RequestAuditFilterTest {
         assertThat(row.getPath()).endsWith("...");
         assertThat(row.getUserAgent()).endsWith("...");
     }
+
+    // ---- round-15a: GET 2xx tracked-paths whitelist ----
+
+    /**
+     * The whitelist defines which free GET 2xx paths get persisted on
+     * top of the default "non-GET or 4xx/5xx" rule. The exact membership
+     * is a deliberate contract — adding a path means new audit volume,
+     * removing one means a regression in free-API observability — so
+     * pin it explicitly. If this assertion breaks the change is
+     * intentional and the test should be updated alongside the constant.
+     */
+    @Test
+    void auditGet2xxPathsContainsTheCanonicalFreeSurface() {
+        assertThat(RequestAuditFilter.AUDIT_GET_2XX_PATHS).containsExactlyInAnyOrder(
+                "/v1/companies",
+                "/v1/disclosures/recent",
+                "/v1/disclosures/sample",
+                "/v1/pricing",
+                "/.well-known/x402",
+                "/.well-known/x402.json",
+                "/.well-known/agent.json",
+                "/llms.txt"
+        );
+    }
+
+    /**
+     * Explicit guard that high-volume noise paths stay off the
+     * whitelist. {@code /openapi.json} alone receives 80+ hits/day
+     * from SDK generators and OpenAPI indexers; if it ever gets added
+     * to {@code AUDIT_GET_2XX_PATHS} the audit table balloons without
+     * a corresponding signal-to-noise improvement.
+     */
+    @Test
+    void auditGet2xxPathsExcludesHighNoiseEndpoints() {
+        assertThat(RequestAuditFilter.AUDIT_GET_2XX_PATHS)
+                .doesNotContain(
+                        "/openapi.json",
+                        "/v3/api-docs",
+                        "/favicon.ico",
+                        "/actuator/health",
+                        "/actuator/prometheus"
+                );
+    }
 }

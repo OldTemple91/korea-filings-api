@@ -316,6 +316,68 @@ class DisclosuresControllerIT {
                         .contains("PAYMENT-SIGNATURE"));
     }
 
+    /**
+     * Round-15b: the free /recent feed now LEFT-JOINs the summary
+     * cache so rows whose summaries have been generated carry the
+     * AI-derived classification fields ({@code importanceScore},
+     * {@code eventType}, {@code sectorTags}, {@code tickerTags},
+     * {@code actionableFor}) without exposing the paid summary text.
+     *
+     * <p>Seed has one disclosure (`20260423000001`, Samsung rights
+     * offering) with a cached summary at importance 9. The unseeded
+     * second filing below verifies the un-enriched fallback shape
+     * stays byte-identical to the pre-15b response (AI fields are
+     * absent thanks to {@code @JsonInclude(NON_NULL)} on the DTO).
+     * The endpoint should also never leak {@code summaryEn}.
+     */
+    @Test
+    void recentFeedEnrichesCachedRowsAndOmitsAiFieldsForUncached() throws Exception {
+        // Second disclosure — same ingestion shape as the seeded one
+        // but no corresponding `disclosure_summary` row. Represents the
+        // common case of "DART filing has landed in our DB, no agent
+        // has paid for the summary yet".
+        disclosureRepository.save(new Disclosure(
+                "20260423000002", "00164742", "에스케이하이닉스", null,
+                "주요사항보고서(자기주식취득결정)", "에스케이하이닉스",
+                LocalDate.of(2026, 4, 23), "유", "000660"
+        ));
+
+        var result = mockMvc.perform(get("/v1/disclosures/recent?limit=10&since_hours=168"))
+                .andExpect(status().isOk())
+                // Enriched row (cached summary): every AI field present
+                // with the exact values written in seed().
+                .andExpect(jsonPath("$.filings[?(@.rcptNo == '20260423000001')].importanceScore")
+                        .value(9))
+                .andExpect(jsonPath("$.filings[?(@.rcptNo == '20260423000001')].eventType")
+                        .value("RIGHTS_OFFERING"))
+                .andExpect(jsonPath("$.filings[?(@.rcptNo == '20260423000001')].sectorTags[0]")
+                        .value("Information Technology"))
+                .andExpect(jsonPath("$.filings[?(@.rcptNo == '20260423000001')].tickerTags[0]")
+                        .value("005930"))
+                .andExpect(jsonPath("$.filings[?(@.rcptNo == '20260423000001')].actionableFor")
+                        .isArray())
+                // Bare row (no cached summary): every AI field absent,
+                // raw DART metadata still present.
+                .andExpect(jsonPath("$.filings[?(@.rcptNo == '20260423000002')].importanceScore")
+                        .doesNotExist())
+                .andExpect(jsonPath("$.filings[?(@.rcptNo == '20260423000002')].eventType")
+                        .doesNotExist())
+                .andExpect(jsonPath("$.filings[?(@.rcptNo == '20260423000002')].sectorTags")
+                        .doesNotExist())
+                .andExpect(jsonPath("$.filings[?(@.rcptNo == '20260423000002')].ticker")
+                        .value("000660"))
+                .andExpect(jsonPath("$.filings[?(@.rcptNo == '20260423000002')].corpName")
+                        .value("에스케이하이닉스"))
+                .andReturn();
+
+        // Hard guard: the paid summary text must never appear in the
+        // free feed, even for filings whose summary is cached.
+        String body = result.getResponse().getContentAsString();
+        org.assertj.core.api.Assertions.assertThat(body)
+                .doesNotContain("summaryEn")
+                .doesNotContain("Samsung announced a rights offering decision.");
+    }
+
     @Test
     void byTickerWithFewerFilingsThanLimitReportsChargedForVsDelivered() throws Exception {
         wireMock.stubFor(post(urlPathEqualTo("/verify"))
