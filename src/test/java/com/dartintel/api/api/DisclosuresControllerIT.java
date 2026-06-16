@@ -470,8 +470,13 @@ class DisclosuresControllerIT {
         // Pre-round-16 this returned 200 with summaryEn=null. Now the
         // stub is a cache miss → generate → generation fails in test →
         // 503, never a 200 carrying an empty summary.
+        // NOTE: the signed payload's resource URL must match the request
+        // URL exactly (the interceptor rejects a mismatch with 402), so
+        // use the two-arg helper with THIS rcptNo — the one-arg helper
+        // hardcodes rcptNo=20260423000001.
         mockMvc.perform(get("/v1/disclosures/summary?rcptNo=20260601000777")
-                        .header("PAYMENT-SIGNATURE", validPaymentPayloadBase64("sig-stub-777")))
+                        .header("PAYMENT-SIGNATURE", validPaymentPayloadBase64("sig-stub-777",
+                                "http://localhost/v1/disclosures/summary?rcptNo=20260601000777")))
                 .andExpect(status().isServiceUnavailable());
     }
 
