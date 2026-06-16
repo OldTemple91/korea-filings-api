@@ -1,6 +1,7 @@
 package com.dartintel.api.api.dto;
 
 import com.dartintel.api.ingestion.Disclosure;
+import com.dartintel.api.summarization.DisclosureClassifier;
 import com.dartintel.api.summarization.DisclosureSummary;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
@@ -54,13 +55,21 @@ public record RecentFilingDto(
         String eventType,
         List<String> sectorTags,
         List<String> tickerTags,
-        List<String> actionableFor
+        List<String> actionableFor,
+        // ---- Round-17a free pre-purchase signals (pure functions) ----
+        // sourceUrl: canonical DART viewer link (audit path to the
+        //   authoritative filing). numericExpectation: HIGH/LOW from the
+        //   eventType — lets an agent decide, BEFORE paying, whether the
+        //   paid summary is likely to carry an extractable number. Both
+        //   derived, zero LLM cost, no hallucination.
+        String sourceUrl,
+        String numericExpectation
 ) {
 
     /**
      * Bare row for a filing whose summary has not been generated yet.
-     * Pre-round-15b shape — all AI fields null, so the JSON response
-     * is byte-identical to what the previous endpoint returned.
+     * AI classification fields null; the DART source link is still
+     * present (it only needs the rcptNo).
      */
     public static RecentFilingDto from(Disclosure d) {
         return new RecentFilingDto(
@@ -69,17 +78,19 @@ public record RecentFilingDto(
                 d.getCorpName(),
                 d.getReportNm(),
                 d.getRceptDt(),
-                null, null, null, null, null
+                null, null, null, null, null,
+                DisclosureSummaryDto.dartViewerUrl(d.getRcptNo()),
+                null
         );
     }
 
     /**
-     * Enriched row for a filing whose summary is already in the cache.
-     * The summary text itself is deliberately not surfaced — that's
-     * what the paid {@code /summary} endpoint exists for — but every
-     * other classification field from the same LLM pass is shared so
-     * an agent reading the free feed can rank-order which filings are
-     * worth paying for.
+     * Enriched row for a filing whose summary (or classifier stub) is
+     * in the cache. The summary text itself is deliberately not
+     * surfaced — that's the paid {@code /summary} endpoint — but every
+     * classification field plus the DART link and the numeric-content
+     * expectation are shared so an agent reading the free feed can
+     * rank-order which filings are worth paying for.
      */
     public static RecentFilingDto from(Disclosure d, DisclosureSummary s) {
         return new RecentFilingDto(
@@ -92,7 +103,9 @@ public record RecentFilingDto(
                 s.getEventType(),
                 s.getSectorTags(),
                 s.getTickerTags(),
-                s.getActionableFor()
+                s.getActionableFor(),
+                DisclosureSummaryDto.dartViewerUrl(d.getRcptNo()),
+                DisclosureClassifier.numericExpectation(s.getEventType())
         );
     }
 }

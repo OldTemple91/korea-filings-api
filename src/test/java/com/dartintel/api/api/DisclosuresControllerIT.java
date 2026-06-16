@@ -386,6 +386,47 @@ class DisclosuresControllerIT {
     }
 
     /**
+     * Round-17a: the free /recent feed carries the DART source link and
+     * the numericExpectation pre-purchase signal on every row, so an
+     * agent can audit and rank-order before paying. The seeded
+     * RIGHTS_OFFERING is a HIGH numeric-expectation event type.
+     */
+    @Test
+    void recentFeedCarriesSourceUrlAndNumericExpectation() throws Exception {
+        mockMvc.perform(get("/v1/disclosures/recent?limit=10&since_hours=168"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.filings[?(@.rcptNo == '20260423000001')].sourceUrl")
+                        .value(org.hamcrest.Matchers.hasItem(
+                                "https://dart.fss.or.kr/dsaf001/main.do?rcpNo=20260423000001")))
+                .andExpect(jsonPath("$.filings[?(@.rcptNo == '20260423000001')].numericExpectation")
+                        .value(org.hamcrest.Matchers.hasItem("HIGH")));
+    }
+
+    /**
+     * Round-17a: the paid /summary response carries sourceUrl (audit
+     * path) and numericExpectation. Uses the seeded cached RIGHTS_OFFERING
+     * row so generation isn't triggered.
+     */
+    @Test
+    void paidSummaryCarriesSourceUrlAndNumericExpectation() throws Exception {
+        wireMock.stubFor(post(urlPathEqualTo("/verify"))
+                .willReturn(aResponse().withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"isValid\":true,\"payer\":\"0x857b06519E91e3A54538791bDbb0E22373e36b66\"}")));
+        wireMock.stubFor(post(urlPathEqualTo("/settle"))
+                .willReturn(aResponse().withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"success\":true,\"transaction\":\"0xEE\",\"network\":\"eip155:84532\",\"payer\":\"0x857\"}")));
+
+        mockMvc.perform(get("/v1/disclosures/summary?rcptNo=20260423000001")
+                        .header("PAYMENT-SIGNATURE", validPaymentPayloadBase64("sig-17a")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.sourceUrl")
+                        .value("https://dart.fss.or.kr/dsaf001/main.do?rcpNo=20260423000001"))
+                .andExpect(jsonPath("$.numericExpectation").value("HIGH"));
+    }
+
+    /**
      * Round-16 regression guard for the round-15c "paid call serves a
      * classifier stub with null summaryEn" bug. A filing that has ONLY
      * a rule-based stub row (summary_en = NULL, model rule-v1) must be

@@ -144,6 +144,35 @@ class DisclosureClassifierTest {
         assertThat(c.eventType()).isEqualTo(DisclosureClassifier.FALLBACK_EVENT_TYPE);
     }
 
+    // ---- round-17a: numericExpectation pre-purchase signal ----
+
+    @ParameterizedTest
+    @CsvSource(textBlock = """
+            # eventType,                    expected
+            DIVIDEND_DECISION,              HIGH
+            RIGHTS_OFFERING,                HIGH
+            SUPPLY_CONTRACT_SIGNED,         HIGH
+            CONVERTIBLE_BOND_ISSUANCE,      HIGH
+            MERGER,                         HIGH
+            TREASURY_STOCK_ACQUISITION,     HIGH
+            PRELIMINARY_RESULTS,            HIGH
+            MAJOR_SHAREHOLDER_FILING,       LOW
+            RECORD_DATE_NOTICE,             LOW
+            PERIODIC_REPORT,                LOW
+            AUDIT_REPORT,                   LOW
+            IR_EVENT,                       LOW
+            SHAREHOLDERS_MEETING,           LOW
+            OTHER,                          LOW
+            """)
+    void numericExpectationSplitsNumberBearingFromThinEventTypes(String eventType, String expected) {
+        assertThat(DisclosureClassifier.numericExpectation(eventType)).isEqualTo(expected);
+    }
+
+    @Test
+    void numericExpectationNullEventTypeIsLow() {
+        assertThat(DisclosureClassifier.numericExpectation(null)).isEqualTo("LOW");
+    }
+
     @Test
     void mergerOutscoresAcquisitionWhenBothKeywordsAppear() {
         // Some merger filings also contain the substring "취득" —

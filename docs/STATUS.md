@@ -1,4 +1,4 @@
-# STATUS — where we left off (2026-06-16, post-round-16)
+# STATUS — where we left off (2026-06-16, post-round-17a)
 
 Read this first when picking up on a different machine. Summarises what is
 live, what's next, and the minimum setup to keep moving.
@@ -18,6 +18,33 @@ live, what's next, and the minimum setup to keep moving.
 - **Weeks 1–5 complete.** Ingestion, summarisation, x402 paywall, public
   deployment, landing page, Python SDK, MCP server, OpenAPI docs — all
   live in production at `api.koreafilings.com`.
+- **Round-17a — response trust-gate + free pre-purchase signal (live, 2026-06-16).**
+  Came out of a parallel buyer-worthiness investigation (real paid
+  responses scored 2.6/10 by a 5-persona panel; the two structural
+  gripes were "can't tell a quantitative row from filler BEFORE paying"
+  and "no audit path / differentiation vs free englishdart"). 17a ships
+  the two cheapest, zero-LLM-risk response changes that attack those:
+  (1) `sourceUrl` — the canonical DART viewer link
+  (`https://dart.fss.or.kr/dsaf001/main.do?rcpNo={rcptNo}`) on both the
+  paid `/summary` rows and the free `/recent` feed; a paraphrase can't
+  enter a quant/research workflow without an audit path to the
+  authoritative filing, and this also makes the long-standing (and
+  previously false) `llms.txt:73` claim "every summary links back to
+  the DART original URL" true. (2) `numericExpectation` (`HIGH`/`LOW`)
+  derived purely from the eventType the ingestion-time classifier
+  already assigns — surfaced FREE on `/recent` so an agent can decide,
+  before paying, whether a filing class normally carries an extractable
+  number (importanceScore rates newsworthiness, not number-presence).
+  Both are pure functions (no DB, no LLM, no migration, no
+  hallucination). The substantive structured-numeric work (keyFacts
+  object extracted by the LLM + a numericFieldCount derived from it) is
+  the deliberately-sequenced round-17b — it touches the Gemini
+  responseSchema + entity + persistence and can't be validated while
+  organic demand is ~0, so it ships as its own focused round.
+  Honest framing carried from the investigation: with ~0 organic paid
+  calls these response changes can't be validated by inflow — they
+  reshape the discovery-visible schema and de-risk the first real
+  buyer's decision; they don't manufacture demand.
 - **Round-16 — P0 paid-summary regression fix + paid-call observability (live, 2026-06-16).**
   Surfaced while investigating the first-ever settlement from a
   non-maintainer wallet (2026-06-12, `0x9CC4…b176` — identified as

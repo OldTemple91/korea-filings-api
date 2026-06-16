@@ -65,6 +65,8 @@ public final class SampleResponses {
                 List.of("Technology Hardware & Equipment"),
                 List.of("005930"),
                 List.of("traders", "long_term_investors"),
+                DisclosureSummaryDto.dartViewerUrl(SAMPLE_RCPT_NO),
+                "HIGH",
                 Instant.parse("2026-05-06T07:29:45.911215Z")
         );
     }

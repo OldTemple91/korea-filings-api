@@ -55,6 +55,48 @@ public final class DisclosureClassifier {
      *  LLM-side {@code event_type} taxonomy uses the same string. */
     public static final String FALLBACK_EVENT_TYPE = "OTHER";
 
+    /**
+     * Event types whose DART standard form mandates a primary
+     * quantitative datum (a KRW amount, a ratio, a share count) — so a
+     * body-aware paid summary of one of these will almost always carry
+     * an extractable number. Everything not in this set is treated as
+     * {@code LOW} numeric expectation: ownership filings, record-date
+     * notices, periodic-report stubs, governance events, market
+     * notices — where even a body-aware summary rarely yields an
+     * actionable number.
+     *
+     * <p>Round-17a surfaces {@link #numericExpectation(String)} on the
+     * FREE {@code /recent} feed and on the paid rows so an agent can
+     * decide, BEFORE paying, whether a filing is likely to return
+     * quantitative content — the pre-purchase signal the buyer panel
+     * said was missing (importanceScore rates newsworthiness, not
+     * whether a number will be present). Derived purely from the
+     * eventType the ingestion-time classifier already assigns, so it
+     * is available even for filings never yet summarised, at zero LLM
+     * cost and no hallucination risk.
+     */
+    private static final java.util.Set<String> HIGH_NUMERIC_EXPECTATION = java.util.Set.of(
+            "DIVIDEND_DECISION", "RIGHTS_OFFERING", "BONUS_ISSUANCE",
+            "CONVERTIBLE_BOND_ISSUANCE", "WARRANT_BOND_ISSUANCE",
+            "TREASURY_STOCK_ACQUISITION", "TREASURY_STOCK_DISPOSAL", "TREASURY_STOCK_CANCELLATION",
+            "SUPPLY_CONTRACT_SIGNED", "SUPPLY_CONTRACT_TERMINATED",
+            "ACQUISITION", "MERGER", "BUSINESS_TRANSFER", "ASSET_DISPOSAL",
+            "DEBT_GUARANTEE", "SHARE_PLEDGE", "RELATED_PARTY_TRANSACTION",
+            "CAPITAL_REDUCTION", "PRELIMINARY_RESULTS", "EARNINGS_PREVIEW",
+            "CONVERSION_PRICE_ADJUSTMENT", "CONVERTIBLE_BOND_CONVERSION", "BOND_REDEMPTION",
+            "DEBT_ISSUANCE", "PUBLIC_TENDER_OFFER_RESULT", "CONTROL_CHANGE_PLEDGE",
+            "MAJOR_SHAREHOLDER_TRANSACTION", "STOCK_OPTION_GRANT",
+            "BOND_DEFAULT", "DEBT_DEFAULT"
+    );
+
+    /** Pre-purchase numeric-content expectation for an event type:
+     *  {@code "HIGH"} when the filing class mandates a quantitative
+     *  datum, {@code "LOW"} otherwise. Pure function of eventType —
+     *  no DB, no LLM. */
+    public static String numericExpectation(String eventType) {
+        return eventType != null && HIGH_NUMERIC_EXPECTATION.contains(eventType) ? "HIGH" : "LOW";
+    }
+
     /** Default importance when no rule matches. Falls right in the
      *  middle of the 1–10 scale — neither hiding nor over-promoting
      *  unknown filings. */
