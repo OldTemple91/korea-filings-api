@@ -102,7 +102,20 @@ public class RequestAuditFilter extends OncePerRequestFilter {
             "/.well-known/x402",
             "/.well-known/x402.json",
             "/.well-known/agent.json",
-            "/llms.txt"
+            "/llms.txt",
+            // Round-16: the two PAID endpoints. A successful paid call
+            // returns GET 200, which the default rule skips — so before
+            // round-16 a settled paid call was invisible in
+            // request_audit and only surfaced (days later) via
+            // payment_log. The 402 challenge was logged but not the
+            // successful retry. Auditing the 200 here captures the
+            // caller's IP / UA / timing for every completed paid call,
+            // which is exactly the signal needed to tell a real
+            // external customer apart from a catalog verifier (e.g. the
+            // 2026-06-12 CoinbaseBazaarDiscovery settlement). Volume is
+            // trivially low — paid calls are the rarest traffic we have.
+            "/v1/disclosures/by-ticker",
+            "/v1/disclosures/summary"
     );
 
     /**

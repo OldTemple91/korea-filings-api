@@ -49,6 +49,7 @@ public class DisclosuresController {
     private final DisclosureSummaryRepository summaryRepository;
     private final DisclosureRepository disclosureRepository;
     private final SummaryService summaryService;
+    private final com.dartintel.api.summarization.PaidSummaryQualityMonitor paidSummaryQualityMonitor;
 
     /**
      * Free metadata feed of recent filings across every listed company.
@@ -260,7 +261,14 @@ public class DisclosuresController {
         // settlement-on-2xx invariant means a generation failure
         // surfaces as a 5xx and the caller is not charged.
         for (Disclosure d : recent) {
-            if (!byRcptNo.containsKey(d.getRcptNo())) {
+            DisclosureSummary existing = byRcptNo.get(d.getRcptNo());
+            // Round-16 fix: round-15c writes a rule-based classifier
+            // stub (summary_en = NULL) for every ingested filing, so a
+            // bare `containsKey` is now always true and used to skip
+            // LLM generation — shipping a null summaryEn on a paid call.
+            // Generate when the row is absent OR is a stub without the
+            // LLM-produced English text.
+            if (existing == null || !existing.hasLlmSummary()) {
                 summaryService.summarize(d.getRcptNo());
                 summaryRepository.findById(d.getRcptNo())
                         .ifPresent(s -> byRcptNo.put(d.getRcptNo(), s));
@@ -269,8 +277,22 @@ public class DisclosuresController {
         List<DisclosureSummaryDto> summaries = recent.stream()
                 .map(d -> byRcptNo.get(d.getRcptNo()))
                 .filter(java.util.Objects::nonNull)
+                // Never deliver a classifier stub on a paid call — only
+                // rows that actually carry the LLM English summary.
+                .filter(DisclosureSummary::hasLlmSummary)
                 .map(DisclosureSummaryDto::from)
                 .toList();
+        // Guardrail: filings we had on file but could not serve a real
+        // LLM summary for (generation failure, or — pre-round-16 — a
+        // stub that slipped through). `recent.size()` is the number of
+        // filings that exist for the ticker (≤ limit); the shortfall
+        // below the delivered count is a quality regression signal,
+        // distinct from "the ticker simply has fewer than `limit`
+        // filings" (which is limit − recent.size(), expected and fine).
+        int degraded = recent.size() - summaries.size();
+        if (degraded > 0) {
+            paidSummaryQualityMonitor.recordDegraded("by-ticker", degraded);
+        }
         // chargedFor / delivered diverge when a ticker has fewer recent
         // filings than `limit`, or when one of those filings does not
         // yet have an AI summary in cache. `count` is the legacy alias
@@ -338,7 +360,15 @@ public class DisclosuresController {
         // Cache hit — the standard 99%+ path once a filing has been
         // paid for at least once. Returns immediately without touching
         // DART or the LLM.
-        Optional<DisclosureSummary> cached = summaryRepository.findById(rcptNo);
+        //
+        // Round-16 fix: filter on hasLlmSummary, not mere row presence.
+        // Round-15c writes a rule-based classifier stub (summary_en =
+        // NULL) for every ingested filing, so `findById` is now almost
+        // always present; a bare isPresent() check used to short-circuit
+        // and return the stub with a null summaryEn — the customer paid
+        // for an empty summary. A stub must fall through to generation.
+        Optional<DisclosureSummary> cached = summaryRepository.findById(rcptNo)
+                .filter(DisclosureSummary::hasLlmSummary);
         if (cached.isPresent()) {
             return ResponseEntity.ok(DisclosureSummaryDto.from(cached.get()));
         }
@@ -367,13 +397,22 @@ public class DisclosuresController {
             // settlement-on-2xx does NOT charge the caller.
             throw e;
         }
+        // Round-16: filter on hasLlmSummary here too. After summarize()
+        // the row always exists (a stub at minimum), so a bare findById
+        // would 200 with a null summaryEn whenever generation failed.
+        // Only return 200 when the LLM summary is actually present;
+        // otherwise 503 keeps settlement off so the caller is not
+        // charged for an empty product.
         return summaryRepository.findById(rcptNo)
+                .filter(DisclosureSummary::hasLlmSummary)
                 .map(DisclosureSummaryDto::from)
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> {
                     // Generation failed (audit_failure row written by
-                    // SummaryService). Returning 503 keeps settlement
+                    // SummaryService) — the stub, if any, still has a
+                    // null summaryEn. Returning 503 keeps settlement
                     // off — the caller may retry without paying twice.
+                    paidSummaryQualityMonitor.recordDegraded("summary", 1);
                     return ResponseEntity
                             .status(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE)
                             .build();

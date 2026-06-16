@@ -1,4 +1,4 @@
-# STATUS — where we left off (2026-05-29, post-round-15)
+# STATUS — where we left off (2026-06-16, post-round-16)
 
 Read this first when picking up on a different machine. Summarises what is
 live, what's next, and the minimum setup to keep moving.
@@ -18,6 +18,35 @@ live, what's next, and the minimum setup to keep moving.
 - **Weeks 1–5 complete.** Ingestion, summarisation, x402 paywall, public
   deployment, landing page, Python SDK, MCP server, OpenAPI docs — all
   live in production at `api.koreafilings.com`.
+- **Round-16 — P0 paid-summary regression fix + paid-call observability (live, 2026-06-16).**
+  Surfaced while investigating the first-ever settlement from a
+  non-maintainer wallet (2026-06-12, `0x9CC4…b176` — identified as
+  Coinbase CDP **Bazaar Discovery** validating the service, with
+  `CoinbaseBazaarDiscovery/1.0` interleaved with the paid calls in
+  `request_audit`). Checking what data that paid call actually
+  returned exposed a P0: round-15c writes a rule-based classifier
+  stub (`summary_en = NULL`) for every ingested filing, but the two
+  paid handlers checked only row *existence* (`containsKey` /
+  `isPresent`), not LLM-summary *presence*. So every filing ingested
+  since 2026-05-29 returned a null `summaryEn` on a paid call — the
+  customer paid full price for an empty product. The 2026-06-12
+  by-ticker call got 5 null summaries; only the `/summary` example
+  rcptNo survived because it had a real pre-15c summary. Fixes:
+  (1) `getByTicker` generates when the row is absent OR a stub
+  (`!hasLlmSummary()`), and filters stubs out of the delivered list;
+  (2) `getSummary` filters the cache lookup on `hasLlmSummary` so a
+  stub falls through to generation, and only returns 200 when the LLM
+  text is actually present (else 503, uncharged via settlement-on-2xx).
+  Guardrail: new `PaidSummaryQualityMonitor` emits
+  `paid_summary_degraded_total{endpoint}` (+ WARN) whenever a paid
+  slot can't be served a real summary — the signal whose absence let
+  this regression hide for two weeks. Observability: the two paid
+  endpoints joined the `request_audit` GET-2xx whitelist, so a settled
+  paid call's IP / UA / timing are now captured (not just the 402
+  challenge) — which is how a real external customer will be told
+  apart from a catalog verifier next time. Regression test seeds a
+  stub-only filing and asserts a paid `/summary` never returns
+  200-with-null. No schema change.
 - **Round-15c — rule-based classifier at ingestion (live, 2026-05-29).**
   Round-15b's enrichment did the right thing for the cached path
   but had nothing to enrich in production: the same funnel review

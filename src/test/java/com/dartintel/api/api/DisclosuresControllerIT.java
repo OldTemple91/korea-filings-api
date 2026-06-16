@@ -39,6 +39,7 @@ import java.util.Map;
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
+import static com.github.tomakehurst.wiremock.client.WireMock.urlMatching;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -96,6 +97,12 @@ class DisclosuresControllerIT {
             wireMock.start();
         }
         r.add("x402.facilitator-url", () -> "http://localhost:" + wireMock.port());
+        // Round-16 regression test points the LLM + DART clients at the
+        // same WireMock so lazy summary generation is deterministic and
+        // never makes a real external call. Existing tests seed real
+        // summaries and so never trigger generation — unaffected.
+        r.add("gemini.base-url", () -> "http://localhost:" + wireMock.port());
+        r.add("dart.base-url", () -> "http://localhost:" + wireMock.port());
     }
 
     @Autowired
@@ -376,6 +383,55 @@ class DisclosuresControllerIT {
         org.assertj.core.api.Assertions.assertThat(body)
                 .doesNotContain("summaryEn")
                 .doesNotContain("Samsung announced a rights offering decision.");
+    }
+
+    /**
+     * Round-16 regression guard for the round-15c "paid call serves a
+     * classifier stub with null summaryEn" bug. A filing that has ONLY
+     * a rule-based stub row (summary_en = NULL, model rule-v1) must be
+     * treated as a cache miss on the paid /summary path — triggering
+     * LLM generation — NOT returned as a 200 carrying an empty summary.
+     *
+     * <p>Generation deterministically fails here (Gemini is pointed at
+     * WireMock returning 500), so the contract is a 503 (uncharged via
+     * settlement-on-2xx). The critical property is that it is NEVER a
+     * 200 with a null summaryEn — which is exactly what the buggy code
+     * returned, and what reached the 2026-06-12 paid caller.
+     */
+    @Test
+    void paidSummaryOnClassifierStubDoesNotServeNullSummary() throws Exception {
+        disclosureRepository.save(new Disclosure(
+                "20260601000777", "00999999", "테스트배당기업", null,
+                "현금ㆍ현물배당결정", "테스트배당기업",
+                LocalDate.of(2026, 6, 1), "유", "099999"));
+        // ONLY a classifier stub — no LLM English summary text.
+        summaryRepository.save(new DisclosureSummary(
+                "20260601000777", null, 5, "DIVIDEND_DECISION",
+                List.of(), List.of("099999"), List.of("traders"),
+                DisclosureSummary.RULE_BASED_MODEL_ID, 0, 0,
+                new BigDecimal("0.00000000"), DisclosureSummary.RULE_BASED_PROMPT_VERSION));
+
+        wireMock.stubFor(post(urlPathEqualTo("/verify"))
+                .willReturn(aResponse().withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"isValid\":true,\"payer\":\"0x857b06519E91e3A54538791bDbb0E22373e36b66\"}")));
+        wireMock.stubFor(post(urlPathEqualTo("/settle"))
+                .willReturn(aResponse().withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"success\":true,\"transaction\":\"0xDD\",\"network\":\"eip155:84532\",\"payer\":\"0x857\"}")));
+        // Lazy generation calls Gemini → WireMock 500 → generation fails
+        // → the stub is NOT upgraded to an LLM summary. (Any unstubbed
+        // LLM/DART path also 404s through WireMock, so generation fails
+        // deterministically regardless.)
+        wireMock.stubFor(post(urlMatching(".*generateContent.*"))
+                .willReturn(aResponse().withStatus(500)));
+
+        // Pre-round-16 this returned 200 with summaryEn=null. Now the
+        // stub is a cache miss → generate → generation fails in test →
+        // 503, never a 200 carrying an empty summary.
+        mockMvc.perform(get("/v1/disclosures/summary?rcptNo=20260601000777")
+                        .header("PAYMENT-SIGNATURE", validPaymentPayloadBase64("sig-stub-777")))
+                .andExpect(status().isServiceUnavailable());
     }
 
     @Test

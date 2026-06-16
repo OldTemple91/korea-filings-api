@@ -237,7 +237,12 @@ class RequestAuditFilterTest {
                 "/.well-known/x402",
                 "/.well-known/x402.json",
                 "/.well-known/agent.json",
-                "/llms.txt"
+                "/llms.txt",
+                // Round-16: the paid endpoints, so a settled paid call's
+                // GET 200 is audited (IP / UA / timing), not just the
+                // preceding 402 challenge.
+                "/v1/disclosures/by-ticker",
+                "/v1/disclosures/summary"
         );
     }
 
