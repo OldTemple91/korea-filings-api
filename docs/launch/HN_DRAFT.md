@@ -8,13 +8,15 @@ Pre-staged copy-paste content for the Hacker News launch.
 
 ### Fields
 
-**Title** (80-char limit, leave room for "Show HN: " prefix):
+**Title** (80-char limit; 57 chars — short titles scan better on the front page):
 
 ```
-Show HN: Search Korean corporate filings by name, pay per call in USDC via x402
+Show HN: Korea's EDGAR in English, paid per call via x402
 ```
 
-(Alternative: `Show HN: 1 free call + 1 paid call to get Korean DART filings as English signals`)
+(Alternatives:
+`Show HN: Korean corporate filings in English, paid per call via x402` — safer, no analogy;
+`Show HN: Korean DART filings as an English API, 0.005 USDC per call` — price in title)
 
 **URL field:**
 
