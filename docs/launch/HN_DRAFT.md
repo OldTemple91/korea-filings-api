@@ -69,7 +69,7 @@ A real response from a Base mainnet paid call against Samsung Electronics' 2026-
   "actionableFor": ["traders", "long_term_investors"],
   "sourceUrl": "https://dart.fss.or.kr/dsaf001/main.do?rcpNo=20260430800106"
 
-Stack: Java 21 / Spring Boot 3.4 / Postgres 16 with pg_trgm fuzzy search / Redis 7 on a Linux VPS behind Cloudflare Tunnel. Gemini 2.5 Flash-Lite for the summarisation, prompted with a 50-row Korean → English filing-type taxonomy + importance anchors so OTHER stays under 5%. Resilience4j circuit-breaks the LLM, the DART poller, the document body fetcher, and the facilitator independently.
+Stack: Java 21 / Spring Boot 3.4 / Postgres 16 with pg_trgm fuzzy search / Redis 7 on a Linux VPS behind Cloudflare Tunnel. Gemini 2.5 Flash-Lite for the summarisation, prompted with a 50-row Korean → English filing-type taxonomy + importance anchors; a rule-based classifier types every filing at ingestion so even never-summarised rows carry an eventType and an English filing-type label on the free feed. Resilience4j circuit-breaks the LLM, the DART poller, the document body fetcher, and the facilitator independently.
 
 What's there:
 
