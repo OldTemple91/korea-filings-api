@@ -86,7 +86,10 @@ public final class DisclosureClassifier {
             "CONVERSION_PRICE_ADJUSTMENT", "CONVERTIBLE_BOND_CONVERSION", "BOND_REDEMPTION",
             "DEBT_ISSUANCE", "PUBLIC_TENDER_OFFER_RESULT", "CONTROL_CHANGE_PLEDGE",
             "MAJOR_SHAREHOLDER_TRANSACTION", "STOCK_OPTION_GRANT",
-            "BOND_DEFAULT", "DEBT_DEFAULT"
+            "BOND_DEFAULT", "DEBT_DEFAULT",
+            // round-18e: trust-based buybacks carry the contract amount;
+            // insider trade plans carry planned share counts / values.
+            "TREASURY_STOCK_TRUST", "INSIDER_TRADE_PLAN"
     );
 
     /** Pre-purchase numeric-content expectation for an event type:
@@ -170,7 +173,15 @@ public final class DisclosureClassifier {
             java.util.Map.entry("TREASURY_STOCK_ACQUISITION", "Treasury Stock Acquisition"),
             java.util.Map.entry("TREASURY_STOCK_CANCELLATION", "Treasury Stock Cancellation"),
             java.util.Map.entry("TREASURY_STOCK_DISPOSAL", "Treasury Stock Disposal"),
-            java.util.Map.entry("WARRANT_BOND_ISSUANCE", "Bond with Warrant Issuance")
+            java.util.Map.entry("WARRANT_BOND_ISSUANCE", "Bond with Warrant Issuance"),
+            // --- round-18e additions ---
+            java.util.Map.entry("TREASURY_STOCK_TRUST", "Treasury Stock Trust Contract"),
+            java.util.Map.entry("INSIDER_TRADE_PLAN", "Insider Trading Plan Report"),
+            java.util.Map.entry("RUMOR_CLARIFICATION", "Response to Market Rumor / Press Report"),
+            java.util.Map.entry("CORPORATE_GOVERNANCE_REPORT", "Corporate Governance Report"),
+            java.util.Map.entry("SUSTAINABILITY_REPORT", "Sustainability / ESG Report"),
+            java.util.Map.entry("SHELF_REGISTRATION_EFFECTIVE", "Shelf Registration Effective Notice"),
+            java.util.Map.entry("MARKET_NOTICE", "Exchange Market Notice")
     );
 
     /** English label for an event type, e.g. {@code MERGER} →
@@ -337,9 +348,20 @@ public final class DisclosureClassifier {
             new Rule("비유동자산취득", "ACQUISITION", 5, List.of("traders", "long_term_investors")),
             new Rule("주요사항보고서(유상증자결정)", "RIGHTS_OFFERING", 7, List.of("traders", "long_term_investors")),
             new Rule("특수관계인의유상증자참여", "RIGHTS_OFFERING", 7, List.of("traders", "long_term_investors")),
+            // Round-18e: KOSDAQ files the bare form name without the
+            // 주요사항보고서 wrapper — 40 rows fell to OTHER.
+            new Rule("유상증자결정", "RIGHTS_OFFERING", 7, List.of("traders", "long_term_investors")),
             new Rule("주요사항보고서(전환사채권발행결정)", "CONVERTIBLE_BOND_ISSUANCE", 7, List.of("traders", "long_term_investors")),
             new Rule("주요사항보고서(자기주식취득결정)", "TREASURY_STOCK_ACQUISITION", 7, List.of("traders", "long_term_investors")),
             new Rule("자기주식취득결과보고서", "TREASURY_STOCK_ACQUISITION", 5, List.of("traders", "long_term_investors")),
+            // Round-18e: buyback-via-trust filings — 138 rows sat in
+            // OTHER. Signing a trust contract is the market signal
+            // (like a buyback announcement); cancellation and the
+            // periodic progress reports are follow-through.
+            new Rule("자기주식취득신탁계약체결", "TREASURY_STOCK_TRUST", 6, List.of("traders", "long_term_investors")),
+            new Rule("자기주식취득신탁계약해지", "TREASURY_STOCK_TRUST", 4, List.of("traders", "long_term_investors")),
+            new Rule("신탁계약에의한취득상황", "TREASURY_STOCK_TRUST", 3, List.of("traders")),
+            new Rule("신탁계약해지결과", "TREASURY_STOCK_TRUST", 3, List.of("traders")),
             new Rule("주요사항보고서(자기주식처분결정)", "TREASURY_STOCK_DISPOSAL", 6, List.of("traders", "long_term_investors")),
             new Rule("자기주식처분결과보고서", "TREASURY_STOCK_DISPOSAL", 6, List.of("traders", "long_term_investors")),
             new Rule("주식소각결정", "TREASURY_STOCK_CANCELLATION", 5, List.of("traders", "long_term_investors")),
@@ -359,6 +381,16 @@ public final class DisclosureClassifier {
             new Rule("특수관계인에대한자금대여", "RELATED_PARTY_TRANSACTION", 5, List.of("traders", "long_term_investors")),
             new Rule("동일인등출자계열회사와의상품ㆍ용역거래", "RELATED_PARTY_TRANSACTION", 5, List.of("traders", "long_term_investors")),
             new Rule("타인에대한채무보증결정", "DEBT_GUARANTEE", 5, List.of("creditors")),
+            // Round-18e: 을위한 / 에대한 phrasing both occur live.
+            new Rule("타인을위한채무보증", "DEBT_GUARANTEE", 5, List.of("creditors")),
+            // Round-18e: planned insider trades (신규 공시 유형) and
+            // short-term borrowing decisions — both numeric-bearing.
+            new Rule("임원ㆍ주요주주특정증권등거래계획", "INSIDER_TRADE_PLAN", 5, List.of("traders")),
+            new Rule("단기차입금증가결정", "DEBT_ISSUANCE", 5, List.of("creditors")),
+            new Rule("증권발행결과", "DEBT_ISSUANCE", 5, List.of("creditors")),
+            // Round-18e: response to market rumors / press reports —
+            // often precedes a real event disclosure.
+            new Rule("풍문또는보도", "RUMOR_CLARIFICATION", 5, List.of("traders")),
             new Rule("타인에대한담보제공", "SHARE_PLEDGE", 5, List.of("creditors")),
             new Rule("특수관계인에대한담보제공", "SHARE_PLEDGE", 5, List.of("creditors")),
             new Rule("전환청구권행사", "CONVERTIBLE_BOND_CONVERSION", 5, List.of("traders")),
@@ -396,8 +428,22 @@ public final class DisclosureClassifier {
             new Rule("주식등의대량보유상황보고서", "MAJOR_SHAREHOLDER_FILING", 3, List.of("traders")),
             new Rule("사외이사의선임ㆍ해임", "BOARD_CHANGE", 3, List.of("long_term_investors")),
             new Rule("소속부변경", "MATERIAL_EVENT", 3, List.of("traders")),
+            // Round-18e: AGM/EGM outcome filings — 240+ rows sat in
+            // OTHER because only the convocation forms had rules.
+            new Rule("주주총회결과", "SHAREHOLDERS_MEETING", 3, List.of("traders", "long_term_investors")),
+            // Round-18e: related-party umbrella — the specific
+            // higher-importance forms (자금차입/대여, 유상증자참여)
+            // are matched by earlier rules; this catches the long tail
+            // (수익증권거래, 담보수취, 출자 등).
+            new Rule("특수관계인", "RELATED_PARTY_TRANSACTION", 3, List.of("long_term_investors")),
+            new Rule("계열금융회사", "RELATED_PARTY_TRANSACTION", 3, List.of("long_term_investors")),
 
             // --- Routine / low importance (1) ---
+            // Round-18e: the two biggest OTHER buckets by far — annual
+            // governance reports (692 rows) and ESG/sustainability
+            // filings (231 rows). Routine but now properly typed.
+            new Rule("기업지배구조보고서", "CORPORATE_GOVERNANCE_REPORT", 1, List.of("long_term_investors")),
+            new Rule("지속가능경영보고서", "SUSTAINABILITY_REPORT", 1, List.of("long_term_investors")),
             new Rule("연결감사보고서", "AUDIT_REPORT", 1, List.of("long_term_investors")),
             new Rule("감사보고서", "AUDIT_REPORT", 1, List.of("long_term_investors")),
             new Rule("분기보고서", "PERIODIC_REPORT", 1, List.of("long_term_investors")),
@@ -416,6 +462,14 @@ public final class DisclosureClassifier {
             // --- Capital structure (importance 5) — checked late so
             //     the more-specific 주요사항보고서(감자결정) wins above.
             new Rule("주요사항보고서(감자결정)", "CAPITAL_REDUCTION", 5, List.of("traders", "long_term_investors")),
-            new Rule("효력발생안내", "OTHER", 3, List.of("traders"))
+            // Round-18e: DART's shelf-registration effectiveness
+            // notices (900+ rows, one per dated ELS/fund shelf) were
+            // deliberately parked in OTHER — now properly typed at
+            // importance 1 so they stop polluting the OTHER bucket.
+            new Rule("효력발생안내", "SHELF_REGISTRATION_EFFECTIVE", 1, List.of("creditors")),
+            // Round-18e: exchange operations notices (NXT 지정 등).
+            // Checked LAST in the list so the 상장폐지-carrying
+            // 기타시장안내 variants keep matching DELISTING first.
+            new Rule("기타시장안내", "MARKET_NOTICE", 1, List.of("traders"))
     );
 }

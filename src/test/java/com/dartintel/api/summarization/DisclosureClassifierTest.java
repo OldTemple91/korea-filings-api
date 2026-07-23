@@ -66,6 +66,25 @@ class DisclosureClassifierTest {
             타인에대한채무보증결정,                                   DEBT_GUARANTEE,           5
             자산유동화관련중요사항발생등보고서(기타),                  ASSET_BACKED_SECURITIES,  5
             대규모기업집단현황공시[연1회공시및1/4분기용(개별회사)],     CONGLOMERATE_DISCLOSURE,  3
+            # --- round-18e: rules added from the live OTHER bucket ---
+            기업지배구조보고서공시,                                     CORPORATE_GOVERNANCE_REPORT, 1
+            지속가능경영보고서등관련사항(자율공시),                     SUSTAINABILITY_REPORT,    1
+            임시주주총회결과,                                           SHAREHOLDERS_MEETING,     3
+            정기주주총회결과,                                           SHAREHOLDERS_MEETING,     3
+            임원ㆍ주요주주특정증권등거래계획보고서,                     INSIDER_TRADE_PLAN,       5
+            주요사항보고서(자기주식취득신탁계약체결결정),               TREASURY_STOCK_TRUST,     6
+            주요사항보고서(자기주식취득신탁계약해지결정),               TREASURY_STOCK_TRUST,     4
+            신탁계약에의한취득상황보고서,                               TREASURY_STOCK_TRUST,     3
+            신탁계약해지결과보고서,                                     TREASURY_STOCK_TRUST,     3
+            증권발행결과(자율공시),                                     DEBT_ISSUANCE,            5
+            단기차입금증가결정,                                         DEBT_ISSUANCE,            5
+            풍문또는보도에대한해명(미확정),                             RUMOR_CLARIFICATION,      5
+            유상증자결정,                                               RIGHTS_OFFERING,          7
+            타인을위한채무보증결정,                                     DEBT_GUARANTEE,           5
+            특수관계인과의수익증권거래,                                 RELATED_PARTY_TRANSACTION, 3
+            계열금융회사를거래상대방으로한단기금융상품거래의분기별공시, RELATED_PARTY_TRANSACTION, 3
+            효력발생안내( 2026.7.9. 제출 일괄신고서(집합투자증권-신탁형) ), SHELF_REGISTRATION_EFFECTIVE, 1
+            기타시장안내(금일NXT경쟁매매대상종목지정으로인한KRX시간외단일가매매제외종목안내(코스닥시장)), MARKET_NOTICE, 1
             """)
     void knownProductionPatternsClassifyToExpectedShape(
             String reportNm, String expectedEventType, int expectedImportance
@@ -156,7 +175,11 @@ class DisclosureClassifierTest {
             MERGER,                         HIGH
             TREASURY_STOCK_ACQUISITION,     HIGH
             PRELIMINARY_RESULTS,            HIGH
+            TREASURY_STOCK_TRUST,           HIGH
+            INSIDER_TRADE_PLAN,             HIGH
             MAJOR_SHAREHOLDER_FILING,       LOW
+            SHELF_REGISTRATION_EFFECTIVE,   LOW
+            MARKET_NOTICE,                  LOW
             RECORD_DATE_NOTICE,             LOW
             PERIODIC_REPORT,                LOW
             AUDIT_REPORT,                   LOW
@@ -213,7 +236,13 @@ class DisclosureClassifierTest {
                 "주요사항보고서(회사합병결정)", "현금ㆍ현물배당결정", "주주총회소집공고",
                 "대표이사변경", "주권매매거래정지", "주요사항보고서(회생절차개시신청)",
                 "타법인주식및출자증권취득결정", "소송등의제기", "최대주주변경",
-                "사채원리금미지급발생", "타인에대한채무보증결정"
+                "사채원리금미지급발생", "타인에대한채무보증결정",
+                // round-18e
+                "기업지배구조보고서공시", "지속가능경영보고서등관련사항(자율공시)",
+                "임시주주총회결과", "임원ㆍ주요주주특정증권등거래계획보고서",
+                "주요사항보고서(자기주식취득신탁계약체결결정)", "풍문또는보도에대한해명(미확정)",
+                "효력발생안내( 2026.7.9. 제출 일괄신고서(집합투자증권-신탁형) )",
+                "기타시장안내(금일NXT경쟁매매대상종목지정 안내)"
         };
         for (String reportNm : productionReportNames) {
             String eventType = DisclosureClassifier.classify(reportNm, "005930").eventType();
