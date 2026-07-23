@@ -181,6 +181,10 @@ public class RequestAuditFilter extends OncePerRequestFilter {
                 .ip(truncate(rawClientIp(request), 64))
                 .userAgent(truncate(sanitiseOrNull(request.getHeader("User-Agent")), 256))
                 .queryKeys(truncate(rawSortedQueryKeys(request), 512))
+                // Round-18g: launch-channel attribution. Bots and API
+                // clients send no Referer; humans arriving from HN /
+                // GeekNews / blog posts do.
+                .referer(truncate(sanitiseOrNull(request.getHeader("Referer")), 512))
                 .bodyBytes(rawContentLength(request))
                 .contentType(truncate(sanitiseOrNull(request.getContentType()), 128))
                 .hasXPayment(request.getHeader("X-PAYMENT") != null)

@@ -177,6 +177,32 @@ class RequestAuditFilterTest {
         assertThat(row.getUserAgent()).doesNotContain("eyJ4NDAyVmVyc2lvbiI6Mn0=");
     }
 
+    // ---- round-18g: Referer capture for launch-channel attribution ----
+
+    @Test
+    void toRowCapturesRefererHeader() {
+        MockHttpServletRequest req = new MockHttpServletRequest("GET", "/v1/pricing");
+        req.addHeader("Referer", "https://news.ycombinator.com/item?id=49016167");
+
+        RequestAudit row = RequestAuditFilter.toRow(req, 200);
+
+        assertThat(row.getReferer()).isEqualTo("https://news.ycombinator.com/item?id=49016167");
+    }
+
+    @Test
+    void toRowRefererIsNullWhenAbsentAndTruncatedWhenHuge() {
+        MockHttpServletRequest bare = new MockHttpServletRequest("GET", "/v1/pricing");
+        assertThat(RequestAuditFilter.toRow(bare, 200).getReferer()).isNull();
+
+        MockHttpServletRequest huge = new MockHttpServletRequest("GET", "/v1/pricing");
+        huge.addHeader("Referer", "https://example.com/" + "a".repeat(600));
+        // sanitiseOrNull caps header values at 200 chars + "..." before
+        // the column-width truncate ever applies — ample for real
+        // referrers (an HN item URL is ~45 chars); the 512 column is
+        // just headroom.
+        assertThat(RequestAuditFilter.toRow(huge, 200).getReferer()).hasSize(203);
+    }
+
     @Test
     void toRowWithMultipleQueryKeysIsCommaSeparatedSorted() {
         MockHttpServletRequest req = new MockHttpServletRequest("GET", "/v1/disclosures/by-ticker");

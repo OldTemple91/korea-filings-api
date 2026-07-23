@@ -51,6 +51,17 @@ public class RequestAudit {
     @Column(name = "query_keys", length = 512)
     private String queryKeys;
 
+    /**
+     * Round-18g: the {@code Referer} request header. Two months of
+     * traffic forensics ended every inflow question with "referrer is
+     * not captured — attribution is inference from first-touch path";
+     * added ahead of the HN / GeekNews launches so arrival channels
+     * become data instead of guesswork. Null when the client sent no
+     * header (most bots and all direct API calls).
+     */
+    @Column(name = "referer", length = 512)
+    private String referer;
+
     @Column(name = "body_bytes")
     private Long bodyBytes;
 
@@ -75,6 +86,7 @@ public class RequestAudit {
         this.ip = b.ip;
         this.userAgent = b.userAgent;
         this.queryKeys = b.queryKeys;
+        this.referer = b.referer;
         this.bodyBytes = b.bodyBytes;
         this.contentType = b.contentType;
         this.hasXPayment = b.hasXPayment;
@@ -133,6 +145,10 @@ public class RequestAudit {
         return hasPaymentSig;
     }
 
+    public String getReferer() {
+        return referer;
+    }
+
     public static final class Builder {
         private Instant ts = Instant.now();
         private String method;
@@ -141,6 +157,7 @@ public class RequestAudit {
         private String ip;
         private String userAgent;
         private String queryKeys;
+        private String referer;
         private Long bodyBytes;
         private String contentType;
         private boolean hasXPayment;
@@ -153,6 +170,7 @@ public class RequestAudit {
         public Builder ip(String v) { this.ip = v; return this; }
         public Builder userAgent(String v) { this.userAgent = v; return this; }
         public Builder queryKeys(String v) { this.queryKeys = v; return this; }
+        public Builder referer(String v) { this.referer = v; return this; }
         public Builder bodyBytes(Long v) { this.bodyBytes = v; return this; }
         public Builder contentType(String v) { this.contentType = v; return this; }
         public Builder hasXPayment(boolean v) { this.hasXPayment = v; return this; }
