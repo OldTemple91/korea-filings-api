@@ -18,6 +18,25 @@ live, what's next, and the minimum setup to keep moving.
 - **Weeks 1–5 complete.** Ingestion, summarisation, x402 paywall, public
   deployment, landing page, Python SDK, MCP server, OpenAPI docs — all
   live in production at `api.koreafilings.com`.
+- **Round-18e/f — classifier expansion, historical reclassify, and the
+  ticker-hallucination fix (2026-07-23).**
+  (e) 14 new rules + 7 event types lifted from the live OTHER bucket
+  (governance reports, ESG, AGM results, insider trade plans,
+  buyback-trust filings, shelf-effectiveness notices, market notices,
+  rumor responses…). A one-boot `ReclassifyRunner`
+  (`SUMMARY_RECLASSIFY_ENABLED`) re-applied the current rules to all
+  29,824 stubs, updating 3,912 — stub-side OTHER fell 4,799 → 1,024.
+  LLM rows are immutable and untouched. The `BackfillRunner` selection
+  was also repaired (its pre-15c "no summary row" predicate had become
+  a silent no-op) and a one-boot imp≥9 backfill generated 347/347
+  body-aware summaries with zero failures.
+  (f) The first live paid verification call after round-18 (payment_log
+  id 26, Samsung Biologics preliminary results) exposed that
+  `tickerTags` was stored from the LLM's answer — and no LLM knows KRX
+  codes: 3,504 of 6,563 LLM rows (53%) carried a wrong or empty ticker
+  while `disclosure.ticker` held the deterministic value.
+  `SummaryWriter` now always writes the ingestion-resolved ticker; V17
+  repaired the stored corpus (metadata only). Post-repair mismatches: 0.
 - **Round-18b/c — follow-ups from post-deploy live review (2026-07-23).**
   (b) DART also pads `report_nm` in the INTERIOR (before parenthetical
   remarks) — live inspection found 2,012 rows still shipping multi-space
