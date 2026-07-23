@@ -295,8 +295,8 @@ live, what's next, and the minimum setup to keep moving.
   from common crawlers and AI-agent indexers that probe the
   standard discovery paths (covered by the audit categorisation in
   [`docs/ANALYTICS.md`](ANALYTICS.md)).
-- **PyPI packages published** — `koreafilings` 0.3.1 + `koreafilings-mcp` 0.3.0.
-- **npm package published — `koreafilings` 0.1.2** (TypeScript SDK,
+- **PyPI packages published** — `koreafilings` 0.3.3 + `koreafilings-mcp` 0.3.0.
+- **npm package published — `koreafilings` 0.1.4** (TypeScript SDK,
   ESM + CJS, viem 2.21.0 exact pin, KNOWN_DOMAINS allowlist that
   hard-fails on a non-canonical USDC contract, structured
   `PaymentError.detail`, `lastSettlementError` field for
@@ -330,7 +330,7 @@ live, what's next, and the minimum setup to keep moving.
 | Health | https://api.koreafilings.com/actuator/health | Liveness/readiness. |
 | Paid summary | `GET /v1/disclosures/summary?rcptNo=…` | 0.005 USDC on Base mainnet via Coinbase CDP facilitator. |
 | Python SDK | https://pypi.org/project/koreafilings/ | `pip install koreafilings` |
-| TypeScript SDK | https://www.npmjs.com/package/koreafilings | `npm install koreafilings` (currently 0.1.2) |
+| TypeScript SDK | https://www.npmjs.com/package/koreafilings | `npm install koreafilings` (currently 0.1.4) |
 | MCP server | https://pypi.org/project/koreafilings-mcp/ | `uv tool install koreafilings-mcp` |
 | Source | https://github.com/OldTemple91/korea-filings-api | Private push via `OldTemple91`. |
 
@@ -364,7 +364,7 @@ live, what's next, and the minimum setup to keep moving.
    `X-PAYMENT-RESPONSE` accepted as compat). Settle-failure now
    matches the spec (HTTP 402 + failure SettlementResponse in
    `PAYMENT-RESPONSE` + empty body) instead of leaking paid data on
-   facilitator outage. SDK is at 0.3.1 on PyPI, MCP at 0.3.0.
+   facilitator outage. SDK is at 0.3.3 on PyPI, MCP at 0.3.0.
    ROADMAP.md carries the full ship summary.
 
    **v0.4 audit pass (2026-05-04).** Closed 3 P0 + 16 P1 items from
