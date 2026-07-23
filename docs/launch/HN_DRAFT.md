@@ -24,39 +24,27 @@ Show HN: Korea's EDGAR in English, paid per call via x402
 https://koreafilings.com
 ```
 
-**Text field** (HN does NOT render markdown — keep formatting plain):
+**Text field** (4,000-char limit — this block measures 3,802; HN does NOT render markdown, keep plain):
 
 ```
 I built a paywalled API that turns Korean DART (전자공시) corporate disclosures into structured English signals, paid per call in USDC via the x402 protocol (https://www.x402.org/) on Base mainnet.
 
-The agent flow is one free call + one paid call. TypeScript:
+The agent flow is one free call + one paid call:
 
   npm install koreafilings
 
   import { KoreaFilings } from 'koreafilings'
   const c = new KoreaFilings({ privateKey: '0x...', network: 'base' })
-  // Free: name → ticker, 3961 KRX-listed companies, fuzzy
+  // Free: name → ticker, 3,961 KRX-listed companies, fuzzy
   const m = await c.findCompany('Samsung Electronics')
-  // Paid: 0.005 × limit USDC, declared dynamically in the 402
+  // Paid: 0.005 × limit USDC, price declared in the 402
   const f = await c.getRecentFilings(m[0].ticker, 5)
   console.log('paid:', c.lastSettlement?.transaction)
 
-Or Python:
+The Python SDK (pip install koreafilings) has the same surface, and an MCP server (koreafilings-mcp on PyPI) exposes the same five tools to Claude Desktop / Cursor — plug a wallet into the env and ask in English.
 
-  pip install koreafilings
+A real response from a Base mainnet paid call against Samsung Electronics' 2026-Q1 dividend filing (settled on-chain: https://basescan.org/tx/0x5a0403ae18db0394cb6121e6ca26aac75f44f0bb8a5d0db5dab61e84d9995a20):
 
-  from koreafilings import Client
-  with Client(private_key="0x...", network="base") as c:
-      matches = c.find_company("Samsung Electronics")
-      filings = c.get_recent_filings(matches[0].ticker, limit=5)
-      print("paid:", c.last_settlement.tx_hash)
-
-Or via MCP (Claude Desktop / Cursor / Continue) — `uv tool install
-koreafilings-mcp`, plug a wallet into the env, ask in English.
-
-A real response from a Base mainnet paid call against Samsung Electronics' 2026-Q1 dividend filing (settled at https://basescan.org/tx/0x5a0403ae18db0394cb6121e6ca26aac75f44f0bb8a5d0db5dab61e84d9995a20):
-
-  "corpName": "삼성전자",
   "corpNameEn": "SAMSUNG ELECTRONICS CO,.LTD",
   "reportNmEn": "Dividend Decision",
   "summaryEn": "Samsung Electronics decided on a quarterly cash dividend
@@ -66,35 +54,26 @@ A real response from a Base mainnet paid call against Samsung Electronics' 2026-
                 date is March 31, 2026, with payment scheduled for May 29,
                 2026.",
   "importanceScore": 7,
-  "eventType": "DIVIDEND_DECISION",
-  "tickerTags": ["005930"],
-  "actionableFor": ["traders", "long_term_investors"],
-  "sourceUrl": "https://dart.fss.or.kr/dsaf001/main.do?rcpNo=20260430800106"
+  "eventType": "DIVIDEND_DECISION"
 
-Stack: Java 21 / Spring Boot 3.4 / Postgres 16 with pg_trgm fuzzy search / Redis 7 on a Linux VPS behind Cloudflare Tunnel. Gemini 2.5 Flash-Lite for the summarisation, prompted with a 50-row Korean → English filing-type taxonomy + importance anchors; a rule-based classifier types every filing at ingestion so even never-summarised rows carry an eventType and an English filing-type label on the free feed. Resilience4j circuit-breaks the LLM, the DART poller, the document body fetcher, and the facilitator independently.
+Stack: Java 21 / Spring Boot 3.4 / Postgres 16 (pg_trgm fuzzy search) / Redis 7, on a Linux VPS behind Cloudflare Tunnel. Gemini 2.5 Flash-Lite does the summarisation; a rule-based classifier types every filing at ingestion, so even never-summarised rows carry an eventType and an English filing-type label on the free feed. Resilience4j circuit-breaks the LLM, the DART poller, the body fetcher, and the payment facilitator independently.
 
 What's there:
 
 - Live at https://api.koreafilings.com, DART polled every 30s
-- Free company directory ("Samsung" → 005930) with trigram fuzzy search across Korean and English names — the entry point that earlier rcpt_no-only versions of this API didn't give agents
-- Free recent-filings feed (metadata only) so an agent can browse before paying
-- Paid single-summary at 0.005 USDC and paid by-ticker batches at 0.005 × limit USDC, dynamic price declared in the 402 response
-- x402 v2 transport (PAYMENT-REQUIRED header) + bazaar extension declaring input/output schema so agents can autonomously invoke
-- TypeScript SDK (koreafilings 0.1.4 on npm) and Python SDK (koreafilings 0.3.3 on PyPI) — same surface in both languages, ESM + CJS for the TS one
-- MCP server (koreafilings-mcp 0.3.0 on PyPI) — five tools (find_company, list_recent_filings, get_pricing, get_recent_filings, get_disclosure_summary) usable from Claude Desktop / Cursor / Continue
-- OpenAPI at /v3/api-docs, discovery at /.well-known/x402
+- Free: company directory ("Samsung" → 005930, fuzzy across Korean and English names) + recent-filings metadata feed, so an agent can browse before paying
+- Paid: single summary at 0.005 USDC, by-ticker batch at 0.005 × limit, dynamic price declared in the 402 response
+- x402 v2 transport (PAYMENT-REQUIRED header) + bazaar extension declaring input/output schema, so agents can invoke autonomously
+- TypeScript SDK (npm), Python SDK (PyPI), MCP server (PyPI); OpenAPI at /v3/api-docs, discovery at /.well-known/x402
 - Indexed at https://www.x402scan.com/server/46ef920d-18db-4255-8ec1-f7233451bec7
 
-Why: raw DART data is free but in Korean and structured for filing clerks, not LLMs. Per-call x402 means an autonomous agent watching Korea pays cents per signal — no signup, no API key, no monthly minimum, no procurement loop. The pay-per-call delivery model is the wedge; Korean financial data is the surface we ship today, but the same shape applies to any other public-records API behind the kind of subscription paywall agents can't navigate.
+Why: raw DART data is free but in Korean and structured for filing clerks, not LLMs. Per-call x402 means an autonomous agent watching Korea pays cents per signal — no signup, no API key, no monthly minimum. Korean financial data is today's surface, but the same shape applies to any public-records API stuck behind subscriptions agents can't navigate.
 
-Honest scope:
+Honest scope: summaries are body-aware — the first paid call per filing lazily fetches the filing body from DART and caches it, so quantitative events surface concrete amounts, percentages, counterparties, and dates. If DART hasn't finalised a body yet, the model falls back to title-only and says so rather than fabricating numbers. Summaries are paraphrases, and every response links back to the original filing.
 
-- Summaries are body-aware — the model reads the filing body itself (fetched lazily via DART's /document.xml ZIP, parsed and capped at 20,000 chars) so quantitative events surface concrete amounts, dilution percentages, counterparty names, and effective dates. Body fetch is lazy: the first paid call per rcpt_no fetches and caches the body in Postgres, every subsequent call hits the cache. If DART hasn't finalised the body yet (very fresh filings) the LLM falls back to title-only and the response notes the missing detail explicitly rather than fabricating numbers.
-- A future tiered-pricing iteration (event-type clusters, e.g. LOW/STANDARD/HIGH) sits on the roadmap, but the standing 0.005 USDC flat price already covers body-aware summarisation today — the tier change would be triggered by traffic data, not by a depth gap.
+Repo (MIT, Java backend + SDKs + MCP): https://github.com/OldTemple91/korea-filings-api
 
-Repo (MIT, Java backend + Python SDK + Python MCP + landing): https://github.com/OldTemple91/korea-filings-api
-
-Would love feedback on what filing types you'd most want quantitative depth for, what's missing from the agent flow, and whether the per-result pricing in the 402 challenge feels intuitive.
+Would love feedback on what filing types you'd most want quantitative depth for, what's missing from the agent flow, and whether per-result pricing in the 402 challenge feels intuitive.
 ```
 
 ---
