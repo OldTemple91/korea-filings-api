@@ -122,6 +122,14 @@ summary:
     enabled: ${SUMMARY_CONSUMER_ENABLED:false}
   retry:
     enabled: ${SUMMARY_RETRY_ENABLED:false}
+  # Round-18d prepared-not-scheduled backfill: enqueues classifier
+  # stubs (summary_en IS NULL) at or above min-importance, newest
+  # first, on startup. Needs the consumer enabled in the same boot.
+  # See RUNBOOK "Offline backfill" for the trigger procedure.
+  backfill:
+    enabled: ${SUMMARY_BACKFILL_ENABLED:false}
+    max: ${SUMMARY_BACKFILL_MAX:500}
+    min-importance: ${SUMMARY_BACKFILL_MIN_IMPORTANCE:7}
 
 gemini:
   base-url: https://generativelanguage.googleapis.com

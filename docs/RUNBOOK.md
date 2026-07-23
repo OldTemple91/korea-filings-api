@@ -420,6 +420,48 @@ Total time from "VM dead" to "API back up" with a tested backup: ~30 minutes.
 
 ---
 
+## Offline backfill (prepared, not scheduled)
+
+Generates real LLM summaries for classifier stubs (`summary_en IS NULL`)
+ahead of demand. **Off by default — run only on a demand signal** (an
+organic paid call, a launch push): pre-generating freezes the current
+prompt quality into the immutable cache and spends quota with no buyer
+attached.
+
+What runs: `BackfillRunner` (startup task, `summary.backfill.enabled`)
+selects stubs at `importance_score >= min-importance`, newest first,
+and enqueues up to `max` of them; `SummaryJobConsumer`
+(`summary.consumer.enabled`) drains the queue through the same
+`SummaryService.summarize` path the paid lazy flow uses — body fetch,
+Redis single-flight lock, `llm_audit` row, Gemini 10 RPM limiter.
+
+```bash
+# 1. Size the batch first (on the VM):
+docker exec dartintel-postgres psql -U dartintel -d dartintel -c \
+  "SELECT COUNT(*) FROM disclosure_summary WHERE summary_en IS NULL AND importance_score >= 7;"
+
+# 2. Enable for ONE boot — add to .env, then rebuild/restart app:
+#      SUMMARY_BACKFILL_ENABLED=true
+#      SUMMARY_CONSUMER_ENABLED=true
+#      SUMMARY_BACKFILL_MAX=500            # cost ceiling per boot
+#      SUMMARY_BACKFILL_MIN_IMPORTANCE=7   # 7 = RIGHTS_OFFERING/MERGER tier
+docker compose --profile prod up -d app
+
+# 3. Watch progress (one line per generated summary):
+docker logs -f dartintel-app | grep -E "Backfill|summarize|cost="
+
+# 4. When the queue drains, REVERT both env vars and restart —
+#    leaving the consumer on re-opens the eager-pipeline failure mode
+#    that produced the 4/27 circuit-breaker storm.
+```
+
+Cost math (measured): title-only era averaged ~$0.00024/summary;
+body-aware runs ~$0.00035. A 500-item batch ≈ **$0.18, ~50 minutes**
+at the 10 RPM limiter. Verify spend afterwards:
+`SELECT COUNT(*), SUM(cost_usd) FROM llm_audit WHERE created_at > now() - interval '2 hours';`
+
+---
+
 ## Daily / weekly checks
 
 | Cadence | Check | Command |

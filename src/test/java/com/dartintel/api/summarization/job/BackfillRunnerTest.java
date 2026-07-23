@@ -1,6 +1,6 @@
 package com.dartintel.api.summarization.job;
 
-import com.dartintel.api.ingestion.DisclosureRepository;
+import com.dartintel.api.summarization.DisclosureSummaryRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -22,7 +22,7 @@ import static org.mockito.Mockito.when;
 class BackfillRunnerTest {
 
     @Mock
-    DisclosureRepository disclosureRepository;
+    DisclosureSummaryRepository summaryRepository;
 
     @Mock
     SummaryJobQueue queue;
@@ -31,25 +31,26 @@ class BackfillRunnerTest {
 
     @BeforeEach
     void setUp() {
-        runner = new BackfillRunner(disclosureRepository, queue);
+        runner = new BackfillRunner(summaryRepository, queue);
         ReflectionTestUtils.setField(runner, "maxItems", 500);
+        ReflectionTestUtils.setField(runner, "minImportance", 7);
     }
 
     @Test
-    void enqueuesEveryMissingRcptNoReturnedByRepo() {
-        when(disclosureRepository.findRcptNosMissingSummary(PageRequest.of(0, 500)))
-                .thenReturn(List.of("20260424000001", "20260424000002", "20260424000003"));
+    void enqueuesEveryStubReturnedByRepo() {
+        when(summaryRepository.findStubRcptNos(7, PageRequest.of(0, 500)))
+                .thenReturn(List.of("20260722000001", "20260722000002", "20260722000003"));
 
         runner.run(new DefaultApplicationArguments());
 
-        verify(queue).push("20260424000001");
-        verify(queue).push("20260424000002");
-        verify(queue).push("20260424000003");
+        verify(queue).push("20260722000001");
+        verify(queue).push("20260722000002");
+        verify(queue).push("20260722000003");
     }
 
     @Test
     void emptyResultSetIsANoOp() {
-        when(disclosureRepository.findRcptNosMissingSummary(PageRequest.of(0, 500)))
+        when(summaryRepository.findStubRcptNos(7, PageRequest.of(0, 500)))
                 .thenReturn(List.of());
 
         runner.run(new DefaultApplicationArguments());
@@ -58,14 +59,15 @@ class BackfillRunnerTest {
     }
 
     @Test
-    void respectsConfiguredMaxItems() {
+    void respectsConfiguredMaxItemsAndImportanceFloor() {
         ReflectionTestUtils.setField(runner, "maxItems", 42);
-        when(disclosureRepository.findRcptNosMissingSummary(PageRequest.of(0, 42)))
+        ReflectionTestUtils.setField(runner, "minImportance", 5);
+        when(summaryRepository.findStubRcptNos(5, PageRequest.of(0, 42)))
                 .thenReturn(List.of("X"));
 
         runner.run(new DefaultApplicationArguments());
 
-        verify(disclosureRepository).findRcptNosMissingSummary(eq(PageRequest.of(0, 42)));
+        verify(summaryRepository).findStubRcptNos(eq(5), eq(PageRequest.of(0, 42)));
         verify(queue).push("X");
         verify(queue, never()).push("Y");
     }

@@ -33,7 +33,7 @@ curl -i 'https://api.koreafilings.com/v1/disclosures/by-ticker?ticker=005930&lim
 
 - `GET /v1/companies?q={koreanOrEnglishName}` — trigram fuzzy search across 3,961 KRX-listed companies. Returns ticker, corp_code, market.
 - `GET /v1/companies/{ticker}` — direct six-digit ticker lookup.
-- `GET /v1/disclosures/recent?limit={n}&since_hours={h}` — market-wide metadata feed of the most recent DART filings. Every row carries `corpNameEn` (KRX-registered English company name) and `reportNmEn` (English filing-type label) alongside the Korean `corpName` / `reportNm`, so the feed is readable without Korean.
+- `GET /v1/disclosures/recent?limit={n}&since_hours={h}` — market-wide metadata feed of the most recent DART filings. Every row carries `corpNameEn` (KRX-registered English company name) and `reportNmEn` (English filing-type label) alongside the Korean `corpName` / `reportNm`, so the feed is readable without Korean. `sectorTags` appears only after a filing's summary has been LLM-generated (the first paid call, globally) — absent means "not classified yet", not "no sector".
 - `GET /v1/disclosures/sample` — constant sample of the paid response shape (real body-aware Base mainnet response), for SDK / schema verification without paying.
 
 ## Paid endpoints (x402, USDC on Base)

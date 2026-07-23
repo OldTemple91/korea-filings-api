@@ -114,6 +114,15 @@ public record RecentFilingDto(
         return Disclosure.normalizeReportNm(reportNm);
     }
 
+    /** Empty tag list → null so JsonInclude.NON_NULL omits the field —
+     *  "unknown" must not serialise as "known to be none". */
+    private static List<String> emptyToNull(List<String> tags) {
+        if (tags == null || tags.isEmpty()) {
+            return null;
+        }
+        return tags;
+    }
+
     /**
      * Enriched row for a filing whose summary (or classifier stub) is
      * in the cache. The summary text itself is deliberately not
@@ -133,7 +142,12 @@ public record RecentFilingDto(
                 d.getRceptDt(),
                 s.getImportanceScore(),
                 s.getEventType(),
-                s.getSectorTags(),
+                // Round-18d: classifier v1 cannot infer sector (no KRX
+                // sector source), so stub rows carried an empty array —
+                // which reads as "we checked, no sector" when the truth
+                // is "not known until the LLM pass". Omit instead: absent
+                // means unknown; present means the LLM assigned it.
+                emptyToNull(s.getSectorTags()),
                 s.getTickerTags(),
                 s.getActionableFor(),
                 DisclosureSummaryDto.dartViewerUrl(d.getRcptNo()),
