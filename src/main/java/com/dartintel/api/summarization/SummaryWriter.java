@@ -106,8 +106,19 @@ public class SummaryWriter {
      * is inserted with the same shape the pre-15c code wrote.
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void recordSummary(String rcptNo, SummaryEnvelope env) {
+    public void recordSummary(String rcptNo, SummaryEnvelope env, String ticker) {
         SummaryResult r = env.result();
+        // Round-18f: tickerTags is DETERMINISTIC — always the ticker the
+        // ingestion pipeline resolved from DART's corp_code, never the
+        // LLM's guess. The first live paid verification (payment_log
+        // id 26) returned tickerTags ["028260" = Samsung C&T] for a
+        // Samsung Biologics [207940] filing, and a corpus audit found
+        // 3,504 of 6,563 LLM rows (53%) carrying a hallucinated or
+        // empty ticker where the DB knew the right one. V17 repairs
+        // the stored rows; this stops new contamination at the source.
+        List<String> tickerTags = ticker != null && !ticker.isBlank()
+                ? List.of(ticker)
+                : List.of();
         DisclosureSummary existing = summaryRepository.findById(rcptNo).orElse(null);
         if (existing != null) {
             existing.overlayLlmSummary(
@@ -115,7 +126,7 @@ public class SummaryWriter {
                     r.importanceScore(),
                     r.eventType(),
                     nullSafe(r.sectorTags()),
-                    nullSafe(r.tickerTags()),
+                    tickerTags,
                     nullSafe(r.actionableFor()),
                     env.model(),
                     env.inputTokens(),
@@ -132,7 +143,7 @@ public class SummaryWriter {
                 r.importanceScore(),
                 r.eventType(),
                 nullSafe(r.sectorTags()),
-                nullSafe(r.tickerTags()),
+                tickerTags,
                 nullSafe(r.actionableFor()),
                 env.model(),
                 env.inputTokens(),

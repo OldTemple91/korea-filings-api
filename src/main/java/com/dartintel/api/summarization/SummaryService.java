@@ -130,7 +130,7 @@ public class SummaryService {
             // summary-insert failure never erases the record that the
             // LLM provider was paid.
             writer.recordAuditSuccess(rcptNo, env, promptHash);
-            writer.recordSummary(rcptNo, env);
+            writer.recordSummary(rcptNo, env, d.getTicker());
             log.info("summarize: rcpt_no={} cost=${} latency={}ms hasBody={}",
                     rcptNo, env.costUsd(), env.latencyMs(), ctx.hasBody());
         } catch (Exception e) {

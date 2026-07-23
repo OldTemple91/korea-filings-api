@@ -96,7 +96,7 @@ class SummaryServiceTest {
 
         var inOrder = org.mockito.Mockito.inOrder(writer);
         inOrder.verify(writer).recordAuditSuccess(eq("20260423000001"), eq(sampleEnvelope), anyString());
-        inOrder.verify(writer).recordSummary("20260423000001", sampleEnvelope);
+        inOrder.verify(writer).recordSummary(eq("20260423000001"), eq(sampleEnvelope), any());
         verify(writer, never()).recordAuditFailure(anyString(), anyString(), anyString(), anyInt(), anyString());
     }
 
@@ -108,7 +108,7 @@ class SummaryServiceTest {
 
         verifyNoInteractions(llmClient, classifier);
         verify(writer, never()).recordAuditSuccess(anyString(), any(), anyString());
-        verify(writer, never()).recordSummary(anyString(), any());
+        verify(writer, never()).recordSummary(anyString(), any(), any());
         verify(writer, never()).recordAuditFailure(anyString(), anyString(), anyString(), anyInt(), anyString());
     }
 
@@ -121,7 +121,7 @@ class SummaryServiceTest {
 
         verifyNoInteractions(llmClient, classifier);
         verify(writer, never()).recordAuditSuccess(anyString(), any(), anyString());
-        verify(writer, never()).recordSummary(anyString(), any());
+        verify(writer, never()).recordSummary(anyString(), any(), any());
         verify(writer, never()).recordAuditFailure(anyString(), anyString(), anyString(), anyInt(), anyString());
     }
 
@@ -142,7 +142,7 @@ class SummaryServiceTest {
 
         verifyNoInteractions(llmClient, classifier);
         verify(writer, never()).recordAuditSuccess(anyString(), any(), anyString());
-        verify(writer, never()).recordSummary(anyString(), any());
+        verify(writer, never()).recordSummary(anyString(), any(), any());
         verify(writer, never()).recordAuditFailure(anyString(), anyString(), anyString(), anyInt(), anyString());
     }
 
@@ -163,7 +163,7 @@ class SummaryServiceTest {
                 eq("Gemini timeout")
         );
         verify(writer, never()).recordAuditSuccess(anyString(), any(), anyString());
-        verify(writer, never()).recordSummary(anyString(), any());
+        verify(writer, never()).recordSummary(anyString(), any(), any());
     }
 
     @Test
