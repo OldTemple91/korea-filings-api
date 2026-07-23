@@ -10,6 +10,30 @@ and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Nothing pending.
 
+## [0.1.4] — 2026-07-23
+
+### Added
+
+- `Summary` type now declares the server round-18 company-identity
+  fields — `corpName` (Korean, as filed with DART), `corpNameEn`
+  (KRX-registered English name), `reportNm` (canonical DART form
+  name), `reportNmEn` (English filing-type label, e.g.
+  `"Merger Decision"`) — plus the round-17a `sourceUrl` (canonical
+  DART viewer link) and `numericExpectation` (`"HIGH"`/`"LOW"`
+  pre-purchase signal).
+- `RecentFiling` type declares the same identity/17a fields and the
+  round-15b AI-enrichment fields (`importanceScore`, `eventType`,
+  `sectorTags`, `tickerTags`, `actionableFor`) that appear when a
+  filing's summary is already cached server-side.
+
+### Notes
+
+- Runtime behaviour is unchanged — these fields were already passed
+  through at runtime (TS interfaces are compile-time only); the
+  release makes them visible to the type checker and editor
+  completion. All new fields are optional, so code written against
+  0.1.3 keeps compiling.
+
 ## [0.1.3] — 2026-05-06
 
 ### Changed

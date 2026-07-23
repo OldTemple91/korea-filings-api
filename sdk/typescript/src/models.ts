@@ -15,12 +15,24 @@
  */
 export interface Summary {
   rcptNo: string;
+  /** Korean company name as filed with DART (server round-18). */
+  corpName?: string;
+  /** KRX-registered English company name. Absent for unlisted issuers. */
+  corpNameEn?: string;
+  /** Canonical DART form name, Korean (server round-18). */
+  reportNm?: string;
+  /** English filing-type label derived from `eventType`, e.g. "Merger Decision". */
+  reportNmEn?: string;
   summaryEn: string;
   importanceScore: number;
   eventType: string;
   sectorTags: string[];
   tickerTags: string[];
   actionableFor: string[];
+  /** Canonical DART viewer link — audit path to the original filing (round-17a). */
+  sourceUrl?: string;
+  /** "HIGH" | "LOW" — whether this filing class normally carries an extractable number (round-17a). */
+  numericExpectation?: string;
   /** ISO-8601 timestamp string, e.g. "2026-04-24T08:47:51Z". */
   generatedAt: string;
 }
@@ -104,9 +116,23 @@ export interface RecentFiling {
   rcptNo: string;
   ticker?: string;
   corpName: string;
+  /** KRX-registered English company name (server round-18). Absent for unlisted issuers. */
+  corpNameEn?: string;
   reportNm: string;
+  /** English filing-type label, e.g. "Trading Suspension" (server round-18). */
+  reportNmEn?: string;
   /** ISO date string, e.g. "2026-04-24". */
   rceptDt: string;
+  /** AI enrichment — present only when the summary is already cached server-side (round-15b). */
+  importanceScore?: number;
+  eventType?: string;
+  sectorTags?: string[];
+  tickerTags?: string[];
+  actionableFor?: string[];
+  /** Canonical DART viewer link (round-17a). */
+  sourceUrl?: string;
+  /** "HIGH" | "LOW" pre-purchase numeric-content signal (round-17a). */
+  numericExpectation?: string;
 }
 
 /**

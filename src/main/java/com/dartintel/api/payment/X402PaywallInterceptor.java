@@ -500,7 +500,12 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
                         MediaType.APPLICATION_JSON_VALUE),
                 List.of(requirement),
                 Map.of("bazaar", cachedBazaarByMode.computeIfAbsent(
-                        paywall.pricingMode(), m -> buildBazaarExtension(paywall)))
+                        paywall.pricingMode(), m -> buildBazaarExtension(paywall))),
+                // Human escape hatch (round-18b): every observed organic
+                // prospect died at this response with a bare HTTP client.
+                // ~600 bytes; measured headroom vs the 8 KB header limit
+                // is ample (challenge was 2.7 KB before this).
+                PaymentRequirementsBody.HowToPay.standard()
         );
         response.setStatus(HttpStatus.PAYMENT_REQUIRED.value());
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);

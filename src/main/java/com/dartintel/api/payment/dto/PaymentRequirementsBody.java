@@ -28,6 +28,36 @@ public record PaymentRequirementsBody(
         String error,
         ResourceInfo resource,
         List<PaymentRequirement> accepts,
-        Map<String, Object> extensions
+        Map<String, Object> extensions,
+        // Round-18b: plain-language escape hatch for the human developer
+        // who hits the paywall with curl / requests and has no x402
+        // client. Every observed organic prospect (four in July alone)
+        // died at exactly this response with zero retries — the 402 was
+        // written only for machines. Spec-aware clients ignore unknown
+        // fields, so the extra key is harmless to agents.
+        HowToPay howToPay
 ) {
+
+    /** Human-readable pointers from a 402 to a working paid call. */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record HowToPay(
+            String summary,
+            String pythonQuickstart,
+            String typescriptQuickstart,
+            String freeSample,
+            String docs
+    ) {
+        public static HowToPay standard() {
+            return new HowToPay(
+                    "This endpoint is paid per call via the x402 protocol (USDC on Base). "
+                            + "No API key, no signup — a funded wallet and one of the SDKs below "
+                            + "handle the 402 → sign → retry flow automatically.",
+                    "pip install koreafilings  # then: Client(private_key=...).get_summary(rcpt_no)",
+                    "npm install koreafilings  # then: new KoreaFilings({ privateKey }).getSummary(rcptNo)",
+                    "GET https://api.koreafilings.com/v1/disclosures/sample — the exact paid "
+                            + "response shape, free, no wallet needed",
+                    "https://api.koreafilings.com/llms.txt"
+            );
+        }
+    }
 }

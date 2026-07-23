@@ -25,12 +25,25 @@ class Summary(BaseModel):
     model_config = ConfigDict(populate_by_name=True, frozen=True)
 
     rcpt_no: str = Field(alias="rcptNo")
+    # Company identity (server round-18). Korean original + KRX-registered
+    # English name; ``report_nm`` is the canonical DART form name and
+    # ``report_nm_en`` its English filing-type label. Optional so the SDK
+    # stays compatible with older server responses.
+    corp_name: Optional[str] = Field(alias="corpName", default=None)
+    corp_name_en: Optional[str] = Field(alias="corpNameEn", default=None)
+    report_nm: Optional[str] = Field(alias="reportNm", default=None)
+    report_nm_en: Optional[str] = Field(alias="reportNmEn", default=None)
     summary_en: str = Field(alias="summaryEn")
     importance_score: int = Field(alias="importanceScore", ge=1, le=10)
     event_type: str = Field(alias="eventType")
     sector_tags: List[str] = Field(alias="sectorTags", default_factory=list)
     ticker_tags: List[str] = Field(alias="tickerTags", default_factory=list)
     actionable_for: List[str] = Field(alias="actionableFor", default_factory=list)
+    # Server round-17a: canonical DART viewer link (audit path back to
+    # the original filing) and the HIGH/LOW pre-purchase signal for
+    # whether this filing class normally carries an extractable number.
+    source_url: Optional[str] = Field(alias="sourceUrl", default=None)
+    numeric_expectation: Optional[str] = Field(alias="numericExpectation", default=None)
     generated_at: datetime = Field(alias="generatedAt")
 
 
@@ -99,12 +112,21 @@ class Company(BaseModel):
 
 
 class RecentFiling(BaseModel):
-    """Lightweight metadata for a recent DART filing — no AI summary.
+    """Lightweight metadata for a recent DART filing — no AI summary text.
 
     Returned by the free :meth:`Client.list_recent_filings`. Use the
     ``rcpt_no`` to fetch a single summary via :meth:`Client.get_summary`,
     or the ``ticker`` to fetch a batch via
     :meth:`Client.get_recent_filings`.
+
+    The AI enrichment fields (``importance_score``, ``event_type``,
+    ``sector_tags``, ``ticker_tags``, ``actionable_for``) are present
+    only when the filing's summary is already cached server-side
+    (server round-15b) — they cost nothing extra and let an agent
+    rank-order which filings warrant a paid call. ``corp_name_en`` /
+    ``report_nm_en`` (round-18) and ``source_url`` /
+    ``numeric_expectation`` (round-17a) are populated on every row on
+    current servers.
     """
 
     model_config = ConfigDict(populate_by_name=True, frozen=True)
@@ -112,5 +134,14 @@ class RecentFiling(BaseModel):
     rcpt_no: str = Field(alias="rcptNo")
     ticker: Optional[str] = None
     corp_name: str = Field(alias="corpName")
+    corp_name_en: Optional[str] = Field(alias="corpNameEn", default=None)
     report_nm: str = Field(alias="reportNm")
+    report_nm_en: Optional[str] = Field(alias="reportNmEn", default=None)
     rcept_dt: date = Field(alias="rceptDt")
+    importance_score: Optional[int] = Field(alias="importanceScore", default=None, ge=1, le=10)
+    event_type: Optional[str] = Field(alias="eventType", default=None)
+    sector_tags: Optional[List[str]] = Field(alias="sectorTags", default=None)
+    ticker_tags: Optional[List[str]] = Field(alias="tickerTags", default=None)
+    actionable_for: Optional[List[str]] = Field(alias="actionableFor", default=None)
+    source_url: Optional[str] = Field(alias="sourceUrl", default=None)
+    numeric_expectation: Optional[str] = Field(alias="numericExpectation", default=None)

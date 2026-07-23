@@ -103,6 +103,8 @@ public class RequestAuditFilter extends OncePerRequestFilter {
             "/.well-known/x402.json",
             "/.well-known/agent.json",
             "/llms.txt",
+            "/llms-full.txt",
+            "/.well-known/llms.txt",
             // Round-16: the two PAID endpoints. A successful paid call
             // returns GET 200, which the default rule skips — so before
             // round-16 a settled paid call was invisible in

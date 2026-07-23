@@ -53,4 +53,24 @@ public class DiscoveryRootController {
                 .header(HttpHeaders.CACHE_CONTROL, "public, max-age=86400")
                 .build();
     }
+
+    /**
+     * Aliases for the agent quickstart doc. {@code /llms.txt} is the
+     * canonical copy (served from {@code static/}); the llms.txt
+     * convention also defines {@code /llms-full.txt} for the expanded
+     * variant, and some crawlers probe {@code /.well-known/llms.txt}.
+     * Both were observed as live 404s — including one from the most
+     * human-looking organic prospect in the July logs — and our
+     * llms.txt already is the full document, so serving the same bytes
+     * at all three paths closes the gap at zero maintenance cost.
+     */
+    @GetMapping(value = {"/llms-full.txt", "/.well-known/llms.txt"},
+            produces = "text/plain;charset=UTF-8")
+    @SecurityRequirements
+    @Hidden
+    public ResponseEntity<org.springframework.core.io.Resource> llmsTxtAliases() {
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CACHE_CONTROL, "public, max-age=3600")
+                .body(new org.springframework.core.io.ClassPathResource("static/llms.txt"));
+    }
 }

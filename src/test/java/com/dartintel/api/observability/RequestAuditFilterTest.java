@@ -238,6 +238,10 @@ class RequestAuditFilterTest {
                 "/.well-known/x402.json",
                 "/.well-known/agent.json",
                 "/llms.txt",
+                // Round-18b: llms.txt convention aliases (llms-full +
+                // well-known probe path) — same doc, same audit value.
+                "/llms-full.txt",
+                "/.well-known/llms.txt",
                 // Round-16: the paid endpoints, so a settled paid call's
                 // GET 200 is audited (IP / UA / timing), not just the
                 // preceding 402 challenge.
