@@ -170,6 +170,10 @@ Agent → <span class="label">GET /v1/disclosures/by-ticker?ticker=005930&limit=
 <p>One call returns a structured JSON object. The summary is built from the filing body itself, not just the title — quantitative events (rights offerings, supply contracts, debt issuance) come back with the actual amounts, dilution percentages, counterparty names, and effective dates extracted from the Korean source. Two examples below: a light governance event and a quantitative capital-raise event.</p>
 <pre><code>{
   "rcptNo": "20260424900874",
+  "corpName": "글로벌에스엠",
+  "corpNameEn": "Global SM Tech Co.,Ltd.",
+  "reportNm": "주권매매거래정지 (주식병합)",
+  "reportNmEn": "Trading Suspension",
   "summaryEn": "Global SM's stock trading was suspended at
                 09:00 KST on April 24, 2026, pending an updated
                 electronic registration tied to a planned 1-for-2

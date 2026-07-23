@@ -131,11 +131,15 @@ public class DartPollingScheduler {
             var company = companyService.findByCorpCode(filing.corpCode());
             String ticker = company.map(Company::getTicker).orElse(null);
             String corpNameEng = company.map(Company::getNameEn).orElse(null);
-            // DART pads report_nm to a fixed width with trailing spaces;
-            // they leak straight into the JSON payload and break
-            // consumer-side string matching. Trim once and use the same
+            // DART pads report_nm to a fixed width — trailing spaces AND
+            // interior runs before a parenthetical remark, e.g.
+            // "주권매매거래정지              (무상증자)". Both leak into the
+            // JSON payload and break consumer-side string matching, so
+            // collapse any whitespace run to a single space and strip
+            // the ends. Rule matching in DisclosureClassifier is
+            // substring-based and unaffected. Use the same normalised
             // value for persistence and classification.
-            String reportNm = filing.reportNm() == null ? null : filing.reportNm().strip();
+            String reportNm = Disclosure.normalizeReportNm(filing.reportNm());
             disclosureRepository.save(new Disclosure(
                     filing.rcptNo(),
                     filing.corpCode(),

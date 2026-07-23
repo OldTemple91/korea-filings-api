@@ -76,7 +76,7 @@ public record DisclosureSummaryDto(
                 s.getRcptNo(),
                 d == null ? null : d.getCorpName(),
                 d == null ? null : d.getCorpNameEng(),
-                d == null || d.getReportNm() == null ? null : d.getReportNm().strip(),
+                d == null ? null : Disclosure.normalizeReportNm(d.getReportNm()),
                 DisclosureClassifier.eventLabelEn(s.getEventType()),
                 s.getSummaryEn(),
                 s.getImportanceScore(),

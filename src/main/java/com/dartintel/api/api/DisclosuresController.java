@@ -430,7 +430,4 @@ public class DisclosuresController {
                             .build();
                 });
     }
-
-    @SuppressWarnings("unused")
-    private static final Class<?> KEEP_DISCLOSURE_SUMMARY_IMPORT = DisclosureSummary.class;
 }

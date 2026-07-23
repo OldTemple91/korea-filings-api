@@ -120,6 +120,24 @@ public class Disclosure {
         return corpNameEng;
     }
 
+    /**
+     * Collapse DART's fixed-width padding to single spaces — the raw
+     * {@code report_nm} carries trailing spaces AND interior runs
+     * before a parenthetical remark, e.g.
+     * {@code "주권매매거래정지              (무상증자)"}. Both break
+     * consumer-side string matching if leaked into the JSON payload.
+     * Applied at ingestion (round-18); also used defensively by the
+     * response DTOs for rows written before the V16 corpus repair.
+     * Null-safe, substring-rule-safe (the classifier matches keywords,
+     * not exact strings).
+     */
+    public static String normalizeReportNm(String reportNm) {
+        if (reportNm == null) {
+            return null;
+        }
+        return reportNm.strip().replaceAll("\\s+", " ");
+    }
+
     public String getReportNm() {
         return reportNm;
     }

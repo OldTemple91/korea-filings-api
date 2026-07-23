@@ -84,16 +84,23 @@ public record RecentFilingDto(
      * present (it only needs the rcptNo).
      */
     public static RecentFilingDto from(Disclosure d) {
+        // No cached summary row (pre-round-15c ingests only — every
+        // filing since then gets a classifier stub at ingestion). The
+        // classifier is a pure function of reportNm, so run it on the
+        // fly for an accurate English label instead of mislabelling
+        // the row "Other Disclosure". The AI enrichment fields stay
+        // null per the round-15b contract: they appear only when a
+        // cached summary row exists.
+        String eventType = DisclosureClassifier
+                .classify(d.getReportNm(), d.getTicker())
+                .eventType();
         return new RecentFilingDto(
                 d.getRcptNo(),
                 d.getTicker(),
                 d.getCorpName(),
                 d.getCorpNameEng(),
                 trimmed(d.getReportNm()),
-                // No cached classification on this path, so the English
-                // label falls back to the OTHER bucket rather than
-                // claiming an event type we have not determined.
-                DisclosureClassifier.eventLabelEn(null),
+                DisclosureClassifier.eventLabelEn(eventType),
                 d.getRceptDt(),
                 null, null, null, null, null,
                 DisclosureSummaryDto.dartViewerUrl(d.getRcptNo()),
@@ -101,10 +108,10 @@ public record RecentFilingDto(
         );
     }
 
-    /** Defensive trim for rows ingested before round-18 stripped
-     *  DART's fixed-width padding at write time. */
+    /** Defensive normalisation for rows ingested before round-18
+     *  collapsed DART's fixed-width padding at write time. */
     private static String trimmed(String reportNm) {
-        return reportNm == null ? null : reportNm.strip();
+        return Disclosure.normalizeReportNm(reportNm);
     }
 
     /**
