@@ -46,7 +46,19 @@ public record RecentFilingDto(
         String rcptNo,
         String ticker,
         String corpName,
+        // ---- Round-18 English surface ----
+        // corpNameEn: the KRX-registered English company name,
+        //   denormalised at ingestion from company.name_en (100%
+        //   populated for listed filers; null for the fund / ELS
+        //   issuers that carry no ticker either).
+        // reportNmEn: English label for the filing type, derived from
+        //   the classified eventType. A category label, not a literal
+        //   translation of reportNm — deterministic, zero LLM cost.
+        // The Korean corpName / reportNm stay as the canonical DART
+        // values so nothing is lost for consumers that want them.
+        String corpNameEn,
         String reportNm,
+        String reportNmEn,
         LocalDate rceptDt,
         // ---- AI-derived fields, populated only when a cached summary
         // exists. Mirrors DisclosureSummaryDto for shape consistency,
@@ -76,12 +88,23 @@ public record RecentFilingDto(
                 d.getRcptNo(),
                 d.getTicker(),
                 d.getCorpName(),
-                d.getReportNm(),
+                d.getCorpNameEng(),
+                trimmed(d.getReportNm()),
+                // No cached classification on this path, so the English
+                // label falls back to the OTHER bucket rather than
+                // claiming an event type we have not determined.
+                DisclosureClassifier.eventLabelEn(null),
                 d.getRceptDt(),
                 null, null, null, null, null,
                 DisclosureSummaryDto.dartViewerUrl(d.getRcptNo()),
                 null
         );
+    }
+
+    /** Defensive trim for rows ingested before round-18 stripped
+     *  DART's fixed-width padding at write time. */
+    private static String trimmed(String reportNm) {
+        return reportNm == null ? null : reportNm.strip();
     }
 
     /**
@@ -97,7 +120,9 @@ public record RecentFilingDto(
                 d.getRcptNo(),
                 d.getTicker(),
                 d.getCorpName(),
-                d.getReportNm(),
+                d.getCorpNameEng(),
+                trimmed(d.getReportNm()),
+                DisclosureClassifier.eventLabelEn(s.getEventType()),
                 d.getRceptDt(),
                 s.getImportanceScore(),
                 s.getEventType(),

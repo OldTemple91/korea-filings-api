@@ -1,4 +1,4 @@
-# STATUS — where we left off (2026-06-16, post-round-17a)
+# STATUS — where we left off (2026-07-23, post-round-18)
 
 Read this first when picking up on a different machine. Summarises what is
 live, what's next, and the minimum setup to keep moving.
@@ -18,6 +18,32 @@ live, what's next, and the minimum setup to keep moving.
 - **Weeks 1–5 complete.** Ingestion, summarisation, x402 paywall, public
   deployment, landing page, Python SDK, MCP server, OpenAPI docs — all
   live in production at `api.koreafilings.com`.
+- **Round-18 — the API answers in English (2026-07-23).** A response
+  audit found the product was shipping Korean on the surfaces that
+  matter most to an English-consuming agent. Three defects, all fixed
+  without any LLM spend:
+  (1) `disclosure.corp_name_eng` had existed since V1 but was written
+  NULL on every row, because DART's `/list.json` carries only the
+  Korean `corp_name`. The free `/recent` feed therefore described each
+  filing in Korean, and — separately — the Gemini prompt had been
+  receiving the literal string `"n/a"` for the English company name on
+  every summary ever generated. Ingestion now denormalises
+  `company.name_en` (populated for 100% of the KRX directory) off the
+  same lookup that already resolves the ticker, so both the payload
+  and future prompts get the real English name.
+  (2) The paid `/summary` and `/by-ticker` payloads carried no company
+  name at all — only `rcptNo` and `tickerTags` — so a buyer received an
+  English summary plus a six-digit number and had to make a second call
+  to learn which company it concerned. Paid rows now carry `corpName`,
+  `corpNameEn`, `reportNm`, and `reportNmEn`.
+  (3) DART pads `report_nm` to a fixed width; the trailing spaces
+  leaked into the JSON and broke consumer-side string matching. Trimmed
+  at ingestion, with `V15` repairing the existing corpus.
+  `reportNmEn` is a deterministic English label derived from the
+  rule-classified `eventType` (54 event types mapped) — a category
+  label, not a literal translation, so it costs nothing and cannot
+  hallucinate. The Korean values stay in the payload as the canonical
+  DART originals.
 - **Round-17a — response trust-gate + free pre-purchase signal (live, 2026-06-16).**
   Came out of a parallel buyer-worthiness investigation (real paid
   responses scored 2.6/10 by a 5-persona panel; the two structural

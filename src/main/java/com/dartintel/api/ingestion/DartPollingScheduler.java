@@ -1,5 +1,6 @@
 package com.dartintel.api.ingestion;
 
+import com.dartintel.api.company.Company;
 import com.dartintel.api.company.CompanyService;
 import com.dartintel.api.summarization.DisclosureClassifier;
 import com.dartintel.api.summarization.DisclosureSummary;
@@ -112,19 +113,35 @@ public class DartPollingScheduler {
                 continue;
             }
             LocalDate filingDate = LocalDate.parse(filing.rceptDt(), YYYYMMDD);
-            // Resolve the corp_code → ticker mapping at ingestion time so
-            // by-ticker queries don't need a join. Returns null for
-            // unlisted filers (delisted, foreign, non-corp) — the
-            // by-ticker endpoint then transparently filters them out.
-            String ticker = companyService.findByCorpCode(filing.corpCode())
-                    .map(c -> c.getTicker())
-                    .orElse(null);
+            // Resolve the corp_code → company mapping at ingestion time
+            // so by-ticker queries don't need a join. Absent for
+            // unlisted filers (delisted, foreign, non-corp, and the
+            // fund / ELS issuers that make up ~34% of DART volume) —
+            // the by-ticker endpoint then transparently filters them out.
+            //
+            // Round-18: the same lookup now also denormalises the
+            // English company name. DART's /list.json carries only the
+            // Korean corp_name, so corp_name_eng sat NULL on every row
+            // — which meant (a) the API answered in Korean on an
+            // English-first product, and (b) the Gemini prompt received
+            // the literal string "n/a" for the English name on every
+            // summary it ever generated. company.name_en is populated
+            // for 100% of the KRX directory, so one extra field off the
+            // already-fetched row fixes both.
+            var company = companyService.findByCorpCode(filing.corpCode());
+            String ticker = company.map(Company::getTicker).orElse(null);
+            String corpNameEng = company.map(Company::getNameEn).orElse(null);
+            // DART pads report_nm to a fixed width with trailing spaces;
+            // they leak straight into the JSON payload and break
+            // consumer-side string matching. Trim once and use the same
+            // value for persistence and classification.
+            String reportNm = filing.reportNm() == null ? null : filing.reportNm().strip();
             disclosureRepository.save(new Disclosure(
                     filing.rcptNo(),
                     filing.corpCode(),
                     filing.corpName(),
-                    null,
-                    filing.reportNm(),
+                    corpNameEng,
+                    reportNm,
                     filing.flrNm(),
                     filingDate,
                     filing.rm(),
@@ -143,7 +160,7 @@ public class DartPollingScheduler {
             // synchronous inside the paid request, still
             // settlement-on-2xx.
             DisclosureClassifier.Classification classification =
-                    DisclosureClassifier.classify(filing.reportNm(), ticker);
+                    DisclosureClassifier.classify(reportNm, ticker);
             summaryRepository.save(
                     DisclosureSummary.fromClassification(filing.rcptNo(), classification));
             newCount++;

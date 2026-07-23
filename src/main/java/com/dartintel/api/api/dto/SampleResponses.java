@@ -55,6 +55,10 @@ public final class SampleResponses {
     public static DisclosureSummaryDto sampleSummary() {
         return new DisclosureSummaryDto(
                 SAMPLE_RCPT_NO,
+                "삼성전자",
+                "SAMSUNG ELECTRONICS CO,.LTD",
+                "현금ㆍ현물배당결정",
+                "Dividend Decision",
                 "Samsung Electronics decided on a quarterly cash dividend of " +
                         "KRW 372 per common share and KRW 372 per preferred share, " +
                         "totaling KRW 2,453,315,636,604. The dividend yield is 0.2% " +

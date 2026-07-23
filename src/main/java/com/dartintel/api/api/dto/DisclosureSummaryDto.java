@@ -1,5 +1,6 @@
 package com.dartintel.api.api.dto;
 
+import com.dartintel.api.ingestion.Disclosure;
 import com.dartintel.api.summarization.DisclosureClassifier;
 import com.dartintel.api.summarization.DisclosureSummary;
 import com.fasterxml.jackson.annotation.JsonInclude;
@@ -31,6 +32,21 @@ import java.util.List;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record DisclosureSummaryDto(
         String rcptNo,
+        // ---- Round-18 identity fields ----
+        // The paid payload previously identified the filing only by
+        // rcptNo + tickerTags, so a buyer received an English summary
+        // and a six-digit number with no company name anywhere in the
+        // structured response — they had to call /v1/companies to find
+        // out who the filing was even about. corpNameEn is the
+        // KRX-registered English name; corpName keeps the Korean
+        // original; reportNmEn is the English filing-type label.
+        // Null-safe: filings from issuers outside the KRX directory
+        // (funds, ELS/SPC vehicles) have no English name, and
+        // JsonInclude.NON_NULL omits the field rather than shipping null.
+        String corpName,
+        String corpNameEn,
+        String reportNm,
+        String reportNmEn,
         String summaryEn,
         int importanceScore,
         String eventType,
@@ -47,9 +63,21 @@ public record DisclosureSummaryDto(
         return "https://dart.fss.or.kr/dsaf001/main.do?rcpNo=" + rcptNo;
     }
 
-    public static DisclosureSummaryDto from(DisclosureSummary s) {
+    /**
+     * Full paid projection. Pass the {@link Disclosure} the summary
+     * belongs to so the response carries the company identity in both
+     * languages plus the English filing-type label — round-18. A null
+     * {@code d} degrades to the summary-only shape rather than failing,
+     * so a missing metadata row can never break a paid response the
+     * caller has already been charged for.
+     */
+    public static DisclosureSummaryDto from(DisclosureSummary s, Disclosure d) {
         return new DisclosureSummaryDto(
                 s.getRcptNo(),
+                d == null ? null : d.getCorpName(),
+                d == null ? null : d.getCorpNameEng(),
+                d == null || d.getReportNm() == null ? null : d.getReportNm().strip(),
+                DisclosureClassifier.eventLabelEn(s.getEventType()),
                 s.getSummaryEn(),
                 s.getImportanceScore(),
                 s.getEventType(),

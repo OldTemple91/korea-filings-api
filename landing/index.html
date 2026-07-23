@@ -148,12 +148,12 @@ Agent → <span class="label">GET /v1/companies?q=Samsung+Electronics</span><br>
        ← <span class="arrow">200 OK</span> &nbsp; { matches: [{ ticker: "005930", nameKr: "삼성전자", ... }] }<br>
 <br>
 <span style="color:var(--text);">2. Fetch recent filings for that ticker (paid)</span><br>
-Agent → <span class="label">GET /v1/disclosures/by-ticker?ticker=005930&amp;limit=5</span><br>
+Agent → <span class="label">GET /v1/disclosures/by-ticker?ticker=005930&limit=5</span><br>
        ← <span class="arrow">402 Payment Required</span> &nbsp; { amount: 25000, asset: USDC, payTo: 0x8467…, ... }<br>
 <br>
 Sign the EIP-3009 authorisation with your wallet (0.005 × limit USDC)<br>
 <br>
-Agent → <span class="label">GET /v1/disclosures/by-ticker?ticker=005930&amp;limit=5</span><br>
+Agent → <span class="label">GET /v1/disclosures/by-ticker?ticker=005930&limit=5</span><br>
        &nbsp;&nbsp;&nbsp;&nbsp;<span class="arrow">PAYMENT-SIGNATURE: &lt;base64 signed payload&gt;</span><br>
        ← <span class="arrow">200 OK</span> + PAYMENT-RESPONSE (settlement tx hash)<br>
        ← &nbsp;&nbsp;[ { summaryEn, importanceScore, eventType, ... }, &times; 5 ]
@@ -163,7 +163,7 @@ Agent → <span class="label">GET /v1/disclosures/by-ticker?ticker=005930&amp;li
   The <a href="https://x402.org">x402 protocol</a> routes the payment through Coinbase's facilitator, which validates your signature on-chain and settles USDC in a single transaction. The server never holds your private key. You never hold an API key. Every call is audited on-chain.
 </p>
 <p>
-  The price for batched endpoints is <strong>declared dynamically</strong> in the 402 response — for <code>by-ticker?ticker=…&amp;limit=N</code>, the server signs <code>0.005 × N</code> USDC into the challenge, so an agent always sees the exact charge before authorising the wallet. Direct receipt-number lookup at <code>/v1/disclosures/summary?rcptNo=…</code> stays at a flat 0.005 USDC.
+  The price for batched endpoints is <strong>declared dynamically</strong> in the 402 response — for <code>by-ticker?ticker=…&limit=N</code>, the server signs <code>0.005 × N</code> USDC into the challenge, so an agent always sees the exact charge before authorising the wallet. Direct receipt-number lookup at <code>/v1/disclosures/summary?rcptNo=…</code> stays at a flat 0.005 USDC.
 </p>
 
 <h2>What you get</h2>
@@ -187,6 +187,10 @@ Agent → <span class="label">GET /v1/disclosures/by-ticker?ticker=005930&amp;li
 <p style="font-size:0.9em;color:var(--meta);margin-top:1.2em;">A quantitative event &mdash; <a href="https://dart.fss.or.kr/dsaf001/main.do?rcpNo=20260430800106" rel="noopener">Samsung Electronics dividend decision</a>, returned verbatim from a live Base&nbsp;mainnet paid call (settled <a href="https://basescan.org/tx/0x5a0403ae18db0394cb6121e6ca26aac75f44f0bb8a5d0db5dab61e84d9995a20" rel="noopener">on-chain</a>):</p>
 <pre><code>{
   "rcptNo": "20260430800106",
+  "corpName": "삼성전자",
+  "corpNameEn": "SAMSUNG ELECTRONICS CO,.LTD",
+  "reportNm": "현금ㆍ현물배당결정",
+  "reportNmEn": "Dividend Decision",
   "summaryEn": "Samsung Electronics decided on a quarterly
                 cash dividend of KRW 372 per common share and
                 KRW 372 per preferred share, totaling
@@ -220,7 +224,7 @@ Agent → <span class="label">GET /v1/disclosures/by-ticker?ticker=005930&amp;li
   </thead>
   <tbody id="pricing-rows">
     <tr>
-      <td class="mono">/v1/disclosures/by-ticker?ticker=…&amp;limit=N</td>
+      <td class="mono">/v1/disclosures/by-ticker?ticker=…&limit=N</td>
       <td class="mono">GET</td>
       <td class="price">0.005 × N</td>
     </tr>
@@ -241,7 +245,7 @@ Agent → <span class="label">GET /v1/disclosures/by-ticker?ticker=005930&amp;li
 <pre><code>curl 'https://api.koreafilings.com/v1/companies?q=Samsung+Electronics'</code></pre>
 
 <p>Inspect the 402 challenge for a paid endpoint:</p>
-<pre><code>curl -i 'https://api.koreafilings.com/v1/disclosures/by-ticker?ticker=005930&amp;limit=3'
+<pre><code>curl -i 'https://api.koreafilings.com/v1/disclosures/by-ticker?ticker=005930&limit=3'
 #   HTTP/2 402
 #   payment-required: &lt;base64 PaymentRequired payload, declares amount = 15000 (0.015 USDC)&gt;</code></pre>
 

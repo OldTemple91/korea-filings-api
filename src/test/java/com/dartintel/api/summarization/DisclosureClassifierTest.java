@@ -173,6 +173,56 @@ class DisclosureClassifierTest {
         assertThat(DisclosureClassifier.numericExpectation(null)).isEqualTo("LOW");
     }
 
+    // ---- round-18: English filing-type label ----
+
+    @ParameterizedTest
+    @CsvSource(textBlock = """
+            # eventType,                 expectedLabel
+            MERGER,                      Merger Decision
+            RIGHTS_OFFERING,             Rights Offering (Paid-in Capital Increase)
+            TRADING_SUSPENSION,          Trading Suspension
+            DIVIDEND_DECISION,           Dividend Decision
+            MAJOR_SHAREHOLDER_FILING,    Major Shareholder Ownership Report
+            CONGLOMERATE_DISCLOSURE,     Large Business Group Disclosure
+            OTHER,                       Other Disclosure
+            """)
+    void eventLabelEnRendersFilingTypeInEnglish(String eventType, String expectedLabel) {
+        assertThat(DisclosureClassifier.eventLabelEn(eventType)).isEqualTo(expectedLabel);
+    }
+
+    @Test
+    void eventLabelEnFallsBackForNullAndUnknownEventTypes() {
+        // Every row must carry an English description — an unmapped or
+        // absent eventType degrades to the OTHER label rather than null,
+        // so an English-only consumer never sees an empty field.
+        assertThat(DisclosureClassifier.eventLabelEn(null)).isEqualTo("Other Disclosure");
+        assertThat(DisclosureClassifier.eventLabelEn("NOT_A_REAL_EVENT_TYPE"))
+                .isEqualTo("Other Disclosure");
+    }
+
+    @Test
+    void everyClassifiableEventTypeHasAnEnglishLabel() {
+        // Guards the map against drift: adding a rule to RULES without
+        // a matching label would silently ship "Other Disclosure" for a
+        // known event type. Drives every report_nm in the production
+        // sample above through the classifier and asserts a specific
+        // label came back.
+        String[] productionReportNames = {
+                "연결감사보고서 (2025.12)", "분기보고서 (2026.03)", "증권발행실적보고서",
+                "기업설명회(IR)개최(안내공시)", "단일판매ㆍ공급계약체결", "주요사항보고서(유상증자결정)",
+                "주요사항보고서(회사합병결정)", "현금ㆍ현물배당결정", "주주총회소집공고",
+                "대표이사변경", "주권매매거래정지", "주요사항보고서(회생절차개시신청)",
+                "타법인주식및출자증권취득결정", "소송등의제기", "최대주주변경",
+                "사채원리금미지급발생", "타인에대한채무보증결정"
+        };
+        for (String reportNm : productionReportNames) {
+            String eventType = DisclosureClassifier.classify(reportNm, "005930").eventType();
+            assertThat(DisclosureClassifier.eventLabelEn(eventType))
+                    .as("English label for eventType %s (from '%s')", eventType, reportNm)
+                    .isNotEqualTo("Other Disclosure");
+        }
+    }
+
     @Test
     void mergerOutscoresAcquisitionWhenBothKeywordsAppear() {
         // Some merger filings also contain the substring "취득" —

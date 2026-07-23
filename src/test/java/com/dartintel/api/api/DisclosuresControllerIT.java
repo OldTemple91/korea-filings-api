@@ -125,9 +125,12 @@ class DisclosuresControllerIT {
         paymentLogRepository.deleteAll();
         summaryRepository.deleteAll();
         disclosureRepository.deleteAll();
+        // Round-18: corpNameEng is populated (as ingestion now does) and
+        // reportNm carries DART's fixed-width trailing padding, so the
+        // English-surface and trim assertions exercise real shapes.
         disclosureRepository.save(new Disclosure(
-                "20260423000001", "00126380", "삼성전자", null,
-                "주요사항보고서(유상증자결정)", "삼성전자",
+                "20260423000001", "00126380", "삼성전자", "SAMSUNG ELECTRONICS CO,.LTD",
+                "주요사항보고서(유상증자결정)              ", "삼성전자",
                 LocalDate.of(2026, 4, 23), "유", "005930"
         ));
         summaryRepository.save(new DisclosureSummary(
@@ -400,6 +403,54 @@ class DisclosuresControllerIT {
                                 "https://dart.fss.or.kr/dsaf001/main.do?rcpNo=20260423000001")))
                 .andExpect(jsonPath("$.filings[?(@.rcptNo == '20260423000001')].numericExpectation")
                         .value(org.hamcrest.Matchers.hasItem("HIGH")));
+    }
+
+    /**
+     * Round-18: the FREE feed answers in English. An agent browsing
+     * /recent to decide what to buy previously saw only the Korean
+     * company name and the Korean DART form name — on a product whose
+     * whole premise is English-readable Korean market data.
+     */
+    @Test
+    void recentFeedCarriesEnglishCompanyNameAndFilingLabel() throws Exception {
+        mockMvc.perform(get("/v1/disclosures/recent?limit=10&since_hours=168"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.filings[?(@.rcptNo == '20260423000001')].corpNameEn")
+                        .value(org.hamcrest.Matchers.hasItem("SAMSUNG ELECTRONICS CO,.LTD")))
+                .andExpect(jsonPath("$.filings[?(@.rcptNo == '20260423000001')].reportNmEn")
+                        .value(org.hamcrest.Matchers.hasItem("Rights Offering (Paid-in Capital Increase)")))
+                // Korean canonical values stay available…
+                .andExpect(jsonPath("$.filings[?(@.rcptNo == '20260423000001')].corpName")
+                        .value(org.hamcrest.Matchers.hasItem("삼성전자")))
+                // …but DART's fixed-width padding is stripped.
+                .andExpect(jsonPath("$.filings[?(@.rcptNo == '20260423000001')].reportNm")
+                        .value(org.hamcrest.Matchers.hasItem("주요사항보고서(유상증자결정)")));
+    }
+
+    /**
+     * Round-18: the PAID response identifies the company. Before this,
+     * a buyer received an English summary plus a six-digit ticker and
+     * had to make a second call to learn which company the filing was
+     * even about.
+     */
+    @Test
+    void paidSummaryCarriesCompanyIdentityInEnglish() throws Exception {
+        wireMock.stubFor(post(urlPathEqualTo("/verify"))
+                .willReturn(aResponse().withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"isValid\":true,\"payer\":\"0x857b06519E91e3A54538791bDbb0E22373e36b66\"}")));
+        wireMock.stubFor(post(urlPathEqualTo("/settle"))
+                .willReturn(aResponse().withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"success\":true,\"transaction\":\"0xE18\",\"network\":\"eip155:84532\",\"payer\":\"0x857\"}")));
+
+        mockMvc.perform(get("/v1/disclosures/summary?rcptNo=20260423000001")
+                        .header("PAYMENT-SIGNATURE", validPaymentPayloadBase64("sig-18-identity")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.corpNameEn").value("SAMSUNG ELECTRONICS CO,.LTD"))
+                .andExpect(jsonPath("$.corpName").value("삼성전자"))
+                .andExpect(jsonPath("$.reportNmEn").value("Rights Offering (Paid-in Capital Increase)"))
+                .andExpect(jsonPath("$.reportNm").value("주요사항보고서(유상증자결정)"));
     }
 
     /**

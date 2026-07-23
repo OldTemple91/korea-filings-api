@@ -97,6 +97,94 @@ public final class DisclosureClassifier {
         return eventType != null && HIGH_NUMERIC_EXPECTATION.contains(eventType) ? "HIGH" : "LOW";
     }
 
+    /**
+     * English label for every {@code eventType} the rules can assign.
+     *
+     * <p>Round-18 — why this exists: DART publishes {@code report_nm}
+     * only in Korean, and until now the free {@code /recent} feed
+     * shipped that Korean string as the sole description of what a
+     * filing is. The product promise is machine-readable English
+     * Korean-market intelligence, so an English-consuming agent
+     * browsing the free feed to decide what to buy was reading
+     * Korean — the one surface where that is most costly.
+     *
+     * <p>These are category labels derived from the classified
+     * eventType, NOT literal translations of the specific
+     * {@code report_nm}. That is deliberate: a rule-based mapping is
+     * deterministic, costs nothing, and cannot hallucinate, whereas
+     * machine-translating each title would add LLM spend to a free
+     * endpoint. The Korean {@code reportNm} stays in the payload as
+     * the canonical DART form name, so nothing is lost.
+     */
+    private static final java.util.Map<String, String> EVENT_LABEL_EN = java.util.Map.ofEntries(
+            java.util.Map.entry("ACQUISITION", "Acquisition of Shares / Equity Investment"),
+            java.util.Map.entry("AMENDMENT", "Amendment to a Prior Filing"),
+            java.util.Map.entry("ASSET_BACKED_SECURITIES", "Asset-Backed Securities Notice"),
+            java.util.Map.entry("ASSET_DISPOSAL", "Asset Disposal Decision"),
+            java.util.Map.entry("AUDIT_REPORT", "Audit Report"),
+            java.util.Map.entry("BANKRUPTCY", "Bankruptcy / Rehabilitation Proceeding"),
+            java.util.Map.entry("BOARD_CHANGE", "Board of Directors Change"),
+            java.util.Map.entry("BOND_DEFAULT", "Bond Principal or Interest Default"),
+            java.util.Map.entry("BOND_REDEMPTION", "Bond Redemption"),
+            java.util.Map.entry("BONUS_ISSUANCE", "Bonus Share Issuance"),
+            java.util.Map.entry("BUSINESS_TRANSFER", "Business Transfer"),
+            java.util.Map.entry("CAPITAL_REDUCTION", "Capital Reduction"),
+            java.util.Map.entry("CEO_CHANGE", "CEO Change"),
+            java.util.Map.entry("CONGLOMERATE_DISCLOSURE", "Large Business Group Disclosure"),
+            java.util.Map.entry("CONTROL_CHANGE", "Change of Largest Shareholder"),
+            java.util.Map.entry("CONTROL_CHANGE_PLEDGE", "Share Pledge Entailing Control Change"),
+            java.util.Map.entry("CONVERSION_PRICE_ADJUSTMENT", "Conversion Price Adjustment"),
+            java.util.Map.entry("CONVERTIBLE_BOND_CONVERSION", "Conversion or Exchange Right Exercised"),
+            java.util.Map.entry("CONVERTIBLE_BOND_ISSUANCE", "Convertible Bond Issuance"),
+            java.util.Map.entry("DEBT_DEFAULT", "Debt Default"),
+            java.util.Map.entry("DEBT_GUARANTEE", "Debt Guarantee for a Third Party"),
+            java.util.Map.entry("DEBT_ISSUANCE", "Debt Securities Issuance"),
+            java.util.Map.entry("DELISTING", "Delisting"),
+            java.util.Map.entry("DIVIDEND_DECISION", "Dividend Decision"),
+            java.util.Map.entry("EARNINGS_PREVIEW", "Earnings Announcement Notice"),
+            java.util.Map.entry("IR_EVENT", "Investor Relations Event"),
+            java.util.Map.entry("LITIGATION", "Litigation"),
+            java.util.Map.entry("MAJOR_SHAREHOLDER_FILING", "Major Shareholder Ownership Report"),
+            java.util.Map.entry("MAJOR_SHAREHOLDER_TRANSACTION", "Major Shareholder Share Transaction"),
+            java.util.Map.entry("MATERIAL_EVENT", "Material Event Report"),
+            java.util.Map.entry("MERGER", "Merger Decision"),
+            java.util.Map.entry("OTHER", "Other Disclosure"),
+            java.util.Map.entry("PERIODIC_REPORT", "Periodic Report"),
+            java.util.Map.entry("PRELIMINARY_RESULTS", "Preliminary Operating Results"),
+            java.util.Map.entry("PROSPECTUS_FILING", "Securities Prospectus Filing"),
+            java.util.Map.entry("PUBLIC_TENDER_OFFER_RESULT", "Tender Offer Result"),
+            java.util.Map.entry("RECORD_DATE_NOTICE", "Record Date / Shareholder Register Closure"),
+            java.util.Map.entry("RELATED_PARTY_TRANSACTION", "Related-Party Transaction"),
+            java.util.Map.entry("RIGHTS_OFFERING", "Rights Offering (Paid-in Capital Increase)"),
+            java.util.Map.entry("SHAREHOLDERS_MEETING", "Shareholders' Meeting"),
+            java.util.Map.entry("SHARE_PLEDGE", "Share Pledge Agreement"),
+            java.util.Map.entry("SPIN_OFF", "Spin-off / Corporate Division"),
+            java.util.Map.entry("STOCK_CONSOLIDATION", "Stock Consolidation (Reverse Split)"),
+            java.util.Map.entry("STOCK_OPTION_EXERCISE", "Stock Option Exercise"),
+            java.util.Map.entry("STOCK_OPTION_GRANT", "Stock Option Grant"),
+            java.util.Map.entry("STOCK_SPLIT", "Stock Split"),
+            java.util.Map.entry("SUPPLY_CONTRACT_SIGNED", "Supply Contract Signed"),
+            java.util.Map.entry("SUPPLY_CONTRACT_TERMINATED", "Supply Contract Terminated"),
+            java.util.Map.entry("TRADING_RESUMPTION", "Trading Resumption"),
+            java.util.Map.entry("TRADING_SUSPENSION", "Trading Suspension"),
+            java.util.Map.entry("TREASURY_STOCK_ACQUISITION", "Treasury Stock Acquisition"),
+            java.util.Map.entry("TREASURY_STOCK_CANCELLATION", "Treasury Stock Cancellation"),
+            java.util.Map.entry("TREASURY_STOCK_DISPOSAL", "Treasury Stock Disposal"),
+            java.util.Map.entry("WARRANT_BOND_ISSUANCE", "Bond with Warrant Issuance")
+    );
+
+    /** English label for an event type, e.g. {@code MERGER} →
+     *  {@code "Merger Decision"}. Falls back to the label for
+     *  {@link #FALLBACK_EVENT_TYPE} so every row carries an English
+     *  description even when the classifier could not match a rule.
+     *  Pure function — no DB, no LLM. */
+    public static String eventLabelEn(String eventType) {
+        if (eventType == null) {
+            return EVENT_LABEL_EN.get(FALLBACK_EVENT_TYPE);
+        }
+        return EVENT_LABEL_EN.getOrDefault(eventType, EVENT_LABEL_EN.get(FALLBACK_EVENT_TYPE));
+    }
+
     /** Default importance when no rule matches. Falls right in the
      *  middle of the 1–10 scale — neither hiding nor over-promoting
      *  unknown filings. */

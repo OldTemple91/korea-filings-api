@@ -274,13 +274,18 @@ public class DisclosuresController {
                         .ifPresent(s -> byRcptNo.put(d.getRcptNo(), s));
             }
         }
+        // Round-18: iterate the Disclosure (not the summary) so each paid
+        // row can carry the company identity — Korean + English name and
+        // the English filing-type label — instead of shipping a bare
+        // six-digit ticker the buyer has to resolve in a second call.
         List<DisclosureSummaryDto> summaries = recent.stream()
-                .map(d -> byRcptNo.get(d.getRcptNo()))
-                .filter(java.util.Objects::nonNull)
                 // Never deliver a classifier stub on a paid call — only
                 // rows that actually carry the LLM English summary.
-                .filter(DisclosureSummary::hasLlmSummary)
-                .map(DisclosureSummaryDto::from)
+                .filter(d -> {
+                    DisclosureSummary s = byRcptNo.get(d.getRcptNo());
+                    return s != null && s.hasLlmSummary();
+                })
+                .map(d -> DisclosureSummaryDto.from(byRcptNo.get(d.getRcptNo()), d))
                 .toList();
         // Guardrail: filings we had on file but could not serve a real
         // LLM summary for (generation failure, or — pre-round-16 — a
@@ -367,10 +372,17 @@ public class DisclosuresController {
         // always present; a bare isPresent() check used to short-circuit
         // and return the stub with a null summaryEn — the customer paid
         // for an empty summary. A stub must fall through to generation.
+        // Round-18: the metadata row is now loaded on the cache-hit path
+        // too, because the paid response carries the company identity
+        // (Korean + English name, English filing-type label). One extra
+        // primary-key lookup on an already-paid request; the alternative
+        // was shipping a summary that never names the company.
+        Optional<Disclosure> disclosure = disclosureRepository.findById(rcptNo);
         Optional<DisclosureSummary> cached = summaryRepository.findById(rcptNo)
                 .filter(DisclosureSummary::hasLlmSummary);
         if (cached.isPresent()) {
-            return ResponseEntity.ok(DisclosureSummaryDto.from(cached.get()));
+            return ResponseEntity.ok(
+                    DisclosureSummaryDto.from(cached.get(), disclosure.orElse(null)));
         }
 
         // Cache miss — first paid call for this rcpt_no globally.
@@ -379,7 +391,7 @@ public class DisclosuresController {
         // fail anyway — and 404 is the right shape here regardless of
         // whether the rcpt_no is actually valid at DART (caller used
         // a stale or bogus number).
-        if (disclosureRepository.findById(rcptNo).isEmpty()) {
+        if (disclosure.isEmpty()) {
             return ResponseEntity.notFound().build();
         }
 
@@ -405,7 +417,7 @@ public class DisclosuresController {
         // charged for an empty product.
         return summaryRepository.findById(rcptNo)
                 .filter(DisclosureSummary::hasLlmSummary)
-                .map(DisclosureSummaryDto::from)
+                .map(s -> DisclosureSummaryDto.from(s, disclosure.get()))
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> {
                     // Generation failed (audit_failure row written by

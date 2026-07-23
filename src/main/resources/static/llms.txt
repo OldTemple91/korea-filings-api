@@ -33,7 +33,7 @@ curl -i 'https://api.koreafilings.com/v1/disclosures/by-ticker?ticker=005930&lim
 
 - `GET /v1/companies?q={koreanOrEnglishName}` — trigram fuzzy search across 3,961 KRX-listed companies. Returns ticker, corp_code, market.
 - `GET /v1/companies/{ticker}` — direct six-digit ticker lookup.
-- `GET /v1/disclosures/recent?limit={n}&since_hours={h}` — market-wide metadata feed of the most recent DART filings.
+- `GET /v1/disclosures/recent?limit={n}&since_hours={h}` — market-wide metadata feed of the most recent DART filings. Every row carries `corpNameEn` (KRX-registered English company name) and `reportNmEn` (English filing-type label) alongside the Korean `corpName` / `reportNm`, so the feed is readable without Korean.
 - `GET /v1/disclosures/sample` — constant sample of the paid response shape (real body-aware Base mainnet response), for SDK / schema verification without paying.
 
 ## Paid endpoints (x402, USDC on Base)
@@ -69,6 +69,6 @@ curl -i 'https://api.koreafilings.com/v1/disclosures/by-ticker?ticker=005930&lim
 ## What this service is not
 
 - Not a real-time feed; refresh follows the DART portal's cadence (~30 second polling).
-- Not a verbatim translation. Summaries are paraphrased English to reduce copyright risk and improve agent consumption.
+- Not a verbatim translation. Summaries are paraphrased English to reduce copyright risk and improve agent consumption. Company names and filing-type labels are English; `corpName` / `reportNm` retain the Korean originals as filed with DART.
 - Not a substitute for the original disclosure; every summary links back to the DART original URL.
 - Not a Korean retail investor product — there is no UI, no Korean-language frontend, no signup, no API key. Payment IS the authentication.
