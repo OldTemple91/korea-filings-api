@@ -109,6 +109,13 @@ services:
       X402_TOKEN_NAME: ${X402_TOKEN_NAME:-USDC}
       X402_TOKEN_VERSION: ${X402_TOKEN_VERSION:-2}
       SUMMARY_BACKFILL_ENABLED: ${SUMMARY_BACKFILL_ENABLED:-false}
+      # Round-18d: the enumerated env list silently dropped the rest of
+      # the backfill knobs — the runner booted with defaults (7/500) and
+      # the consumer never started because its flag was not passed
+      # through. All four backfill/consumer vars must travel together.
+      SUMMARY_CONSUMER_ENABLED: ${SUMMARY_CONSUMER_ENABLED:-false}
+      SUMMARY_BACKFILL_MAX: ${SUMMARY_BACKFILL_MAX:-500}
+      SUMMARY_BACKFILL_MIN_IMPORTANCE: ${SUMMARY_BACKFILL_MIN_IMPORTANCE:-7}
       # Audit log toggle for the RequestAuditFilter — see
       # src/main/java/com/dartintel/api/observability/RequestAuditFilter.java.
       # Off in dev/tests; flip to true in prod to capture
