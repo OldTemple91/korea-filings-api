@@ -210,6 +210,33 @@ public class DisclosureSummary {
         return summaryEn != null && !summaryEn.isBlank();
     }
 
+    /**
+     * Round-18e reclassification: re-apply the current rule set to a
+     * classifier stub whose classification was frozen at ingestion
+     * time under an older rule set. STUBS ONLY — a row carrying an
+     * LLM summary is immutable product and is left untouched (returns
+     * {@code false}). Also returns {@code false} when the fresh
+     * classification matches what is already stored, so callers can
+     * persist only the rows that actually changed.
+     */
+    public boolean applyReclassification(DisclosureClassifier.Classification c) {
+        if (hasLlmSummary()) {
+            return false;
+        }
+        boolean changed = importanceScore != c.importanceScore()
+                || !Objects.equals(eventType, c.eventType())
+                || !Objects.equals(tickerTags, c.tickerTags())
+                || !Objects.equals(actionableFor, c.actionableFor());
+        if (!changed) {
+            return false;
+        }
+        this.importanceScore = c.importanceScore();
+        this.eventType = c.eventType();
+        this.tickerTags = c.tickerTags();
+        this.actionableFor = c.actionableFor();
+        return true;
+    }
+
     public String getRcptNo() {
         return rcptNo;
     }

@@ -116,6 +116,7 @@ services:
       SUMMARY_CONSUMER_ENABLED: ${SUMMARY_CONSUMER_ENABLED:-false}
       SUMMARY_BACKFILL_MAX: ${SUMMARY_BACKFILL_MAX:-500}
       SUMMARY_BACKFILL_MIN_IMPORTANCE: ${SUMMARY_BACKFILL_MIN_IMPORTANCE:-7}
+      SUMMARY_RECLASSIFY_ENABLED: ${SUMMARY_RECLASSIFY_ENABLED:-false}
       # Audit log toggle for the RequestAuditFilter — see
       # src/main/java/com/dartintel/api/observability/RequestAuditFilter.java.
       # Off in dev/tests; flip to true in prod to capture

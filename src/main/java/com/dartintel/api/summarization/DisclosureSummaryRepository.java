@@ -29,4 +29,12 @@ public interface DisclosureSummaryRepository extends JpaRepository<DisclosureSum
             ORDER BY s.rcptNo DESC
             """)
     List<String> findStubRcptNos(@Param("minImportance") int minImportance, Pageable pageable);
+
+    /**
+     * One page of classifier stubs for the round-18e reclassification
+     * sweep. Ordered by id so offset paging is stable — reclassified
+     * rows keep {@code summary_en IS NULL} and therefore keep matching
+     * the predicate, so pages never shift mid-sweep.
+     */
+    List<DisclosureSummary> findBySummaryEnIsNullOrderByRcptNo(Pageable pageable);
 }

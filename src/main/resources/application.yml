@@ -130,6 +130,10 @@ summary:
     enabled: ${SUMMARY_BACKFILL_ENABLED:false}
     max: ${SUMMARY_BACKFILL_MAX:500}
     min-importance: ${SUMMARY_BACKFILL_MIN_IMPORTANCE:7}
+  # Round-18e one-boot sweep: re-apply the current classifier rules to
+  # every stub (summary_en IS NULL). Pure function, no LLM cost.
+  reclassify:
+    enabled: ${SUMMARY_RECLASSIFY_ENABLED:false}
 
 gemini:
   base-url: https://generativelanguage.googleapis.com
