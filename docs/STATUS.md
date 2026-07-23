@@ -18,6 +18,21 @@ live, what's next, and the minimum setup to keep moving.
 - **Weeks 1–5 complete.** Ingestion, summarisation, x402 paywall, public
   deployment, landing page, Python SDK, MCP server, OpenAPI docs — all
   live in production at `api.koreafilings.com`.
+- **Round-18b/c — follow-ups from post-deploy live review (2026-07-23).**
+  (b) DART also pads `report_nm` in the INTERIOR (before parenthetical
+  remarks) — live inspection found 2,012 rows still shipping multi-space
+  runs after V15; `Disclosure.normalizeReportNm` collapses all runs,
+  V16 repaired the corpus. Uncached `/recent` rows now run the
+  pure-function classifier on the fly for `reportNmEn` instead of
+  mislabelling "Other Disclosure".
+  (c) The 402 challenge now carries a `howToPay` block (SDK
+  quickstarts, free `/sample` pointer, docs link) — every organic
+  prospect observed in July died at the machine-only 402 with zero
+  retries. `/llms-full.txt` and `/.well-known/llms.txt` serve the
+  canonical llms.txt (both were live 404s). SDK models caught up with
+  the round-15b/17a/18 wire fields that typed models were silently
+  dropping: Python 0.3.3 on PyPI; TypeScript 0.1.4 built and
+  changelogged, npm publish pending a fresh token.
 - **Round-18 — the API answers in English (2026-07-23).** A response
   audit found the product was shipping Korean on the surfaces that
   matter most to an English-consuming agent. Three defects, all fixed
