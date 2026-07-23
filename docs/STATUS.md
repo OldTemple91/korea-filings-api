@@ -31,8 +31,7 @@ live, what's next, and the minimum setup to keep moving.
   retries. `/llms-full.txt` and `/.well-known/llms.txt` serve the
   canonical llms.txt (both were live 404s). SDK models caught up with
   the round-15b/17a/18 wire fields that typed models were silently
-  dropping: Python 0.3.3 on PyPI; TypeScript 0.1.4 built and
-  changelogged, npm publish pending a fresh token.
+  dropping: Python 0.3.3 on PyPI; TypeScript 0.1.4 on npm.
 - **Round-18 — the API answers in English (2026-07-23).** A response
   audit found the product was shipping Korean on the surfaces that
   matter most to an English-consuming agent. Three defects, all fixed
