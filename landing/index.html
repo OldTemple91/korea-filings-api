@@ -3,13 +3,66 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Korea Filings — Search Korean disclosures by name, pay per call in USDC</title>
-<meta name="description" content="x402-paid HTTP API for Korean DART corporate disclosures. Pay 0.005 USDC per summary on Base, no API key, no signup. Built for autonomous AI agents and indie agent builders.">
-<meta property="og:title" content="Korea Filings">
+<!-- Brand name leads the title so "Korea Filings" / "koreafilings"
+     brand queries match on the strongest signal Google has. -->
+<title>Korea Filings — Korean DART disclosures in English, pay-per-call API</title>
+<meta name="description" content="Korea Filings turns Korean DART corporate disclosures into AI-summarized English signals. Free company search across 3,961 KRX-listed companies; paid summaries at 0.005 USDC per call via x402 on Base. No API key, no signup.">
+<link rel="canonical" href="https://koreafilings.com/">
+<meta name="robots" content="index,follow,max-snippet:-1,max-image-preview:large">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Korea Filings">
+<meta property="og:title" content="Korea Filings — Korean DART disclosures in English">
 <meta property="og:description" content="Search Korean corporate disclosures by name. AI-summarized in English, paid per call in USDC via x402.">
-<meta property="og:url" content="https://koreafilings.com">
+<meta property="og:url" content="https://koreafilings.com/">
+<meta property="og:image" content="https://koreafilings.com/korea-filings-logo.png">
 <meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Korea Filings — Korean DART disclosures in English">
+<meta name="twitter:description" content="Search Korean corporate disclosures by name. AI-summarized in English, paid per call in USDC via x402.">
+<meta name="twitter:image" content="https://koreafilings.com/korea-filings-logo.png">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%97%86%3C/text%3E%3C/svg%3E">
+<!-- Structured data: teaches Google that "Korea Filings" is the brand
+     name of this site (Organization + WebSite), and what the product
+     is (the API + its price). Brand-name queries are the realistic
+     near-term ranking target; generic "korean filings" competes with
+     DART/SEC and is a much longer game. -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": "https://koreafilings.com/#organization",
+      "name": "Korea Filings",
+      "alternateName": ["koreafilings", "Korea Filings API"],
+      "url": "https://koreafilings.com/",
+      "logo": "https://koreafilings.com/korea-filings-logo.png",
+      "sameAs": ["https://github.com/OldTemple91/korea-filings-api"]
+    },
+    {
+      "@type": "WebSite",
+      "@id": "https://koreafilings.com/#website",
+      "name": "Korea Filings",
+      "url": "https://koreafilings.com/",
+      "publisher": { "@id": "https://koreafilings.com/#organization" },
+      "inLanguage": "en"
+    },
+    {
+      "@type": "WebAPI",
+      "name": "Korea Filings API",
+      "url": "https://api.koreafilings.com/",
+      "documentation": "https://api.koreafilings.com/llms.txt",
+      "description": "HTTP API returning AI-generated English summaries of Korean DART corporate disclosures, priced per call in USDC via the x402 protocol on Base.",
+      "provider": { "@id": "https://koreafilings.com/#organization" },
+      "offers": {
+        "@type": "Offer",
+        "price": "0.005",
+        "priceCurrency": "USDC",
+        "description": "Per paid API call (0.005 USDC per filing summary)."
+      }
+    }
+  ]
+}
+</script>
 <style>
   :root {
     --bg: #0a0a0a;

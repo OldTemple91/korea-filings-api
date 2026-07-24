@@ -1,0 +1,14 @@
+# Korea Filings — landing site robots.txt
+#
+# The landing page is public marketing copy: crawl all of it. The API
+# host (api.koreafilings.com) serves its own robots.txt with the
+# stricter rules that keep crawlers off the paid endpoints.
+#
+# Replaces Cloudflare's default content-signals file, which carried no
+# Sitemap directive — the reason Google had nothing to discover here
+# beyond the root page.
+
+User-agent: *
+Allow: /
+
+Sitemap: https://koreafilings.com/sitemap.xml

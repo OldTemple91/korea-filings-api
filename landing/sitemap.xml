@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Korea Filings landing sitemap.
+
+  The landing site is a single page; its job here is to give Google an
+  explicit, crawlable entry point plus the cross-link to the API host's
+  own discovery surfaces (which have their own sitemap at
+  https://api.koreafilings.com/sitemap.xml). Submitted via Google
+  Search Console under the koreafilings.com domain property, which
+  covers both hosts.
+-->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://koreafilings.com/</loc>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>https://api.koreafilings.com/llms.txt</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://api.koreafilings.com/v1/pricing</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+</urlset>
