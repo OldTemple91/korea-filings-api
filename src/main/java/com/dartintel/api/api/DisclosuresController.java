@@ -71,33 +71,47 @@ public class DisclosuresController {
     @GetMapping("/recent")
     @SecurityRequirements // unauthenticated, no payment required
     @Operation(
-            summary = "List recent DART filings (metadata, free; AI classification when cached)",
+            summary = "Free English feed of recent DART filings (optionally one ticker)",
             description = """
-                    Returns the most-recent DART filings across every listed
-                    Korean company. Always free, always metadata-only — the
-                    paraphrased English summary still requires the paid
-                    `/v1/disclosures/summary` or `/v1/disclosures/by-ticker`
-                    call.
+                    A free, wallet-free English view of what Korean listed
+                    companies just filed. Every row carries the English
+                    company name (`corpNameEn`), an English filing-type label
+                    (`reportNmEn`), the canonical event type, an importance
+                    score (1–10), a `numericExpectation` flag for whether the
+                    filing class normally contains hard numbers, and
+                    `sourceUrl` — the link to the original DART document.
 
-                    When a filing's summary has already been generated and
-                    cached (which happens lazily on the first paid call,
-                    globally), the row also carries the AI-derived
-                    classification fields — `importanceScore` (1–10),
-                    `eventType`, `sectorTags`, `tickerTags`, `actionableFor` —
-                    so an agent can rank-order which filings warrant a paid
-                    summary without first paying for any. Filings that have
-                    not yet been summarised omit those fields entirely.
+                    Pass `ticker` to watch a single company; omit it for the
+                    market-wide feed. Either way this endpoint never charges
+                    and never requires a wallet.
+
+                    What stays paid is the *explanation*: the paraphrased
+                    English summary of what a filing actually says lives
+                    behind `/v1/disclosures/summary` (0.005 USDC) and
+                    `/v1/disclosures/by-ticker` (0.005 × limit). Use this feed
+                    to decide which filings are worth that.
                     """
     )
     public ResponseEntity<RecentFilingsResponse> getRecent(
             @Parameter(description = "Max filings to return (1-100, default 20).")
             @RequestParam(value = "limit", defaultValue = "20") @Min(1) @Max(100) int limit,
             @Parameter(description = "Look back this many hours (1-168, default 24).")
-            @RequestParam(value = "since_hours", defaultValue = "24") @Min(1) @Max(168) int sinceHours
+            @RequestParam(value = "since_hours", defaultValue = "24") @Min(1) @Max(168) int sinceHours,
+            @Parameter(description = "Optional six-digit KRX ticker to watch a single company, "
+                    + "e.g. `005930`. Omit for the market-wide feed. Resolve a name to a ticker "
+                    + "with the free `/v1/companies?q=<name>`.", example = "005930")
+            @RequestParam(value = "ticker", required = false)
+            @Pattern(regexp = "^[0-9A-Z]{6,7}$",
+                    message = "ticker must be 6–7 alphanumeric characters (KRX SPAC tickers can include letters)")
+            String ticker
     ) {
         Instant threshold = Instant.now().minus(sinceHours, ChronoUnit.HOURS);
-        List<Disclosure> recent = disclosureRepository
-                .findRecentSince(threshold, PageRequest.of(0, limit));
+        // Round-19: the ticker filter is free on purpose. The paid
+        // product is the summary text, not the fact that a filing
+        // exists — see DisclosureRepository.findRecentSinceForTicker.
+        List<Disclosure> recent = (ticker == null || ticker.isBlank())
+                ? disclosureRepository.findRecentSince(threshold, PageRequest.of(0, limit))
+                : disclosureRepository.findRecentSinceForTicker(ticker, threshold, PageRequest.of(0, limit));
         // Single bulk lookup against the summary cache, same pattern as
         // /by-ticker. Read-only — never triggers an LLM call. Filings
         // without a cached summary just stay un-enriched; the response

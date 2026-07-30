@@ -406,6 +406,38 @@ class DisclosuresControllerIT {
     }
 
     /**
+     * Round-19: watching one company is free. The paid product is the
+     * summary text, not the knowledge that a filing exists — gating the
+     * ticker filter behind a wallet made the free tier a prerequisite
+     * for buying rather than something usable on its own.
+     */
+    @Test
+    void recentFeedFiltersByTickerWithoutPayment() throws Exception {
+        disclosureRepository.save(new Disclosure(
+                "20260423000009", "00164742", "에스케이하이닉스", "SK hynix Inc.",
+                "주요사항보고서(자기주식취득결정)", "에스케이하이닉스",
+                LocalDate.of(2026, 4, 23), "유", "000660"
+        ));
+
+        // when & then — no PAYMENT-SIGNATURE header anywhere
+        mockMvc.perform(get("/v1/disclosures/recent?limit=10&since_hours=168&ticker=000660"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.filings[?(@.rcptNo == '20260423000009')].corpNameEn")
+                        .value(org.hamcrest.Matchers.hasItem("SK hynix Inc.")))
+                // The other seeded company must be filtered out.
+                .andExpect(jsonPath("$.filings[?(@.rcptNo == '20260423000001')]")
+                        .isEmpty())
+                // Summary text stays paid even on a ticker-filtered feed.
+                .andExpect(jsonPath("$.filings[0].summaryEn").doesNotExist());
+    }
+
+    @Test
+    void recentFeedRejectsMalformedTicker() throws Exception {
+        mockMvc.perform(get("/v1/disclosures/recent?ticker=NOT-A-TICKER"))
+                .andExpect(status().isBadRequest());
+    }
+
+    /**
      * Round-18: the FREE feed answers in English. An agent browsing
      * /recent to decide what to buy previously saw only the Korean
      * company name and the Korean DART form name — on a product whose

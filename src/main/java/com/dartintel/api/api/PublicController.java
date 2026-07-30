@@ -132,20 +132,25 @@ public class PublicController {
                 "Trigram fuzzy search across KRX-listed companies. " +
                         "Returns ticker + corp_code, free.");
         freeEndpoints.put(
-                "GET /v1/disclosures/recent?limit={n}&since_hours={h}",
-                "Market-wide metadata feed of the most recent DART filings. " +
-                        "Use to discover rcptNo values without paying.");
+                "GET /v1/disclosures/recent?limit={n}&since_hours={h}&ticker={ticker}",
+                "English filing feed — market-wide, or one company when ticker is " +
+                        "given. Carries English company name and filing type, event " +
+                        "type, importance score, numeric expectation and the DART " +
+                        "source link. Free, no wallet.");
         return new PricingResponse.Workflow(
                 List.of(
-                        "1. (free) Resolve a Korean company name to a ticker via " +
-                                "GET /v1/companies?q={name}.",
-                        "2. (paid) Get summaries for that ticker via " +
-                                "GET /v1/disclosures/by-ticker?ticker={ticker}&limit={n}. " +
-                                "Costs 0.005 USDC × n.",
-                        "3. (paid, optional) Re-fetch a single summary by receipt " +
-                                "number via GET /v1/disclosures/summary?rcptNo={rcptNo}. " +
-                                "Costs 0.005 USDC. The receipt number is in the response " +
-                                "of step 2 or in the free /v1/disclosures/recent feed."
+                        "1. (free) Browse the English filing feed via " +
+                                "GET /v1/disclosures/recent?limit={n} — English filing " +
+                                "types, importance scores and DART source links. No wallet.",
+                        "2. (free) Watch one company by adding &ticker={ticker}, or " +
+                                "resolve a Korean company name to a ticker first via " +
+                                "GET /v1/companies?q={name}. Still free.",
+                        "3. (paid) When a filing warrants an explanation, get the " +
+                                "English summary via GET /v1/disclosures/summary?rcptNo={rcptNo} " +
+                                "for 0.005 USDC. The receipt number comes from the free feed.",
+                        "4. (paid, optional) Summarise a company's latest filings in one " +
+                                "call via GET /v1/disclosures/by-ticker?ticker={ticker}&limit={n}. " +
+                                "Costs 0.005 USDC × n."
                 ),
                 freeEndpoints
         );

@@ -49,4 +49,27 @@ public interface DisclosureRepository extends JpaRepository<Disclosure, String> 
             ORDER BY d.createdAt DESC, d.rcptNo DESC
             """)
     List<Disclosure> findRecentSince(@Param("since") Instant since, Pageable pageable);
+
+    /**
+     * Round-19: the same free feed narrowed to one ticker, so an agent
+     * can watch a single company without paying. The paid product is
+     * the English summary text, not the knowledge that a filing exists
+     * — gating "did anything happen at 005930?" behind a wallet made
+     * the free tier a prerequisite for buying rather than something
+     * usable on its own.
+     *
+     * <p>Uses the same {@code createdAt} watermark as
+     * {@link #findRecentSince} (ingestion time, not DART's filing date)
+     * so the two paths agree on what "recent" means; {@code rcept_dt}
+     * is date-only and would bucket a whole day together.
+     */
+    @Query("""
+            SELECT d FROM Disclosure d
+            WHERE d.ticker = :ticker
+              AND d.createdAt >= :since
+            ORDER BY d.createdAt DESC, d.rcptNo DESC
+            """)
+    List<Disclosure> findRecentSinceForTicker(@Param("ticker") String ticker,
+                                              @Param("since") Instant since,
+                                              Pageable pageable);
 }

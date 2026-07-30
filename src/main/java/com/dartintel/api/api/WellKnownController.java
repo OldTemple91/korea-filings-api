@@ -49,11 +49,18 @@ public class WellKnownController {
 
     private static final String PUBLIC_BASE_URL = "https://api.koreafilings.com";
     private static final String SERVICE_NAME = "Korea Filings";
+    // Round-19: catalogs and indexers surface this string verbatim, so
+    // it leads with what a caller can do WITHOUT a wallet. The previous
+    // wording ("free … for discovery, paid … for content") framed the
+    // free tier as a prerequisite for buying rather than something
+    // usable on its own, which matched the observed funnel: steady
+    // discovery-doc reads, near-zero free product calls.
     private static final String SERVICE_DESCRIPTION =
-            "Search Korean DART (전자공시) corporate disclosures by name " +
-            "and pay per call in USDC via x402 on Base. Free company " +
-            "directory + recent feed for discovery, paid AI-summarised " +
-            "English filings for content.";
+            "Free English feed of Korean DART (전자공시) corporate " +
+            "disclosures — browse the market or watch one ticker, with " +
+            "English filing types, importance scores and links to the " +
+            "DART original, no wallet required. Paid AI summaries " +
+            "(0.005 USDC via x402 on Base) explain what a filing says.";
     private static final String SERVICE_HOMEPAGE = "https://koreafilings.com";
     private static final String SERVICE_REPOSITORY =
             "https://github.com/OldTemple91/korea-filings-api";
@@ -286,9 +293,10 @@ public class WellKnownController {
         body.put("awp_version", "0.2");
         body.put("domain", "api.koreafilings.com");
         body.put("intent",
-                "Pay-per-call API for AI-summarised Korean DART corporate disclosures. " +
-                "Free company directory + recent feed for discovery; paid summaries " +
-                "for content via x402 (USDC on Base mainnet).");
+                "Free English feed of Korean DART corporate disclosures — market-wide " +
+                "or filtered to one ticker, with English filing types, importance " +
+                "scores and DART source links, no wallet required. Paid AI summaries " +
+                "explain a specific filing via x402 (USDC on Base mainnet).");
         // Free actions first so a cold-start agent reads the cheap
         // discovery path before the paid ones — same ordering as the
         // /v1/pricing workflow steps.

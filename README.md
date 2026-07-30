@@ -6,11 +6,15 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![x402](https://img.shields.io/badge/payments-x402-orange.svg)](https://www.x402.org/)
 
-An [x402](https://www.x402.org/)-paid HTTP API that turns Korean
-corporate disclosures (DART · 전자공시) into machine-ready English
-summaries — pay 0.005 USDC per summary over Base, no API key, no
-signup. Built for **autonomous AI agents and indie agent builders**
-who need diverse data sources and prefer pay-per-call to subscriptions.
+An HTTP API that turns Korean corporate disclosures (DART · 전자공시)
+into machine-ready English. **The filing feed is free** — browse the
+market or watch a single ticker and get English company names, English
+filing types, importance scores and links to the DART original, with no
+wallet, no API key and no signup. **Paid calls buy the explanation**: an
+AI summary of what a specific filing actually says, 0.005 USDC over Base
+via [x402](https://www.x402.org/). Built for **autonomous AI agents and
+indie agent builders** who need diverse data sources and prefer
+pay-per-call to subscriptions.
 
 Korean financial data is the surface we ship today, but the value
 propositions that drive adoption are pay-per-call instead of monthly

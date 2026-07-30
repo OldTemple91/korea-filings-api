@@ -101,9 +101,13 @@ class PublicControllerIT {
                 .andExpect(jsonPath("$.paymentHeaders.accepted[*]").value(
                         org.hamcrest.Matchers.hasItem("X-PAYMENT")))
                 .andExpect(jsonPath("$.paymentHeaders.settlement").value("PAYMENT-RESPONSE"))
-                // Workflow block must list at least three steps (free → paid → optional re-fetch).
+                // Workflow block must list at least three steps, and must open
+                // on a free one — round-19 repositioned the free feed as usable
+                // on its own rather than a prerequisite for buying.
                 .andExpect(jsonPath("$.workflow.steps.length()").value(
                         org.hamcrest.Matchers.greaterThanOrEqualTo(3)))
+                .andExpect(jsonPath("$.workflow.steps[0]").value(
+                        org.hamcrest.Matchers.containsString("(free)")))
                 // Required params: by-ticker must declare ticker as required.
                 .andExpect(jsonPath(
                         "$.endpoints[?(@.path == '/v1/disclosures/by-ticker')].requiredParams[?(@.name == 'ticker')].required")

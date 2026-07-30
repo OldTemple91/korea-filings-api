@@ -1,12 +1,20 @@
 # Korea Filings
 
-> Pay-per-call API for AI-summarised Korean DART corporate disclosures. Free company directory + recent feed for discovery; paid summaries for content via x402 (USDC on Base mainnet).
+> Free English feed of Korean DART corporate disclosures — every filing typed, importance-scored, and linked back to the DART original, no wallet and no signup. Paid AI summaries (0.005 USDC via x402 on Base mainnet) when you need a filing explained rather than listed.
 
-The intended agent flow is two calls: a free name → ticker resolution, then a paid `get_recent_filings(ticker, limit)`. Direct receipt-number lookup is also supported for callers that already have a 14-digit DART rcpt_no.
+Two tiers, and the free one is usable on its own: browse or watch a company for free, pay only for the paraphrased English summary of a specific filing.
 
-## Quickstart (60 seconds, no wallet for the free path)
+## Quickstart (60 seconds, no wallet needed)
 
 ```
+# (free) What did Korean listed companies just file?
+curl 'https://api.koreafilings.com/v1/disclosures/recent?limit=5'
+#   -> corpNameEn, reportNmEn (English filing type), eventType,
+#      importanceScore 1-10, numericExpectation HIGH/LOW, sourceUrl
+
+# (free) Watch one company — no payment for the filing list
+curl 'https://api.koreafilings.com/v1/disclosures/recent?ticker=005930&limit=5'
+
 # (free) Resolve a Korean company name → ticker
 curl 'https://api.koreafilings.com/v1/companies?q=Samsung+Electronics'
 
@@ -33,10 +41,12 @@ curl -i 'https://api.koreafilings.com/v1/disclosures/by-ticker?ticker=005930&lim
 
 - `GET /v1/companies?q={koreanOrEnglishName}` — trigram fuzzy search across 3,961 KRX-listed companies. Returns ticker, corp_code, market.
 - `GET /v1/companies/{ticker}` — direct six-digit ticker lookup.
-- `GET /v1/disclosures/recent?limit={n}&since_hours={h}` — market-wide metadata feed of the most recent DART filings. Every row carries `corpNameEn` (KRX-registered English company name) and `reportNmEn` (English filing-type label) alongside the Korean `corpName` / `reportNm`, so the feed is readable without Korean. `sectorTags` appears only after a filing's summary has been LLM-generated (the first paid call, globally) — absent means "not classified yet", not "no sector".
+- `GET /v1/disclosures/recent?limit={n}&since_hours={h}&ticker={ticker}` — the English filing feed. Omit `ticker` for the market-wide view, pass it to watch one company; both are free. Every row carries `corpNameEn` (KRX-registered English company name), `reportNmEn` (English filing-type label), `eventType`, `importanceScore` (1–10), `numericExpectation` (HIGH/LOW — whether this filing class normally contains hard numbers), and `sourceUrl` (the DART original), alongside the Korean `corpName` / `reportNm`. `sectorTags` appears only after a filing's summary has been LLM-generated (the first paid call, globally) — absent means "not classified yet", not "no sector".
 - `GET /v1/disclosures/sample` — constant sample of the paid response shape (real body-aware Base mainnet response), for SDK / schema verification without paying.
 
 ## Paid endpoints (x402, USDC on Base)
+
+What you pay for is the *explanation* — a paraphrased English summary of what the filing actually says, generated from the filing body itself. Listing filings, watching a company, and ranking them by importance are all free above.
 
 - `GET /v1/disclosures/by-ticker?ticker={ticker}&limit={n}` — 0.005 USDC × n. Returns AI-summarised English filings, newest first. Default limit 5, max 50.
 - `GET /v1/disclosures/summary?rcptNo={14-digit}` — 0.005 USDC fixed. Re-fetch a single summary by 14-digit DART receipt number.

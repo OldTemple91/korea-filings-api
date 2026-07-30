@@ -176,9 +176,9 @@
 
 <header>
   <div class="logo">KOREA FILINGS</div>
-  <h1>Search Korean corporate disclosures by name, pay per call.</h1>
+  <h1>Korean corporate disclosures, in English. Free feed, paid summaries.</h1>
   <p class="lead">
-    Resolve any KRX-listed company by name for free, then fetch AI-summarized English filings priced per call in USDC. Built for autonomous AI agents and indie agent builders who need diverse data sources and prefer pay-per-call to subscriptions. No API key. No signup. Payment is authentication.
+    Browse what KRX-listed companies just filed — or watch a single ticker — for free, in English, with no wallet and no signup. Every filing comes back typed, importance-scored, and linked to the DART original. Pay 0.005 USDC per call only when you want a filing <em>explained</em>: an AI summary written from the filing body itself. Built for autonomous AI agents and indie agent builders who prefer pay-per-call to subscriptions.
   </p>
   <div style="margin-top:24px;">
     <span class="pill">1 free + 1 paid call</span>
@@ -228,8 +228,29 @@ Agent → <span class="label">GET /v1/disclosures/by-ticker?ticker=005930&limit=
   The price for batched endpoints is <strong>declared dynamically</strong> in the 402 response — for <code>by-ticker?ticker=…&limit=N</code>, the server signs <code>0.005 × N</code> USDC into the challenge, so an agent always sees the exact charge before authorising the wallet. Direct receipt-number lookup at <code>/v1/disclosures/summary?rcptNo=…</code> stays at a flat 0.005 USDC.
 </p>
 
-<h2>What you get</h2>
-<p>One call returns a structured JSON object. The summary is built from the filing body itself, not just the title — quantitative events (rights offerings, supply contracts, debt issuance) come back with the actual amounts, dilution percentages, counterparty names, and effective dates extracted from the Korean source. Two examples below: a light governance event and a quantitative capital-raise event.</p>
+<h2>What you get for free</h2>
+<p>No wallet, no key, no signup. <code>GET /v1/disclosures/recent</code> returns the market-wide feed; add <code>?ticker=005930</code> to watch one company. Each row tells you which company filed, what kind of filing it is in English, how much it matters, whether that filing class normally carries hard numbers, and where the original lives on DART.</p>
+<pre><code>curl 'https://api.koreafilings.com/v1/disclosures/recent?ticker=005490&limit=1'
+
+{
+  "rcptNo": "20260730800403",
+  "ticker": "005490",
+  "corpName": "POSCO홀딩스",
+  "corpNameEn": "POSCO Holdings Inc.",
+  "reportNm": "연결재무제표기준영업(잠정)실적(공정공시)",
+  "reportNmEn": "Preliminary Operating Results",
+  "rceptDt": "2026-07-30",
+  "eventType": "PRELIMINARY_RESULTS",
+  "importanceScore": 5,
+  "numericExpectation": "HIGH",
+  "tickerTags": ["005490"],
+  "actionableFor": ["traders", "long_term_investors"],
+  "sourceUrl": "https://dart.fss.or.kr/dsaf001/main.do?rcpNo=20260730800403"
+}</code></pre>
+<p>That is enough to monitor a company, rank what just happened, and decide what deserves a closer look — without paying anything.</p>
+
+<h2>What you pay for</h2>
+<p>The summary: what the filing actually <em>says</em>, paraphrased in English from the filing body rather than the title, so quantitative events (rights offerings, supply contracts, debt issuance) come back with the actual amounts, dilution percentages, counterparty names, and effective dates extracted from the Korean source. Two examples below: a light governance event and a quantitative capital-raise event.</p>
 <pre><code>{
   "rcptNo": "20260424900874",
   "corpName": "글로벌에스엠",
