@@ -462,6 +462,42 @@ at the 10 RPM limiter. Verify spend afterwards:
 
 ---
 
+## Disk full / Docker build cache
+
+**Symptom:** root filesystem climbing past 80%; in the worst case Postgres
+stops accepting writes and the API starts failing.
+
+**Usual cause:** repeated `docker compose --profile prod build` deploys.
+Each build layers new cache; a single day of ~7 deploys grew the build
+cache to 23.4 GB and took the disk to 83% (round-19). The application's
+own footprint is small by comparison — DB ~80 MB, images ~1 GB.
+
+**Automated:** `scripts/docker-gc.sh` runs daily at 04:30 UTC via cron on
+the VM. It prunes build cache older than 24h, removes dangling images,
+caps the systemd journal at 500 MB, and logs a WARNING line to
+`/var/log/docker-gc.log` if the disk is still ≥80% afterwards.
+
+**Manual, when you need space now:**
+
+```bash
+ssh root@<PROD_VM> '/root/scripts/docker-gc.sh'
+
+# Or, to also drop cache younger than 24h (next build is slower):
+ssh root@<PROD_VM> 'docker builder prune -af && journalctl --vacuum-size=500M'
+```
+
+`builder prune` only touches build-layer cache — never running
+containers, tagged images, or volumes. Verify with
+`docker ps` afterwards; all four containers should still be healthy.
+
+**Check current usage:**
+
+```bash
+ssh root@<PROD_VM> 'df -h / | tail -1; docker system df'
+```
+
+---
+
 ## Daily / weekly checks
 
 | Cadence | Check | Command |
