@@ -269,21 +269,31 @@ class DisclosuresControllerIT {
     }
 
     @Test
-    void byTickerWithoutTickerParamReturns400BeforePaywall() throws Exception {
-        // Pre-paywall validation: a required query param missing from
-        // the request must produce a 400 BEFORE the 402 fires. Without
-        // this the agent would sign an EIP-3009 authorisation against
-        // the default-count price and only then see 400 from
-        // @RequestParam binding — burning a nonce for nothing.
-        mockMvc.perform(get("/v1/disclosures/by-ticker?limit=3"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("missing_parameter"))
-                .andExpect(jsonPath("$.message").value(containsString("ticker")));
+    void byTickerBarePathWithoutPaymentReturns402Discovery() throws Exception {
+        // Coinbase Bazaar indexes the query-less canonical URL and
+        // health-probes it expecting 402 + bazaar extension. Round-12's
+        // pre-paywall 400 on a missing required param broke that probe
+        // and kept the service out of the catalog; a bare request with
+        // no payment header is now treated as a discovery probe.
+        mockMvc.perform(get("/v1/disclosures/by-ticker"))
+                .andExpect(status().isPaymentRequired())
+                .andExpect(jsonPath("$.resource.url").value("http://localhost/v1/disclosures/by-ticker"))
+                .andExpect(jsonPath("$.accepts[0].amount").value("25000"))
+                .andExpect(jsonPath("$.extensions.bazaar.info.input.queryParams.ticker.required").value(true));
     }
 
     @Test
-    void summaryWithoutRcptNoReturns400BeforePaywall() throws Exception {
+    void summaryBarePathWithoutPaymentReturns402Discovery() throws Exception {
         mockMvc.perform(get("/v1/disclosures/summary"))
+                .andExpect(status().isPaymentRequired())
+                .andExpect(jsonPath("$.resource.url").value("http://localhost/v1/disclosures/summary"))
+                .andExpect(jsonPath("$.extensions.bazaar.info.input.queryParams.rcptNo.required").value(true));
+    }
+
+    @Test
+    void summaryBlankRcptNoReturns400BeforePaywall() throws Exception {
+        // Present-but-blank is a malformed call, not a discovery probe.
+        mockMvc.perform(get("/v1/disclosures/summary?rcptNo="))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("missing_parameter"))
                 .andExpect(jsonPath("$.message").value(containsString("rcptNo")));
@@ -783,14 +793,14 @@ class DisclosuresControllerIT {
     @Test
     void summaryWithoutRcptNoCarriesAgentActionHint() throws Exception {
         // Round-12 error envelope upgrade — the 400 for a missing required
-        // param now carries `agent_action_hint` pointing at the free
-        // discovery endpoint that would unblock the agent. Funnel
-        // self-recovery without docs. The paywall interceptor's
-        // pre-flight required-param check fires this 400 (before
-        // Spring's @RequestParam binding), so the envelope comes from
-        // X402PaywallInterceptor.writeBadRequest, which round-12
-        // unified with ApiExceptionHandler's shape.
-        mockMvc.perform(get("/v1/disclosures/summary"))
+        // param carries `agent_action_hint` pointing at the free
+        // discovery endpoint that would unblock the agent. Since the
+        // Bazaar-probe fix the 400 only fires once the agent has
+        // committed a payment header (a bare probe gets the 402
+        // discovery document instead); it still comes from
+        // X402PaywallInterceptor.writeBadRequest, before any verify.
+        mockMvc.perform(get("/v1/disclosures/summary")
+                        .header("PAYMENT-SIGNATURE", validPaymentPayloadBase64("sig-no-rcpt")))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("missing_parameter"))
                 .andExpect(jsonPath("$.agent_action_hint").value(
@@ -835,7 +845,8 @@ class DisclosuresControllerIT {
 
     @Test
     void byTickerWithoutTickerCarriesAgentActionHint() throws Exception {
-        mockMvc.perform(get("/v1/disclosures/by-ticker"))
+        mockMvc.perform(get("/v1/disclosures/by-ticker?limit=3")
+                        .header("PAYMENT-SIGNATURE", validPaymentPayloadBase64("sig-no-ticker")))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("missing_parameter"))
                 .andExpect(jsonPath("$.agent_action_hint").value(

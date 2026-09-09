@@ -145,17 +145,40 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
         response.setHeader("X-RateLimit-Scope",
                 "upstream-cold-path-bound (Gemini 10 RPM); cache hits unbounded");
 
-        // Pre-paywall required-param check. Without this, a missing
+        // v2 spec uses PAYMENT-SIGNATURE; X-PAYMENT is v1 legacy that
+        // we keep accepting until 0.3.x SDK / MCP fully replaces 0.2.x
+        // in the wild. Read v2 first so a client that sends both wins
+        // on the spec-compliant value.
+        String paymentHeader = request.getHeader(PAYMENT_SIGNATURE_HEADER);
+        if (paymentHeader == null || paymentHeader.isBlank()) {
+            paymentHeader = request.getHeader(LEGACY_X_PAYMENT_HEADER);
+        }
+        boolean hasPaymentHeader = paymentHeader != null && !paymentHeader.isBlank();
+
+        // Pre-paywall required-param check (round-12). A missing
         // required query param (e.g. /v1/disclosures/by-ticker without
-        // `ticker`) produces a 402 at the default price, the agent
-        // signs an EIP-3009 authorisation against it, retries — and
-        // only then does the controller's @RequestParam binding fail
-        // with 400. The on-chain settle is skipped, but the agent has
-        // burned an EIP-3009 nonce for nothing. Short-circuit here so
-        // the agent gets a 400 BEFORE committing to signing.
+        // `ticker`) used to produce a 402 at the default price; the
+        // agent signed an EIP-3009 authorisation against it, retried,
+        // and only then did @RequestParam binding fail with 400 — the
+        // settle was skipped but a nonce was burned for nothing.
+        //
+        // Bazaar carve-out: Coinbase's catalog indexes a paid endpoint
+        // by its query-less canonical URL and health-probes that bare
+        // path expecting a 402 that carries the bazaar extension (the
+        // CDP /x402/validate tool lists `returns_402` as a required
+        // check). An unconditional 400 here failed that probe and kept
+        // the service out of the catalog. So a request with the param
+        // ABSENT and NO payment header is a discovery probe and falls
+        // through to the 402 below; a request that already committed a
+        // signature, or that sends the param present-but-blank, still
+        // gets the 400 before any verify round-trip.
         for (String required : paywall.requiredQueryParams()) {
             String value = request.getParameter(required);
-            if (value == null || value.isBlank()) {
+            boolean absent = value == null;
+            if (absent && !hasPaymentHeader) {
+                continue;
+            }
+            if (absent || value.isBlank()) {
                 writeBadRequest(response,
                         "missing_parameter",
                         "required parameter '" + required + "' is missing",
@@ -205,15 +228,7 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
         String effectivePriceUsdc = computeEffectivePrice(paywall, request);
         PaymentRequirement requirement = buildRequirement(effectivePriceUsdc);
 
-        // v2 spec uses PAYMENT-SIGNATURE; X-PAYMENT is v1 legacy that
-        // we keep accepting until 0.3.x SDK / MCP fully replaces 0.2.x
-        // in the wild. Read v2 first so a client that sends both wins
-        // on the spec-compliant value.
-        String paymentHeader = request.getHeader(PAYMENT_SIGNATURE_HEADER);
-        if (paymentHeader == null || paymentHeader.isBlank()) {
-            paymentHeader = request.getHeader(LEGACY_X_PAYMENT_HEADER);
-        }
-        if (paymentHeader == null || paymentHeader.isBlank()) {
+        if (!hasPaymentHeader) {
             writePaymentRequired(response, resourceUrl, requirement, paywall, "Payment required");
             return false;
         }

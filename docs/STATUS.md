@@ -1,4 +1,4 @@
-# STATUS — where we left off (2026-07-23, post-round-18)
+# STATUS — where we left off (2026-09-08, post-round-20)
 
 Read this first when picking up on a different machine. Summarises what is
 live, what's next, and the minimum setup to keep moving.
@@ -18,6 +18,28 @@ live, what's next, and the minimum setup to keep moving.
 - **Weeks 1–5 complete.** Ingestion, summarisation, x402 paywall, public
   deployment, landing page, Python SDK, MCP server, OpenAPI docs — all
   live in production at `api.koreafilings.com`.
+- **Round-20 — Coinbase Bazaar delisting root cause + bare-path 402
+  (2026-09-08).** The service was absent from Coinbase's x402 Bazaar
+  (the index behind Agentic.Market) despite a valid `bazaar`
+  extension and prior CDP settlements. Two mechanisms, both verified
+  against CDP's own tooling and docs: (1) **the catalog removes any
+  resource that goes 30 days without a settlement**, and the
+  settlement history had multiple >30-day gaps; (2) **the round-12
+  pre-paywall 400 on a missing required query param broke the
+  catalog's health probe** — the Bazaar indexes the query-less
+  canonical URL and probes it expecting a 402 that carries the
+  `bazaar` extension (`POST /platform/v2/x402/validate` lists
+  `returns_402` as a required check; none of the ~14k indexed
+  resources include a query string in their URL). Fix: a bare request
+  (required param absent, no payment header) now falls through to the
+  402 discovery document; the round-12 400 still fires for
+  present-but-blank values and for an absent param once a payment
+  header shows the agent has already signed. Both paid endpoints now
+  pass the CDP validate tool on their canonical path. Operationally,
+  a self-settled heartbeat (`scripts/bazaar-heartbeat.sh`, twice a
+  month) keeps the listing inside the 30-day window until organic
+  settlements do. RUNBOOK gained scenario 14 for the "missing from
+  Bazaar" case.
 - **Round-18e/f — classifier expansion, historical reclassify, and the
   ticker-hallucination fix (2026-07-23).**
   (e) 14 new rules + 7 event types lifted from the live OTHER bucket

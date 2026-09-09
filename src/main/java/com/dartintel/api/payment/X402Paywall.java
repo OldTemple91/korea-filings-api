@@ -71,6 +71,15 @@ public @interface X402Paywall {
      * has burned an EIP-3009 nonce for nothing. Declaring required
      * params here lets the interceptor short-circuit to a 400 before
      * the agent commits to signing.
+     *
+     * <p>Exception: a request with the param entirely absent AND no
+     * payment header still receives the normal 402 — Coinbase's Bazaar
+     * indexes the query-less canonical URL and health-probes it
+     * expecting exactly that 402 (with the bazaar extension), so an
+     * unconditional 400 on the bare path keeps the endpoint out of the
+     * catalog. The 400 fires for present-but-blank values, and for an
+     * absent param once a payment header shows the agent has already
+     * signed.
      */
     String[] requiredQueryParams() default {};
 

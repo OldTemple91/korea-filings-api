@@ -408,7 +408,7 @@ unlock arrives.
 
 | Channel | Friction the user sees | What we do |
 |---|---|---|
-| **agent.market** (Coinbase official x402 directory) | Coinbase Smart Wallet OAuth — single sign-in, no env vars / private keys | Submit metadata.json PR to `x402-foundation/x402` ecosystem listing. Single shot, ~5 business days review. |
+| **Coinbase Bazaar → Agentic.Market** (official x402 catalog; the earlier `agent.market` ecosystem page was sunset in favour of it) | Coinbase Smart Wallet OAuth — single sign-in, no env vars / private keys | No submission step — indexing is automatic from CDP-facilitator settlements. Two standing requirements, both verified 2026-09-08: the query-less canonical path must answer 402 with the `bazaar` extension (CDP `/x402/validate` treats `returns_402` as required), and at least one settlement must land every 30 days or the resource is removed. `scripts/bazaar-heartbeat.sh` covers the second until organic volume does. |
 | **AgentCash** (Merit Systems, biggest independent x402 client) | `agentcash` CLI manages the wallet; agent just calls `agentcash fetch` and pays automatically | Discovery is automatic — the catalog crawler probes `/.well-known/x402` + `openapi.json` on a daily cadence (six rotating Azure / AWS IPs each running the same four-step schema probe were observed in `request_audit` from 2026-05-07 onward, and `agentcash search ... --broad` already returns the service's endpoints at scores 0.39 – 0.57). The remaining work is **getting promoted out of the "unvetted / broad-only" tier into the default-trust catalog** so a non-`--broad` search surfaces the service. Round-13 shipped the discovery-surface polish (root-level `name` + `url`, advertised `llms_txt`, removal of the cosmetic `apiKey` OpenAPI security scheme that made `agentcash discover` mislabel the service as `apiKey+paid`); the remaining lever is a direct Merit Systems Discord ping with that diff attached. |
 | **Smithery / 1-click MCP install** | MCP install automated; user still brings their own wallet for paid tools | Submit listing when site recovers (intermittent outages observed 2026-05). |
 | **Hand-rolled MCP install** | `uv tool install` + `claude_desktop_config.json` edit + private key in env. Verified working with the maintainer's own PAYER wallet on 2026-05-08. | README + dev.to writeup so the install path is documented; this is the SDK-developer entry point, not the mainstream entry. |
@@ -477,9 +477,12 @@ We track these passively. None block what we can ship now.
 
 ### What this means in practice
 
-1. **Tier 1 #1 (agent.market) is the single biggest leverage move
-   available today** — it costs one PR plus a logo, and downstream
-   it auto-feeds Coinbase Agentic Browser whenever that opens up.
+1. **Tier 1 #1 (Bazaar / Agentic.Market) is the single biggest
+   leverage move available today** — and it is now a maintenance
+   obligation rather than a one-off: keep the canonical paths
+   returning 402 and keep a settlement inside every 30-day window.
+   Round-20 found the service had been silently dropped by both
+   rules for most of its life.
 2. **Tier 1 #2 (AgentCash) is a parallel slot** — the service is
    already in the catalog (verified `agentcash discover` returns 9
    endpoints and `agentcash search "DART disclosure" --broad`

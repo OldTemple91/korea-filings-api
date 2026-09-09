@@ -328,6 +328,57 @@ DART rate-limits per API key. Recovery:
 
 The block is per-key, not per-IP, so a key swap is sufficient.
 
+### 14. Missing from Coinbase Bazaar / Agentic.Market
+
+**Symptom**: the service does not appear on `agentic.market`, and
+`POST https://api.cdp.coinbase.com/platform/v2/x402/validate` returns
+`"index": null` for a paid endpoint. No auth is needed for either.
+
+Two known causes, check both:
+
+1. **30-day inactivity.** The Bazaar removes any resource that goes 30
+   days without a CDP-settled payment. Check the last row in
+   `payment_log`; if `settled_at` is older than 30 days the listing is
+   gone regardless of endpoint health.
+2. **Bare canonical path not returning 402.** The Bazaar indexes the
+   query-less URL (`/v1/disclosures/summary`, not `…?rcptNo=…`) and
+   health-probes it. Anything other than a 402 with the `bazaar`
+   extension fails the required `returns_402` preflight and the
+   resource is eventually dropped.
+
+Diagnose:
+```bash
+# Preflight the canonical path (expect valid=true, simulation accepted)
+curl -s -X POST https://api.cdp.coinbase.com/platform/v2/x402/validate \
+  -H 'Content-Type: application/json' \
+  -d '{"resource":"https://api.koreafilings.com/v1/disclosures/summary","method":"GET"}' \
+  | jq '{valid, simulation, index, failed: [.preflight[] | select(.passed==false) | .check]}'
+
+# Bare path must answer 402 on its own
+curl -s -o /dev/null -w '%{http_code}\n' https://api.koreafilings.com/v1/disclosures/summary
+```
+
+Recover:
+1. If the bare path is not 402, that is a code regression — the
+   paywall interceptor must let a request with the required param
+   absent and no payment header through to the 402 (see
+   `X402Paywall.requiredQueryParams` javadoc). Fix, test, deploy.
+2. Trigger (re-)indexing with one settled call against production
+   from the payer wallet, e.g. `scripts/bazaar-heartbeat.sh` on the VM
+   or `uv run --with-requirements testclient/requirements.txt
+   testclient/payer.py <cached rcptNo>` locally. Use an rcptNo that is
+   already summarised so the call is a cache hit (no LLM spend).
+3. Re-run the validate call; `index` becomes non-null once the
+   catalog has processed the settlement (allow a few hours).
+
+Prevention: `scripts/bazaar-heartbeat.sh` runs from cron on the 1st
+and 16th (`0 3 1,16 * *`) and settles one 0.005 USDC call, which keeps
+every gap under the 30-day limit. It reads
+`testclient/.env.testclient` on the VM (payer key for a dedicated
+low-balance wallet, `chmod 600`; the deploy rsync excludes `.env*`
+so it survives). Retire the cron once organic settlements land more
+often than twice a month.
+
 ---
 
 ## Restore Postgres from backup
@@ -507,6 +558,7 @@ ssh root@<PROD_VM> 'df -h / | tail -1; docker system df'
 | Daily | Off-site copy ran | (R2 / S3 dashboard or `rclone ls r2:dartintel-backups`) |
 | Weekly | Container health | `ssh root@<PROD_VM> 'docker compose --profile prod ps'` |
 | Weekly | Settlements landed | `psql ... payment_log latest 7 days` |
+| Monthly | Bazaar listing alive | validate call in [scenario 14](#14-missing-from-coinbase-bazaar--agenticmarket) returns `index != null`; `tail /var/log/bazaar-heartbeat.log` shows two settled runs |
 | Monthly | Test restore on staging | follow [Restore Postgres](#restore-postgres-from-backup) on a fresh VM |
 | Quarterly | Rotate secrets | follow [Secret rotation](#secret-rotation) for at least one secret |
 
