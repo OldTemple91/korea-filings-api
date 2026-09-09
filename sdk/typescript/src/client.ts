@@ -283,7 +283,9 @@ export class KoreaFilings {
       throw new ApiError(unpaid.status, await safeJson(unpaid));
     }
 
-    const body = (await safeJson(unpaid)) as { accepts?: PaymentRequirement[] } | null;
+    const body = (await safeJson(unpaid)) as
+      | { accepts?: PaymentRequirement[]; extensions?: Record<string, unknown> }
+      | null;
     const requirement = selectRequirement(body?.accepts ?? []);
 
     if (requirement.network !== this.expectedChain) {
@@ -303,7 +305,13 @@ export class KoreaFilings {
 
     const authorization = buildAuthorization(this.account.address, requirement);
     const signature = await signEip3009(this.account, requirement, authorization);
-    const headerValue = buildPaymentSignatureHeader(url, requirement, authorization, signature);
+    const headerValue = buildPaymentSignatureHeader(
+      url,
+      requirement,
+      authorization,
+      signature,
+      body?.extensions,
+    );
 
     // x402 v2 transport spec: PAYMENT-SIGNATURE on request,
     // PAYMENT-RESPONSE on settlement. The server still accepts

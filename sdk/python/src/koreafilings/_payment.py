@@ -139,13 +139,20 @@ def build_payment_signature_header(
     requirement: Mapping[str, Any],
     authorization: Mapping[str, Any],
     signature: str,
+    extensions: Mapping[str, Any] | None = None,
 ) -> str:
     """Base64-encode the signed payload into the ``PAYMENT-SIGNATURE`` header value.
 
     Wire format is identical to the v1 ``X-PAYMENT`` header — only the
     HTTP header name changed in the x402 v2 transport spec.
+
+    ``extensions`` is the 402 body's ``extensions`` block echoed back
+    verbatim (x402 v2 §5.2 — the client must include at least what the
+    server declared). The Coinbase facilitator catalogs a resource for
+    discovery (Bazaar) only from that echoed ``bazaar`` block, so
+    dropping it silently keeps the service out of agent directories.
     """
-    payload = {
+    payload: dict[str, Any] = {
         "x402Version": X402_VERSION,
         "resource": {
             "url": resource_url,
@@ -155,6 +162,8 @@ def build_payment_signature_header(
         "accepted": requirement,
         "payload": {"signature": signature, "authorization": authorization},
     }
+    if extensions:
+        payload["extensions"] = dict(extensions)
     raw = json.dumps(payload, separators=(",", ":")).encode("utf-8")
     return base64.b64encode(raw).decode("ascii")
 

@@ -148,9 +148,11 @@ public class X402SettlementAdvice implements ResponseBodyAdvice<Object> {
         // wants to honour cacheability keys correctly.
         response.getHeaders().set("Cache-Control", "no-store");
         response.getHeaders().add("Vary", X402PaywallInterceptor.PAYMENT_SIGNATURE_HEADER);
-        log.info("x402 settled: endpoint={} payer={} amount={} tx={}",
+        var bazaar = settle.extensionResponses().get("bazaar");
+        log.info("x402 settled: endpoint={} payer={} amount={} tx={} bazaar={}",
                 verified.endpoint(), verified.payer(),
-                verified.requirement().amount(), settle.transaction());
+                verified.requirement().amount(), settle.transaction(),
+                bazaar == null ? "n/a" : bazaar.status());
 
         return body;
     }

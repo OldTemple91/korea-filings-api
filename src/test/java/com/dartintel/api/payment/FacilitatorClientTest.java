@@ -156,6 +156,64 @@ class FacilitatorClientTest {
         assertThat(resp.transaction()).isNull();
     }
 
+    // ----- EXTENSION-RESPONSES (Bazaar cataloging outcome) -----
+
+    @Test
+    void settleExposesBazaarStatusFromExtensionResponsesHeader() {
+        wireMock.stubFor(post(urlPathEqualTo("/settle"))
+                .willReturn(aResponse().withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withHeader("EXTENSION-RESPONSES", base64("{\"bazaar\":{\"status\":\"success\"}}"))
+                        .withBody("{\"success\":true,\"transaction\":\"0xabc\",\"network\":\"eip155:84532\"}")));
+
+        FacilitatorSettleResponse resp = client.settle(sampleSettleRequest());
+
+        assertThat(resp.success()).isTrue();
+        assertThat(resp.extensionResponses()).containsKey("bazaar");
+        assertThat(resp.extensionResponses().get("bazaar").status()).isEqualTo("success");
+        assertThat(resp.extensionResponses().get("bazaar").rejectedReason()).isNull();
+    }
+
+    @Test
+    void verifyExposesRejectedBazaarReason() {
+        wireMock.stubFor(post(urlPathEqualTo("/verify"))
+                .willReturn(aResponse().withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withHeader("EXTENSION-RESPONSES", base64(
+                                "{\"bazaar\":{\"status\":\"rejected\",\"rejectedReason\":\"info failed schema validation\"}}"))
+                        .withBody("{\"isValid\":true}")));
+
+        FacilitatorVerifyResponse resp = client.verify(sampleVerifyRequest());
+
+        assertThat(resp.isValid()).isTrue();
+        assertThat(resp.extensionResponses().get("bazaar").status()).isEqualTo("rejected");
+        assertThat(resp.extensionResponses().get("bazaar").rejectedReason()).isEqualTo("info failed schema validation");
+    }
+
+    @Test
+    void settleWithoutExtensionResponsesHeaderHasEmptyMap() {
+        wireMock.stubFor(post(urlPathEqualTo("/settle"))
+                .willReturn(aResponse().withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"success\":true,\"transaction\":\"0xabc\"}")));
+
+        FacilitatorSettleResponse resp = client.settle(sampleSettleRequest());
+
+        assertThat(resp.extensionResponses()).isEmpty();
+    }
+
+    @Test
+    void parseExtensionResponsesToleratesMissingAndGarbageHeaders() {
+        assertThat(FacilitatorClient.parseExtensionResponses(null)).isEmpty();
+        assertThat(FacilitatorClient.parseExtensionResponses("")).isEmpty();
+        assertThat(FacilitatorClient.parseExtensionResponses("not base64 !!")).isEmpty();
+        assertThat(FacilitatorClient.parseExtensionResponses(base64("[1,2]"))).isEmpty();
+    }
+
+    private static String base64(String json) {
+        return java.util.Base64.getEncoder().encodeToString(json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
+
     private static FacilitatorVerifyRequest sampleVerifyRequest() {
         return new FacilitatorVerifyRequest(2, samplePaymentPayload(), sampleRequirement());
     }

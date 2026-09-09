@@ -232,8 +232,14 @@ export function buildPaymentSignatureHeader(
   requirement: PaymentRequirement,
   authorization: Authorization,
   signature: Hex,
+  extensions?: Record<string, unknown>,
 ): string {
-  const payload = {
+  // x402 v2 §5.2: the client must echo the server's
+  // PaymentRequired.extensions into PaymentPayload.extensions. The
+  // Coinbase facilitator catalogs a resource for discovery (Bazaar)
+  // only from that echoed `bazaar` block, so dropping it silently
+  // keeps the service out of agent directories.
+  const payload: Record<string, unknown> = {
     x402Version: X402_VERSION,
     resource: {
       url: resourceUrl,
@@ -256,6 +262,9 @@ export function buildPaymentSignatureHeader(
       },
     },
   };
+  if (extensions && Object.keys(extensions).length > 0) {
+    payload.extensions = extensions;
+  }
   return base64Encode(JSON.stringify(payload));
 }
 

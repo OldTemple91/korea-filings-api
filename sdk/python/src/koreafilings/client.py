@@ -240,7 +240,8 @@ class Client:
         # `request.url` after the unpaid call captures that for us.
         full_url = str(unpaid.request.url) if unpaid.request else url
         header_value = _payment.build_payment_signature_header(
-            full_url, requirement, authorization, signature
+            full_url, requirement, authorization, signature,
+            extensions=body.get("extensions"),
         )
 
         # x402 v2 transport spec: PAYMENT-SIGNATURE (request), PAYMENT-RESPONSE

@@ -256,6 +256,27 @@ describe('buildPaymentSignatureHeader', () => {
   });
 });
 
+describe('buildPaymentSignatureHeader extensions echo', () => {
+  const auth = buildAuthorization(TEST_ACCOUNT.address, SAMPLE_REQUIREMENT);
+  const sig = ('0x' + 'ab'.repeat(65)) as `0x${string}`;
+  const url = 'https://api.koreafilings.com/v1/disclosures/summary?rcptNo=20260424900874';
+
+  it('echoes the server extensions block into PaymentPayload.extensions', () => {
+    // x402 v2 §5.2: clients must echo PaymentRequired.extensions; the
+    // CDP facilitator catalogs a resource (Bazaar) only from that echo.
+    const bazaar = { info: { input: { type: 'http', method: 'GET' } }, schema: { type: 'object' } };
+    const header = buildPaymentSignatureHeader(url, SAMPLE_REQUIREMENT, auth, sig, { bazaar });
+    const decoded = JSON.parse(Buffer.from(header, 'base64').toString('utf-8'));
+    expect(decoded.extensions).toEqual({ bazaar });
+  });
+
+  it('omits extensions when the server sent none', () => {
+    const header = buildPaymentSignatureHeader(url, SAMPLE_REQUIREMENT, auth, sig);
+    const decoded = JSON.parse(Buffer.from(header, 'base64').toString('utf-8'));
+    expect(decoded).not.toHaveProperty('extensions');
+  });
+});
+
 describe('decodeSettlementHeader', () => {
   it('decodes a valid base64 PAYMENT-RESPONSE payload', () => {
     const proof = {

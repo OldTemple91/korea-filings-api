@@ -40,6 +40,22 @@ live, what's next, and the minimum setup to keep moving.
   month) keeps the listing inside the 30-day window until organic
   settlements do. RUNBOOK gained scenario 14 for the "missing from
   Bazaar" case.
+  A third cause surfaced when the first post-fix settlement still did
+  not index: **no observed client ever echoed `extensions.bazaar`
+  into the `PaymentPayload`.** x402 v2 §5.2 requires the echo and the
+  Bazaar spec states cataloging does not occur without it, so every
+  settlement to date had reached the facilitator carrying no
+  discovery metadata — the service had never been indexed in the
+  first place. Closed on both sides: the paywall interceptor fills
+  in the server's own `bazaar` block when a client leaves it out
+  (a client-supplied echo is never overwritten), the TypeScript SDK
+  (0.1.5), Python SDK (0.3.4), MCP server (0.3.1, pins the fixed SDK)
+  and `testclient/payer.py` now echo the 402's `extensions`, and the
+  facilitator's `EXTENSION-RESPONSES` outcome is parsed and logged
+  (`bazaar=success|processing|rejected` on the `x402 settled` line)
+  so cataloging is observable per settlement instead of inferred.
+  The bumped SDK/MCP versions are prepared in-repo; publishing to
+  npm / PyPI is a separate step.
 - **Round-18e/f — classifier expansion, historical reclassify, and the
   ticker-hallucination fix (2026-07-23).**
   (e) 14 new rules + 7 event types lifted from the live OTHER bucket

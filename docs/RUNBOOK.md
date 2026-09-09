@@ -334,8 +334,18 @@ The block is per-key, not per-IP, so a key swap is sufficient.
 `POST https://api.cdp.coinbase.com/platform/v2/x402/validate` returns
 `"index": null` for a paid endpoint. No auth is needed for either.
 
-Two known causes, check both:
+Three known causes, check all:
 
+0. **Payload reached the facilitator without `extensions.bazaar`.**
+   The facilitator catalogs only from the `bazaar` block echoed in
+   the client's `PaymentPayload` (x402 v2 §5.2). The interceptor now
+   fills it in when a client omits it, and the outcome is logged per
+   settlement — `docker logs dartintel-app | grep -E "bazaar"` shows
+   `facilitator settle: bazaar cataloging status=success` (or
+   `processing` / a `rejected` WARN with the reason) and the
+   `x402 settled … bazaar=` field. `bazaar=n/a` means the facilitator
+   returned no `EXTENSION-RESPONSES` header at all — the payload had
+   no extension block; check the interceptor fallback.
 1. **30-day inactivity.** The Bazaar removes any resource that goes 30
    days without a CDP-settled payment. Check the last row in
    `payment_log`; if `settled_at` is older than 30 days the listing is

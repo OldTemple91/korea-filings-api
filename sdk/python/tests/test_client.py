@@ -28,6 +28,7 @@ from koreafilings import (
 )
 from koreafilings._payment import (
     build_authorization,
+    build_payment_signature_header,
     build_x_payment_header,
     decode_settlement_header,
     select_requirement,
@@ -100,6 +101,74 @@ def test_build_x_payment_header_round_trip():
     assert decoded["x402Version"] == 2
     assert decoded["resource"]["url"] == "https://api.test/v1/x"
     assert decoded["payload"]["signature"] == "0xdeadbeef"
+
+
+def test_build_payment_signature_header_echoes_extensions():
+    # x402 v2 §5.2: the client must echo the server's PaymentRequired
+    # extensions into PaymentPayload.extensions; the CDP facilitator
+    # only catalogs a resource (Bazaar) from that echoed block.
+    req = {"payTo": "0x0", "amount": "5000", "maxTimeoutSeconds": 60, "description": "x"}
+    auth = {"from": "0xa", "to": "0xb", "value": "5000", "validAfter": "0", "validBefore": "1", "nonce": "0x0"}
+    bazaar = {"info": {"input": {"type": "http", "method": "GET"}}, "schema": {"type": "object"}}
+    header = build_payment_signature_header(
+        "https://api.test/v1/x", req, auth, "0xdeadbeef", extensions={"bazaar": bazaar}
+    )
+    decoded = json.loads(base64.b64decode(header))
+    assert decoded["extensions"] == {"bazaar": bazaar}
+
+
+def test_build_payment_signature_header_omits_extensions_when_server_sent_none():
+    req = {"payTo": "0x0", "amount": "5000", "maxTimeoutSeconds": 60}
+    auth = {"from": "0xa", "to": "0xb", "value": "5000", "validAfter": "0", "validBefore": "1", "nonce": "0x0"}
+    header = build_payment_signature_header("https://api.test/v1/x", req, auth, "0xdeadbeef")
+    decoded = json.loads(base64.b64decode(header))
+    assert "extensions" not in decoded
+
+
+def test_paid_get_echoes_402_extensions_into_payment_signature():
+    # End-to-end through Client._paid_get with a mocked transport: the
+    # 402's `extensions` must come back inside the PAYMENT-SIGNATURE
+    # payload on the retry.
+    import httpx
+
+    bazaar = {"info": {"input": {"type": "http", "method": "GET"}}, "schema": {"type": "object"}}
+    requirement = {
+        "scheme": "exact",
+        "network": "eip155:84532",
+        "amount": "5000",
+        "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+        "payTo": "0x8467Be164C75824246CFd0fCa8E7F7009fB8f720",
+        "maxTimeoutSeconds": 60,
+        "extra": {"name": "USDC", "version": "2"},
+    }
+    summary = {
+        "rcptNo": "20260424900874",
+        "summaryEn": "Global SM trading suspension.",
+        "importanceScore": 7,
+        "eventType": "SINGLE_STOCK_TRADING_SUSPENSION",
+        "sectorTags": [],
+        "tickerTags": ["001680"],
+        "actionableFor": ["QUANT"],
+        "generatedAt": "2026-04-24T09:15:00Z",
+    }
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        if "PAYMENT-SIGNATURE" not in request.headers:
+            return httpx.Response(402, json={"accepts": [requirement], "extensions": {"bazaar": bazaar}})
+        proof = base64.b64encode(json.dumps({"success": True, "transaction": "0xabc", "network": "eip155:84532"}).encode()).decode()
+        return httpx.Response(200, json=summary, headers={"PAYMENT-RESPONSE": proof})
+
+    key = "0x" + Account.create().key.hex()
+    client = Client(private_key=key, network="base-sepolia", base_url="https://api.test")
+    client._http = httpx.Client(transport=httpx.MockTransport(handler))
+
+    client.get_summary("20260424900874")
+
+    assert len(seen) == 2
+    decoded = json.loads(base64.b64decode(seen[1].headers["PAYMENT-SIGNATURE"]))
+    assert decoded["extensions"] == {"bazaar": bazaar}
 
 
 def test_decode_settlement_header_returns_none_for_empty():

@@ -10,6 +10,19 @@ and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Nothing pending.
 
+## [0.3.4] — 2026-09-09
+
+### Fixed
+
+- The signed `PaymentPayload` now echoes the 402 challenge's
+  `extensions` block (x402 v2 §5.2 — "the client must include at
+  least the info received"). The Coinbase facilitator catalogs a
+  resource for agent discovery (Bazaar / Agentic.Market) only from
+  the echoed `bazaar` block, so earlier versions silently kept the
+  service out of agent directories on every settlement. No API change
+  for callers; `build_payment_signature_header` gained an optional
+  `extensions` keyword.
+
 ## [0.3.3] — 2026-07-23
 
 ### Added

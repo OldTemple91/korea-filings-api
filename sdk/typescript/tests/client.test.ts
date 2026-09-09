@@ -173,6 +173,23 @@ describe('KoreaFilings paid 402 → sign → retry flow', () => {
     expect(onWire).toEqual(sigHeader);
   });
 
+  it('echoes the 402 extensions block into the signed payload', async () => {
+    const bazaar = { info: { input: { type: 'http', method: 'GET' } }, schema: { type: 'object' } };
+    fetchSpy.mockResolvedValueOnce(
+      mockJson({ accepts: [SAMPLE_REQUIREMENT], extensions: { bazaar } }, 402),
+    );
+    fetchSpy.mockResolvedValueOnce(mockJson(SAMPLE_SUMMARY, 200));
+
+    const c = new KoreaFilings({ privateKey: TEST_KEY, network: 'base-sepolia' });
+    await c.getSummary('20260424900874');
+
+    const secondInit = fetchSpy.mock.calls[1]?.[1] as RequestInit;
+    const sigHeader = (secondInit.headers as Record<string, string>)['PAYMENT-SIGNATURE'];
+    expect(sigHeader).toBeTruthy();
+    const decoded = JSON.parse(Buffer.from(sigHeader!, 'base64').toString('utf-8'));
+    expect(decoded.extensions).toEqual({ bazaar });
+  });
+
   it('throws PaymentError when the 402 advertises a different network than configured', async () => {
     // Server says mainnet (eip155:8453) but client is configured for sepolia (eip155:84532).
     fetchSpy.mockResolvedValueOnce(

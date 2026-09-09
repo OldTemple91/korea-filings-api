@@ -1,14 +1,18 @@
 package com.dartintel.api.payment;
 
+import com.dartintel.api.payment.dto.ExtensionResponse;
 import com.dartintel.api.payment.dto.FacilitatorSettleRequest;
 import com.dartintel.api.payment.dto.FacilitatorSettleResponse;
 import com.dartintel.api.payment.dto.FacilitatorVerifyRequest;
 import com.dartintel.api.payment.dto.FacilitatorVerifyResponse;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.retry.annotation.Retry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.http.client.reactive.JdkClientHttpConnector;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.ClientRequest;
@@ -18,11 +22,28 @@ import org.springframework.web.reactive.function.client.WebClientResponseExcepti
 import reactor.core.publisher.Mono;
 
 import java.net.http.HttpClient;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Base64;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 @Component
 @Slf4j
 public class FacilitatorClient {
+
+    /**
+     * Facilitator-side outcome of the extensions carried in the
+     * payload (x402 extensions spec). For {@code bazaar} this is how
+     * CDP reports whether the resource was accepted for cataloging —
+     * the only signal a seller gets that discovery indexing will
+     * actually happen.
+     */
+    static final String EXTENSION_RESPONSES_HEADER = "EXTENSION-RESPONSES";
+    private static final ObjectMapper HEADER_MAPPER = new ObjectMapper();
+    private static final TypeReference<Map<String, ExtensionResponse>> EXTENSION_MAP =
+            new TypeReference<>() {
+            };
 
     private final WebClient webClient;
     private final Duration readTimeout;
@@ -49,29 +70,83 @@ public class FacilitatorClient {
     @CircuitBreaker(name = "facilitator")
     @Retry(name = "facilitator")
     public FacilitatorVerifyResponse verify(FacilitatorVerifyRequest request) {
-        return webClient.post()
+        ResponseEntity<FacilitatorVerifyResponse> entity = webClient.post()
                 .uri("/verify")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(request)
                 .retrieve()
                 .onStatus(s -> s.isError(), this::logAndPropagate)
-                .bodyToMono(FacilitatorVerifyResponse.class)
+                .toEntity(FacilitatorVerifyResponse.class)
                 .timeout(readTimeout)
                 .block(blockTimeout);
+        if (entity == null || entity.getBody() == null) {
+            return null;
+        }
+        Map<String, ExtensionResponse> ext = parseExtensionResponses(
+                entity.getHeaders().getFirst(EXTENSION_RESPONSES_HEADER));
+        logExtensionResponses("verify", ext);
+        return entity.getBody().withExtensionResponses(ext);
     }
 
     @CircuitBreaker(name = "facilitator")
     @Retry(name = "facilitator")
     public FacilitatorSettleResponse settle(FacilitatorSettleRequest request) {
-        return webClient.post()
+        ResponseEntity<FacilitatorSettleResponse> entity = webClient.post()
                 .uri("/settle")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(request)
                 .retrieve()
                 .onStatus(s -> s.isError(), this::logAndPropagate)
-                .bodyToMono(FacilitatorSettleResponse.class)
+                .toEntity(FacilitatorSettleResponse.class)
                 .timeout(readTimeout)
                 .block(blockTimeout);
+        if (entity == null || entity.getBody() == null) {
+            return null;
+        }
+        Map<String, ExtensionResponse> ext = parseExtensionResponses(
+                entity.getHeaders().getFirst(EXTENSION_RESPONSES_HEADER));
+        logExtensionResponses("settle", ext);
+        return entity.getBody().withExtensionResponses(ext);
+    }
+
+    /**
+     * Decode the base64-JSON {@code EXTENSION-RESPONSES} header into a
+     * per-extension status map. Never throws: a missing, malformed or
+     * non-object header yields an empty map, because the payment
+     * outcome itself must not depend on an advisory header.
+     */
+    static Map<String, ExtensionResponse> parseExtensionResponses(String headerValue) {
+        if (headerValue == null || headerValue.isBlank()) {
+            return Map.of();
+        }
+        try {
+            byte[] json = Base64.getDecoder().decode(headerValue.trim());
+            Map<String, ExtensionResponse> parsed = HEADER_MAPPER.readValue(json, EXTENSION_MAP);
+            Map<String, ExtensionResponse> out = new LinkedHashMap<>();
+            parsed.forEach((k, v) -> {
+                if (k != null && v != null) {
+                    out.put(k, v);
+                }
+            });
+            return Map.copyOf(out);
+        } catch (Exception e) {
+            log.debug("Ignoring unparseable {} header: {}", EXTENSION_RESPONSES_HEADER, e.getMessage());
+            return Map.of();
+        }
+    }
+
+    private static void logExtensionResponses(String op, Map<String, ExtensionResponse> ext) {
+        ExtensionResponse bazaar = ext.get("bazaar");
+        if (bazaar == null) {
+            return;
+        }
+        if ("rejected".equalsIgnoreCase(bazaar.status())) {
+            log.warn("facilitator {}: bazaar cataloging rejected: {}", op,
+                    X402PaywallInterceptor.sanitiseLogValue(String.valueOf(bazaar.rejectedReason())));
+        } else {
+            log.info("facilitator {}: bazaar cataloging status={}", op,
+                    X402PaywallInterceptor.sanitiseLogValue(String.valueOf(bazaar.status())));
+        }
     }
 
     /**

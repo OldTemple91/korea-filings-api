@@ -125,12 +125,16 @@ def sign_eip3009(account: Account, requirement: dict, authorization: dict) -> st
 
 
 def build_payment_signature_header(
-    resource_url: str, requirement: dict, authorization: dict, signature: str
+    resource_url: str, requirement: dict, authorization: dict, signature: str,
+    extensions: dict | None = None,
 ) -> str:
     """Base64-encode the signed PaymentPayload for the PAYMENT-SIGNATURE header.
 
     The wire format is unchanged from v1; only the HTTP header name
     moved from X-PAYMENT to PAYMENT-SIGNATURE in the v2 transport spec.
+    ``extensions`` echoes the 402's extensions block (x402 v2 §5.2) —
+    the facilitator catalogs the resource for discovery only when the
+    ``bazaar`` block comes back in the payload.
     """
     payload = {
         "x402Version": 2,
@@ -142,6 +146,8 @@ def build_payment_signature_header(
         "accepted": requirement,
         "payload": {"signature": signature, "authorization": authorization},
     }
+    if extensions:
+        payload["extensions"] = extensions
     raw = json.dumps(payload, separators=(",", ":")).encode("utf-8")
     return base64.b64encode(raw).decode("ascii")
 
@@ -163,7 +169,8 @@ def main() -> None:
     authorization = build_authorization(account.address, requirement)
     signature = sign_eip3009(account, requirement, authorization)
     payment_header = build_payment_signature_header(
-        summary_url, requirement, authorization, signature
+        summary_url, requirement, authorization, signature,
+        extensions=body.get("extensions"),
     )
     print(
         f"[SIGNED] nonce={authorization['nonce'][:14]}…  "

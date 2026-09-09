@@ -3,6 +3,7 @@ package com.dartintel.api.payment.dto;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -43,5 +44,26 @@ public record PaymentPayload(
                           PaymentRequirement accepted,
                           EvmExactPayload payload) {
         this(x402Version, resource, accepted, payload, null);
+    }
+
+    /**
+     * Return a copy that carries {@code value} under {@code extensions[key]}
+     * when the client did not send that key — the server-side fallback
+     * that keeps facilitator-side discovery (Bazaar cataloging) working
+     * for clients that skip the spec-mandated echo. A key the client did
+     * send is never touched (x402 v2 §5.2: the echo may be extended, not
+     * deleted or overwritten), so this returns {@code this} unchanged
+     * in that case.
+     */
+    public PaymentPayload withExtensionIfAbsent(String key, Map<String, Object> value) {
+        if (extensions != null && extensions.containsKey(key)) {
+            return this;
+        }
+        Map<String, Object> merged = new LinkedHashMap<>();
+        if (extensions != null) {
+            merged.putAll(extensions);
+        }
+        merged.put(key, value);
+        return new PaymentPayload(x402Version, resource, accepted, payload, Map.copyOf(merged));
     }
 }

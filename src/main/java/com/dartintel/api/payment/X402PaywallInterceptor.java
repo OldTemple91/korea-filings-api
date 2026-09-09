@@ -267,6 +267,20 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
             return false;
         }
 
+        // Bazaar echo fallback. x402 v2 §5.2 has the client echo the
+        // server's PaymentRequired.extensions into PaymentPayload.
+        // extensions, and the CDP facilitator catalogs a resource ONLY
+        // from that echoed `bazaar` block — no echo, no discovery
+        // listing. None of the clients observed so far echo it, so
+        // fill in the server's own declaration when it is missing.
+        // A client-supplied block is never overwritten (spec: the
+        // echo may be extended, not deleted or replaced). The EIP-3009
+        // signature covers the authorisation only, so adding advisory
+        // metadata here changes nothing the payer signed.
+        paymentPayload = paymentPayload.withExtensionIfAbsent("bazaar",
+                cachedBazaarByMode.computeIfAbsent(
+                        paywall.pricingMode(), m -> buildBazaarExtension(paywall)));
+
         // Replay key: EIP-3009 nonce when available (canonical), with
         // a fallback to the SHA-256 of the raw header for malformed-
         // but-not-rejected payloads (defence in depth).
