@@ -54,8 +54,7 @@ live, what's next, and the minimum setup to keep moving.
   facilitator's `EXTENSION-RESPONSES` outcome is parsed and logged
   (`bazaar=success|processing|rejected` on the `x402 settled` line)
   so cataloging is observable per settlement instead of inferred.
-  The bumped SDK/MCP versions are prepared in-repo; publishing to
-  npm / PyPI is a separate step.
+  TypeScript 0.1.5, Python 0.3.4 and MCP 0.3.1 are published.
   Follow-ups in the same round: the 402 `resource` object now carries
   provider branding (`serviceName` / `tags` / `iconUrl`, sourced from
   a single `ServiceIdentity` shared with `/.well-known/x402`) — the
@@ -96,7 +95,7 @@ live, what's next, and the minimum setup to keep moving.
   retries. `/llms-full.txt` and `/.well-known/llms.txt` serve the
   canonical llms.txt (both were live 404s). SDK models caught up with
   the round-15b/17a/18 wire fields that typed models were silently
-  dropping: Python 0.3.3 on PyPI; TypeScript 0.1.4 on npm.
+  dropping: Python 0.3.4 on PyPI; TypeScript 0.1.5 on npm.
 - **Round-18 — the API answers in English (2026-07-23).** A response
   audit found the product was shipping Korean on the surfaces that
   matter most to an English-consuming agent. Three defects, all fixed
@@ -359,8 +358,8 @@ live, what's next, and the minimum setup to keep moving.
   from common crawlers and AI-agent indexers that probe the
   standard discovery paths (covered by the audit categorisation in
   [`docs/ANALYTICS.md`](ANALYTICS.md)).
-- **PyPI packages published** — `koreafilings` 0.3.3 + `koreafilings-mcp` 0.3.0.
-- **npm package published — `koreafilings` 0.1.4** (TypeScript SDK,
+- **PyPI packages published** — `koreafilings` 0.3.4 + `koreafilings-mcp` 0.3.1.
+- **npm package published — `koreafilings` 0.1.5** (TypeScript SDK,
   ESM + CJS, viem 2.21.0 exact pin, KNOWN_DOMAINS allowlist that
   hard-fails on a non-canonical USDC contract, structured
   `PaymentError.detail`, `lastSettlementError` field for
@@ -394,7 +393,7 @@ live, what's next, and the minimum setup to keep moving.
 | Health | https://api.koreafilings.com/actuator/health | Liveness/readiness. |
 | Paid summary | `GET /v1/disclosures/summary?rcptNo=…` | 0.005 USDC on Base mainnet via Coinbase CDP facilitator. |
 | Python SDK | https://pypi.org/project/koreafilings/ | `pip install koreafilings` |
-| TypeScript SDK | https://www.npmjs.com/package/koreafilings | `npm install koreafilings` (currently 0.1.4) |
+| TypeScript SDK | https://www.npmjs.com/package/koreafilings | `npm install koreafilings` (currently 0.1.5) |
 | MCP server | https://pypi.org/project/koreafilings-mcp/ | `uv tool install koreafilings-mcp` |
 | Source | https://github.com/OldTemple91/korea-filings-api | Private push via `OldTemple91`. |
 
