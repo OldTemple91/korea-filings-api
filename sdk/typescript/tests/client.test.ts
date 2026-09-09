@@ -175,8 +175,15 @@ describe('KoreaFilings paid 402 → sign → retry flow', () => {
 
   it('echoes the 402 extensions block into the signed payload', async () => {
     const bazaar = { info: { input: { type: 'http', method: 'GET' } }, schema: { type: 'object' } };
+    const resource = {
+      url: 'https://api.koreafilings.com/v1/disclosures/summary?rcptNo=20260424900874',
+      description: 'AI summary',
+      mimeType: 'application/json',
+      serviceName: 'Korea Filings',
+      tags: ['korea'],
+    };
     fetchSpy.mockResolvedValueOnce(
-      mockJson({ accepts: [SAMPLE_REQUIREMENT], extensions: { bazaar } }, 402),
+      mockJson({ accepts: [SAMPLE_REQUIREMENT], extensions: { bazaar }, resource }, 402),
     );
     fetchSpy.mockResolvedValueOnce(mockJson(SAMPLE_SUMMARY, 200));
 
@@ -188,6 +195,8 @@ describe('KoreaFilings paid 402 → sign → retry flow', () => {
     expect(sigHeader).toBeTruthy();
     const decoded = JSON.parse(Buffer.from(sigHeader!, 'base64').toString('utf-8'));
     expect(decoded.extensions).toEqual({ bazaar });
+    expect(decoded.resource.serviceName).toBe('Korea Filings');
+    expect(decoded.resource.url).toContain('rcptNo=20260424900874');
   });
 
   it('throws PaymentError when the 402 advertises a different network than configured', async () => {

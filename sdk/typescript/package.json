@@ -1,7 +1,7 @@
 {
   "name": "koreafilings",
   "version": "0.1.5",
-  "description": "TypeScript SDK for koreafilings.com \u2014 AI-summarized Korean DART disclosures, paid per call in USDC via x402.",
+  "description": "TypeScript SDK for koreafilings.com — AI-summarized Korean DART disclosures, paid per call in USDC via x402.",
   "keywords": [
     "x402",
     "korea",
@@ -16,7 +16,7 @@
   "homepage": "https://koreafilings.com",
   "repository": {
     "type": "git",
-    "url": "https://github.com/OldTemple91/korea-filings-api.git",
+    "url": "git+https://github.com/OldTemple91/korea-filings-api.git",
     "directory": "sdk/typescript"
   },
   "license": "MIT",

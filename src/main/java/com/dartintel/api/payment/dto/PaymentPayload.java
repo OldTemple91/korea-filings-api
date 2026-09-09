@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -55,6 +56,24 @@ public record PaymentPayload(
      * deleted or overwritten), so this returns {@code this} unchanged
      * in that case.
      */
+    /**
+     * Same fallback for the {@code resource} object: clients build it
+     * themselves (url + description), so the provider branding the
+     * Bazaar reads from it — serviceName / tags / iconUrl — is filled
+     * in when missing. A payload without a resource is left alone
+     * (the interceptor rejects it on the URL-binding check anyway).
+     */
+    public PaymentPayload withResourceBrandingIfAbsent(String serviceName, List<String> tags, String iconUrl) {
+        if (resource == null) {
+            return this;
+        }
+        ResourceInfo branded = resource.withBrandingIfAbsent(serviceName, tags, iconUrl);
+        if (branded == resource) {
+            return this;
+        }
+        return new PaymentPayload(x402Version, branded, accepted, payload, extensions);
+    }
+
     public PaymentPayload withExtensionIfAbsent(String key, Map<String, Object> value) {
         if (extensions != null && extensions.containsKey(key)) {
             return this;

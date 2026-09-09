@@ -140,6 +140,7 @@ def build_payment_signature_header(
     authorization: Mapping[str, Any],
     signature: str,
     extensions: Mapping[str, Any] | None = None,
+    resource: Mapping[str, Any] | None = None,
 ) -> str:
     """Base64-encode the signed payload into the ``PAYMENT-SIGNATURE`` header value.
 
@@ -151,14 +152,22 @@ def build_payment_signature_header(
     server declared). The Coinbase facilitator catalogs a resource for
     discovery (Bazaar) only from that echoed ``bazaar`` block, so
     dropping it silently keeps the service out of agent directories.
+
+    ``resource`` is the 402 body's ``resource`` object; when present it
+    is echoed with its provider branding (``serviceName`` / ``tags`` /
+    ``iconUrl``, which the Bazaar reads), except that ``url`` is always
+    the exact request URL this signature is scoped to.
     """
+    resource_obj: dict[str, Any] = {
+        "url": resource_url,
+        "description": requirement.get("description", ""),
+        "mimeType": "application/json",
+    }
+    if resource:
+        resource_obj = {**dict(resource), "url": resource_url}
     payload: dict[str, Any] = {
         "x402Version": X402_VERSION,
-        "resource": {
-            "url": resource_url,
-            "description": requirement.get("description", ""),
-            "mimeType": "application/json",
-        },
+        "resource": resource_obj,
         "accepted": requirement,
         "payload": {"signature": signature, "authorization": authorization},
     }

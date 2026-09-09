@@ -125,6 +125,31 @@ def test_build_payment_signature_header_omits_extensions_when_server_sent_none()
     assert "extensions" not in decoded
 
 
+def test_build_payment_signature_header_echoes_server_resource_branding():
+    # The 402's resource object may carry provider branding
+    # (serviceName / tags / iconUrl) that the Bazaar reads; echo it,
+    # but the url must stay the exact request URL the client signed for.
+    req = {"payTo": "0x0", "amount": "5000", "maxTimeoutSeconds": 60, "description": "x"}
+    auth = {"from": "0xa", "to": "0xb", "value": "5000", "validAfter": "0", "validBefore": "1", "nonce": "0x0"}
+    server_resource = {
+        "url": "https://api.test/v1/x",
+        "description": "server desc",
+        "mimeType": "application/json",
+        "serviceName": "Korea Filings",
+        "tags": ["korea", "dart"],
+        "iconUrl": "https://x/logo.png",
+    }
+    header = build_payment_signature_header(
+        "https://api.test/v1/x?rcptNo=1", req, auth, "0xdeadbeef", resource=server_resource
+    )
+    decoded = json.loads(base64.b64decode(header))
+    assert decoded["resource"]["url"] == "https://api.test/v1/x?rcptNo=1"
+    assert decoded["resource"]["serviceName"] == "Korea Filings"
+    assert decoded["resource"]["tags"] == ["korea", "dart"]
+    assert decoded["resource"]["iconUrl"] == "https://x/logo.png"
+    assert decoded["resource"]["description"] == "server desc"
+
+
 def test_paid_get_echoes_402_extensions_into_payment_signature():
     # End-to-end through Client._paid_get with a mocked transport: the
     # 402's `extensions` must come back inside the PAYMENT-SIGNATURE
@@ -153,10 +178,14 @@ def test_paid_get_echoes_402_extensions_into_payment_signature():
     }
     seen: list[httpx.Request] = []
 
+    resource = {"url": "https://api.test/v1/disclosures/summary?rcptNo=20260424900874",
+                "description": "AI summary", "mimeType": "application/json",
+                "serviceName": "Korea Filings", "tags": ["korea"]}
+
     def handler(request: httpx.Request) -> httpx.Response:
         seen.append(request)
         if "PAYMENT-SIGNATURE" not in request.headers:
-            return httpx.Response(402, json={"accepts": [requirement], "extensions": {"bazaar": bazaar}})
+            return httpx.Response(402, json={"accepts": [requirement], "extensions": {"bazaar": bazaar}, "resource": resource})
         proof = base64.b64encode(json.dumps({"success": True, "transaction": "0xabc", "network": "eip155:84532"}).encode()).decode()
         return httpx.Response(200, json=summary, headers={"PAYMENT-RESPONSE": proof})
 
@@ -169,6 +198,8 @@ def test_paid_get_echoes_402_extensions_into_payment_signature():
     assert len(seen) == 2
     decoded = json.loads(base64.b64decode(seen[1].headers["PAYMENT-SIGNATURE"]))
     assert decoded["extensions"] == {"bazaar": bazaar}
+    assert decoded["resource"]["serviceName"] == "Korea Filings"
+    assert decoded["resource"]["url"] == "https://api.test/v1/disclosures/summary?rcptNo=20260424900874"
 
 
 def test_decode_settlement_header_returns_none_for_empty():

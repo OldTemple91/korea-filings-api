@@ -57,6 +57,22 @@ class X402PaywallInterceptorRequiredParamTest {
     }
 
     @Test
+    void discovery402CarriesProviderBrandingOnResource() throws Exception {
+        // The Bazaar reads serviceName / tags / iconUrl from the 402's
+        // resource object to name and rank the catalog entry.
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/v1/disclosures/summary");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        interceptor.preHandle(request, response, handler("summary"));
+
+        JsonNode body = objectMapper.readTree(response.getContentAsString());
+        assertThat(body.at("/resource/serviceName").asText()).isEqualTo("Korea Filings");
+        assertThat(body.at("/resource/tags").isArray()).isTrue();
+        assertThat(body.at("/resource/tags").toString()).contains("\"korea\"");
+        assertThat(body.at("/resource/iconUrl").asText()).startsWith("https://");
+    }
+
+    @Test
     void bareByTickerPathWithoutPaymentReturns402AtDefaultCountPrice() throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/v1/disclosures/by-ticker");
         MockHttpServletResponse response = new MockHttpServletResponse();

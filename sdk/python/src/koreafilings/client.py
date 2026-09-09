@@ -242,6 +242,7 @@ class Client:
         header_value = _payment.build_payment_signature_header(
             full_url, requirement, authorization, signature,
             extensions=body.get("extensions"),
+            resource=body.get("resource"),
         )
 
         # x402 v2 transport spec: PAYMENT-SIGNATURE (request), PAYMENT-RESPONSE

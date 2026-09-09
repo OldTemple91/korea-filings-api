@@ -22,6 +22,11 @@ Nothing pending.
   service out of agent directories on every settlement. No API change
   for callers; `buildPaymentSignatureHeader` gained an optional
   trailing `extensions` argument.
+- The payload's `resource` object now echoes the 402's `resource`
+  (provider `serviceName` / `tags` / `iconUrl`, which the Bazaar uses
+  to name and rank the listing) while keeping `url` as the exact
+  request URL the signature is scoped to. Optional trailing
+  `resource` argument on `buildPaymentSignatureHeader`.
 
 ## [0.1.4] — 2026-07-23
 

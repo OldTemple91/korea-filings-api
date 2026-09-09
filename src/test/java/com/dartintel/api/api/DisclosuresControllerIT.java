@@ -287,6 +287,8 @@ class DisclosuresControllerIT {
         mockMvc.perform(get("/v1/disclosures/summary"))
                 .andExpect(status().isPaymentRequired())
                 .andExpect(jsonPath("$.resource.url").value("http://localhost/v1/disclosures/summary"))
+                .andExpect(jsonPath("$.resource.serviceName").value("Korea Filings"))
+                .andExpect(jsonPath("$.resource.tags[0]").value("korea"))
                 .andExpect(jsonPath("$.extensions.bazaar.info.input.queryParams.rcptNo.required").value(true));
     }
 

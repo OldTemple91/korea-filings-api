@@ -1,5 +1,6 @@
 package com.dartintel.api.payment;
 
+import com.dartintel.api.ServiceIdentity;
 import com.dartintel.api.payment.dto.EvmExactPayload;
 import com.dartintel.api.payment.dto.FacilitatorVerifyRequest;
 import com.dartintel.api.payment.dto.FacilitatorVerifyResponse;
@@ -277,9 +278,15 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
         // echo may be extended, not deleted or replaced). The EIP-3009
         // signature covers the authorisation only, so adding advisory
         // metadata here changes nothing the payer signed.
-        paymentPayload = paymentPayload.withExtensionIfAbsent("bazaar",
-                cachedBazaarByMode.computeIfAbsent(
-                        paywall.pricingMode(), m -> buildBazaarExtension(paywall)));
+        paymentPayload = paymentPayload
+                .withExtensionIfAbsent("bazaar",
+                        cachedBazaarByMode.computeIfAbsent(
+                                paywall.pricingMode(), m -> buildBazaarExtension(paywall)))
+                // Clients assemble the resource object themselves, so
+                // the branding the Bazaar reads from it is filled in
+                // the same way when they leave it out.
+                .withResourceBrandingIfAbsent(
+                        ServiceIdentity.NAME, ServiceIdentity.TAGS, ServiceIdentity.ICON_URL);
 
         // Replay key: EIP-3009 nonce when available (canonical), with
         // a fallback to the SHA-256 of the raw header for malformed-
@@ -524,9 +531,15 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
         PaymentRequirementsBody body = new PaymentRequirementsBody(
                 X402_VERSION,
                 error,
+                // Provider branding on the resource object is what the
+                // Bazaar reads to name, tag and icon the catalog entry
+                // (x402 bazaar extension: "no out-of-band admin step").
                 new ResourceInfo(resourceUrl,
                         description == null || description.isBlank() ? null : description,
-                        MediaType.APPLICATION_JSON_VALUE),
+                        MediaType.APPLICATION_JSON_VALUE,
+                        ServiceIdentity.NAME,
+                        ServiceIdentity.TAGS,
+                        ServiceIdentity.ICON_URL),
                 List.of(requirement),
                 Map.of("bazaar", cachedBazaarByMode.computeIfAbsent(
                         paywall.pricingMode(), m -> buildBazaarExtension(paywall))),

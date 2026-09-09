@@ -1,5 +1,6 @@
 package com.dartintel.api.api;
 
+import com.dartintel.api.ServiceIdentity;
 import com.dartintel.api.payment.X402Paywall;
 import com.dartintel.api.payment.X402Properties;
 import io.swagger.v3.oas.annotations.Operation;
@@ -48,7 +49,7 @@ import java.util.Map;
 public class WellKnownController {
 
     private static final String PUBLIC_BASE_URL = "https://api.koreafilings.com";
-    private static final String SERVICE_NAME = "Korea Filings";
+    private static final String SERVICE_NAME = ServiceIdentity.NAME;
     // Round-19: catalogs and indexers surface this string verbatim, so
     // it leads with what a caller can do WITHOUT a wallet. The previous
     // wording ("free … for discovery, paid … for content") framed the
@@ -61,7 +62,7 @@ public class WellKnownController {
             "English filing types, importance scores and links to the " +
             "DART original, no wallet required. Paid AI summaries " +
             "(0.005 USDC via x402 on Base) explain what a filing says.";
-    private static final String SERVICE_HOMEPAGE = "https://koreafilings.com";
+    private static final String SERVICE_HOMEPAGE = ServiceIdentity.HOMEPAGE;
     private static final String SERVICE_REPOSITORY =
             "https://github.com/OldTemple91/korea-filings-api";
     private static final String SERVICE_OPENAPI =

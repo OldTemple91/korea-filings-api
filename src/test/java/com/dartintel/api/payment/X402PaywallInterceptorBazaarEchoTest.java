@@ -59,6 +59,12 @@ class X402PaywallInterceptorBazaarEchoTest {
         // The enriched payload is what settle will forward too.
         VerifiedPayment verified = (VerifiedPayment) request.getAttribute(X402PaywallInterceptor.REQUEST_ATTR_VERIFIED);
         assertThat(verified.payload().extensions()).containsKey("bazaar");
+
+        // Provider branding is filled into the payload's resource object
+        // as well, since clients build that object themselves.
+        assertThat(captor.getValue().paymentPayload().resource().serviceName()).isEqualTo("Korea Filings");
+        assertThat(captor.getValue().paymentPayload().resource().tags()).contains("korea");
+        assertThat(captor.getValue().paymentPayload().resource().url()).isEqualTo(RESOURCE_URL);
     }
 
     @Test

@@ -6,6 +6,8 @@ Usage (from repo root):
     uv run testclient/payer.py
     # or with explicit rcpt_no:
     uv run testclient/payer.py 20260423000001
+    # or any paid path + query (e.g. the per-result endpoint):
+    uv run testclient/payer.py "/v1/disclosures/by-ticker?ticker=005930&limit=1"
 
 Reads PAYER_PRIVATE_KEY, API_BASE_URL, TARGET_RCPT_NO from
 testclient/.env.testclient (copy .env.testclient.example and fill in).
@@ -126,7 +128,7 @@ def sign_eip3009(account: Account, requirement: dict, authorization: dict) -> st
 
 def build_payment_signature_header(
     resource_url: str, requirement: dict, authorization: dict, signature: str,
-    extensions: dict | None = None,
+    extensions: dict | None = None, resource: dict | None = None,
 ) -> str:
     """Base64-encode the signed PaymentPayload for the PAYMENT-SIGNATURE header.
 
@@ -136,13 +138,14 @@ def build_payment_signature_header(
     the facilitator catalogs the resource for discovery only when the
     ``bazaar`` block comes back in the payload.
     """
+    resource_obj = {"url": resource_url, "description": "DART summary", "mimeType": "application/json"}
+    if resource:
+        # Echo the server's resource object (provider serviceName/tags/iconUrl
+        # for the Bazaar) but keep url as the exact signed request URL.
+        resource_obj = {**resource, "url": resource_url}
     payload = {
         "x402Version": 2,
-        "resource": {
-            "url": resource_url,
-            "description": "DART summary",
-            "mimeType": "application/json",
-        },
+        "resource": resource_obj,
         "accepted": requirement,
         "payload": {"signature": signature, "authorization": authorization},
     }
@@ -152,10 +155,22 @@ def build_payment_signature_header(
     return base64.b64encode(raw).decode("ascii")
 
 
+def resolve_target_url(base_url: str, arg: str | None, default_rcpt_no: str) -> str:
+    """Map the CLI argument to the paid URL to hit.
+
+    A leading ``/`` means "this exact path + query" (any paid endpoint,
+    e.g. ``/v1/disclosures/by-ticker?ticker=005930&limit=1``); anything
+    else is treated as a DART receipt number for the summary endpoint.
+    """
+    if arg and arg.startswith("/"):
+        return f"{base_url}{arg}"
+    rcpt_no = arg or default_rcpt_no
+    return f"{base_url}/v1/disclosures/summary?rcptNo={rcpt_no}"
+
+
 def main() -> None:
     env = load_env()
-    rcpt_no = sys.argv[1] if len(sys.argv) > 1 else env["rcpt_no"]
-    summary_url = f"{env['base_url']}/v1/disclosures/summary?rcptNo={rcpt_no}"
+    summary_url = resolve_target_url(env["base_url"], sys.argv[1] if len(sys.argv) > 1 else None, env["rcpt_no"])
 
     account = Account.from_key(env["pk"])
     print(f"Payer address : {account.address}")
@@ -170,7 +185,7 @@ def main() -> None:
     signature = sign_eip3009(account, requirement, authorization)
     payment_header = build_payment_signature_header(
         summary_url, requirement, authorization, signature,
-        extensions=body.get("extensions"),
+        extensions=body.get("extensions"), resource=body.get("resource"),
     )
     print(
         f"[SIGNED] nonce={authorization['nonce'][:14]}…  "

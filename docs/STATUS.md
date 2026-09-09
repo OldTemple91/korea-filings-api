@@ -56,6 +56,14 @@ live, what's next, and the minimum setup to keep moving.
   so cataloging is observable per settlement instead of inferred.
   The bumped SDK/MCP versions are prepared in-repo; publishing to
   npm / PyPI is a separate step.
+  Follow-ups in the same round: the 402 `resource` object now carries
+  provider branding (`serviceName` / `tags` / `iconUrl`, sourced from
+  a single `ServiceIdentity` shared with `/.well-known/x402`) — the
+  field the Bazaar reads to name, tag and icon a listing, per the
+  extension spec ("no out-of-band admin step") — with the same
+  fill-when-absent fallback on forwarded payloads and an echo in the
+  SDKs; and the heartbeat settles both paid endpoints per run since
+  the catalog indexes and expires resources individually.
 - **Round-18e/f — classifier expansion, historical reclassify, and the
   ticker-hallucination fix (2026-07-23).**
   (e) 14 new rules + 7 event types lifted from the live OTHER bucket

@@ -284,7 +284,11 @@ export class KoreaFilings {
     }
 
     const body = (await safeJson(unpaid)) as
-      | { accepts?: PaymentRequirement[]; extensions?: Record<string, unknown> }
+      | {
+          accepts?: PaymentRequirement[];
+          extensions?: Record<string, unknown>;
+          resource?: Record<string, unknown>;
+        }
       | null;
     const requirement = selectRequirement(body?.accepts ?? []);
 
@@ -311,6 +315,7 @@ export class KoreaFilings {
       authorization,
       signature,
       body?.extensions,
+      body?.resource,
     );
 
     // x402 v2 transport spec: PAYMENT-SIGNATURE on request,

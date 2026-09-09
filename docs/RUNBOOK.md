@@ -382,8 +382,10 @@ Recover:
    catalog has processed the settlement (allow a few hours).
 
 Prevention: `scripts/bazaar-heartbeat.sh` runs from cron on the 1st
-and 16th (`0 3 1,16 * *`) and settles one 0.005 USDC call, which keeps
-every gap under the 30-day limit. It reads
+and 16th (`0 3 1,16 * *`) and settles one call per paid endpoint
+(`/summary` on a cached rcptNo, `/by-ticker` with `limit=1`; 0.01 USDC
+per run), which keeps every gap under the 30-day limit for each
+resource — the catalog indexes and expires them individually. It reads
 `testclient/.env.testclient` on the VM (payer key for a dedicated
 low-balance wallet, `chmod 600`; the deploy rsync excludes `.env*`
 so it survives). Retire the cron once organic settlements land more

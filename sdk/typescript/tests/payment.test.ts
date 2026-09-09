@@ -270,6 +270,24 @@ describe('buildPaymentSignatureHeader extensions echo', () => {
     expect(decoded.extensions).toEqual({ bazaar });
   });
 
+  it('echoes the server resource branding while keeping the exact request url', () => {
+    const serverResource = {
+      url: 'https://api.koreafilings.com/v1/disclosures/summary',
+      description: 'server desc',
+      mimeType: 'application/json',
+      serviceName: 'Korea Filings',
+      tags: ['korea', 'dart'],
+      iconUrl: 'https://koreafilings.com/logo.png',
+    };
+    const header = buildPaymentSignatureHeader(url, SAMPLE_REQUIREMENT, auth, sig, undefined, serverResource);
+    const decoded = JSON.parse(Buffer.from(header, 'base64').toString('utf-8'));
+    expect(decoded.resource.url).toBe(url);
+    expect(decoded.resource.serviceName).toBe('Korea Filings');
+    expect(decoded.resource.tags).toEqual(['korea', 'dart']);
+    expect(decoded.resource.iconUrl).toBe('https://koreafilings.com/logo.png');
+    expect(decoded.resource.description).toBe('server desc');
+  });
+
   it('omits extensions when the server sent none', () => {
     const header = buildPaymentSignatureHeader(url, SAMPLE_REQUIREMENT, auth, sig);
     const decoded = JSON.parse(Buffer.from(header, 'base64').toString('utf-8'));

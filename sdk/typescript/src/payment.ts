@@ -233,19 +233,27 @@ export function buildPaymentSignatureHeader(
   authorization: Authorization,
   signature: Hex,
   extensions?: Record<string, unknown>,
+  resource?: Record<string, unknown>,
 ): string {
   // x402 v2 §5.2: the client must echo the server's
   // PaymentRequired.extensions into PaymentPayload.extensions. The
   // Coinbase facilitator catalogs a resource for discovery (Bazaar)
   // only from that echoed `bazaar` block, so dropping it silently
   // keeps the service out of agent directories.
+  // The 402's resource object may carry provider branding
+  // (serviceName / tags / iconUrl) that the Bazaar reads; echo it,
+  // but `url` is always the exact request URL this signature is
+  // scoped to.
+  const resourceObject: Record<string, unknown> = resource
+    ? { ...resource, url: resourceUrl }
+    : {
+        url: resourceUrl,
+        description: requirement.description ?? '',
+        mimeType: 'application/json',
+      };
   const payload: Record<string, unknown> = {
     x402Version: X402_VERSION,
-    resource: {
-      url: resourceUrl,
-      description: requirement.description ?? '',
-      mimeType: 'application/json',
-    },
+    resource: resourceObject,
     accepted: requirement,
     payload: {
       signature,
