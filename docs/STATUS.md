@@ -427,7 +427,7 @@ live, what's next, and the minimum setup to keep moving.
    `X-PAYMENT-RESPONSE` accepted as compat). Settle-failure now
    matches the spec (HTTP 402 + failure SettlementResponse in
    `PAYMENT-RESPONSE` + empty body) instead of leaking paid data on
-   facilitator outage. SDK is at 0.3.3 on PyPI, MCP at 0.3.0.
+   facilitator outage. SDK is at 0.3.4 on PyPI, MCP at 0.3.1.
    ROADMAP.md carries the full ship summary.
 
    **v0.4 audit pass (2026-05-04).** Closed 3 P0 + 16 P1 items from
