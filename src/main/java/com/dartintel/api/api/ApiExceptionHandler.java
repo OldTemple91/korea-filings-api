@@ -13,6 +13,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -61,6 +62,26 @@ public class ApiExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
     }
 
+    /**
+     * A query value that cannot be converted to the parameter type
+     * (e.g. {@code ?limit=abc}). Without this handler Spring answered
+     * a bare "Bad Request" with no message and no hint — the one 400
+     * shape on the free surface that gave an agent nothing to act on.
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<Map<String, Object>> handleTypeMismatch(
+            MethodArgumentTypeMismatchException ex, HttpServletRequest request) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("error", "validation_failed");
+        Class<?> required = ex.getRequiredType();
+        String expected = required == null ? "a valid value"
+                : (required == int.class || required == Integer.class || required == long.class
+                        || required == Long.class) ? "an integer" : "a " + required.getSimpleName();
+        body.put("message", ex.getName() + " must be " + expected + " (got '" + ex.getValue() + "')");
+        body.put("agent_action_hint", validationHint(request));
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
+    }
+
     @ExceptionHandler(MissingServletRequestParameterException.class)
     public ResponseEntity<Map<String, Object>> handleMissingParam(
             MissingServletRequestParameterException ex, HttpServletRequest request) {
@@ -97,6 +118,12 @@ public class ApiExceptionHandler {
         if (path != null && path.startsWith("/v1/companies")) {
             return "The query parameter q must be a non-empty string. Try a " +
                     "Korean or English company name like 'Samsung Electronics' or '삼성전자'.";
+        }
+        if (path != null && path.startsWith("/v1/disclosures/recent")) {
+            return "Accepted query parameters: limit={integer, 1-100, default 20; out-of-range " +
+                    "values are clamped}, since_hours={integer, 1-168, default 24}, " +
+                    "ticker={optional 6-7 char KRX ticker}. Example: " +
+                    "GET /v1/disclosures/recent?limit=100&since_hours=24";
         }
         return "See https://api.koreafilings.com/v1/pricing for the canonical " +
                 "free-then-paid call sequence and required parameters per endpoint.";

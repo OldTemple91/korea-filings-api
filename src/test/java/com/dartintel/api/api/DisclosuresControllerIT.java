@@ -444,6 +444,40 @@ class DisclosuresControllerIT {
     }
 
     @Test
+    void recentFeedClampsOversizedLimitInsteadOfRejecting() throws Exception {
+        // Round-21: llms.txt has always promised "limit is clamped to the
+        // documented range server-side"; the controller was rejecting
+        // with 400 instead, and a real poller spent a day hitting that.
+        mockMvc.perform(get("/v1/disclosures/recent?limit=500&since_hours=168"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.filings").isArray());
+    }
+
+    @Test
+    void recentFeedClampsZeroLimitToOne() throws Exception {
+        mockMvc.perform(get("/v1/disclosures/recent?limit=0&since_hours=168"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.filings.length()").value(1));
+    }
+
+    @Test
+    void recentFeedNonNumericLimitReturnsStructured400() throws Exception {
+        mockMvc.perform(get("/v1/disclosures/recent?limit=abc"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("validation_failed"))
+                .andExpect(jsonPath("$.message").value(containsString("limit")))
+                .andExpect(jsonPath("$.agent_action_hint").value(containsString("100")));
+    }
+
+    @Test
+    void recentFeedSinceHoursOutOfRangeHintStatesTheRange() throws Exception {
+        mockMvc.perform(get("/v1/disclosures/recent?since_hours=999"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("validation_failed"))
+                .andExpect(jsonPath("$.agent_action_hint").value(containsString("168")));
+    }
+
+    @Test
     void recentFeedRejectsMalformedTicker() throws Exception {
         mockMvc.perform(get("/v1/disclosures/recent?ticker=NOT-A-TICKER"))
                 .andExpect(status().isBadRequest());

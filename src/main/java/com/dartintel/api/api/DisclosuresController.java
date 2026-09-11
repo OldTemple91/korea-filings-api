@@ -46,6 +46,10 @@ import java.util.Optional;
 @Tag(name = "Disclosures", description = "DART disclosure intelligence — free metadata browsing and paid AI summaries.")
 public class DisclosuresController {
 
+    /** Free feed page bounds — out-of-range {@code limit} is clamped, not rejected (round-21). */
+    static final int RECENT_LIMIT_MIN = 1;
+    static final int RECENT_LIMIT_MAX = 100;
+
     private final DisclosureSummaryRepository summaryRepository;
     private final DisclosureRepository disclosureRepository;
     private final SummaryService summaryService;
@@ -93,8 +97,9 @@ public class DisclosuresController {
                     """
     )
     public ResponseEntity<RecentFilingsResponse> getRecent(
-            @Parameter(description = "Max filings to return (1-100, default 20).")
-            @RequestParam(value = "limit", defaultValue = "20") @Min(1) @Max(100) int limit,
+            @Parameter(description = "Max filings to return (1-100, default 20). Values outside "
+                    + "the range are clamped, never rejected.")
+            @RequestParam(value = "limit", defaultValue = "20") int limit,
             @Parameter(description = "Look back this many hours (1-168, default 24).")
             @RequestParam(value = "since_hours", defaultValue = "24") @Min(1) @Max(168) int sinceHours,
             @Parameter(description = "Optional six-digit KRX ticker to watch a single company, "
@@ -105,6 +110,13 @@ public class DisclosuresController {
                     message = "ticker must be 6–7 alphanumeric characters (KRX SPAC tickers can include letters)")
             String ticker
     ) {
+        // Round-21: clamp rather than reject. The free feed is polled by
+        // unattended scripts; one spent a full day retrying limit>100
+        // against a 400. llms.txt has always documented clamping here,
+        // and a clamped page costs nothing extra (metadata only, cache
+        // read-only). Paid endpoints keep their 400 because a clamped
+        // count would silently change the price an agent signs for.
+        limit = Math.max(RECENT_LIMIT_MIN, Math.min(RECENT_LIMIT_MAX, limit));
         Instant threshold = Instant.now().minus(sinceHours, ChronoUnit.HOURS);
         // Round-19: the ticker filter is free on purpose. The paid
         // product is the summary text, not the fact that a filing
