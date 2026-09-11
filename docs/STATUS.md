@@ -1,4 +1,4 @@
-# STATUS — where we left off (2026-09-08, post-round-20)
+# STATUS — where we left off (2026-09-11, post-round-21)
 
 Read this first when picking up on a different machine. Summarises what is
 live, what's next, and the minimum setup to keep moving.
@@ -18,6 +18,22 @@ live, what's next, and the minimum setup to keep moving.
 - **Weeks 1–5 complete.** Ingestion, summarisation, x402 paywall, public
   deployment, landing page, Python SDK, MCP server, OpenAPI docs — all
   live in production at `api.koreafilings.com`.
+- **Round-21 — free feed clamps `limit` instead of rejecting; structured
+  400 for non-numeric query values (2026-09-11).** The first day after
+  the Bazaar listing, a pair of unattended pollers hit
+  `/v1/disclosures/recent` for hours and only ever received 400 —
+  `limit` above 100. `llms.txt` had always promised that `limit` is
+  clamped to the documented range server-side; the controller was
+  rejecting instead. The free feed now clamps `limit` to 1–100 (a
+  clamped page costs nothing extra: metadata only, read-only cache
+  lookup). Paid endpoints keep their 400 on purpose — a clamped count
+  would silently change the price an agent signs for. Two related
+  gaps closed in `ApiExceptionHandler`: a non-numeric query value
+  (`?limit=abc`) used to fall through to Spring's bare "Bad Request"
+  with no message and no hint, and the `/recent` validation hint
+  pointed at `/v1/pricing` instead of stating the accepted ranges.
+  Both now return the standard `validation_failed` envelope with the
+  ranges spelled out.
 - **Round-20 — Coinbase Bazaar delisting root cause + bare-path 402
   (2026-09-08).** The service was absent from Coinbase's x402 Bazaar
   (the index behind Agentic.Market) despite a valid `bazaar`
