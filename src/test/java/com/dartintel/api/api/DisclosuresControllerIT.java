@@ -464,13 +464,18 @@ class DisclosuresControllerIT {
     }
 
     @Test
-    void recentFeedEtagChangesWhenTheQueryChanges() throws Exception {
+    void recentFeedEtagChangesWhenTheBodyChanges() throws Exception {
+        // The fixture seeds few rows, so two limits can yield the same
+        // page; compare a non-empty market-wide page against a ticker
+        // nobody is seeded under (empty page) instead.
         String a = mockMvc.perform(get("/v1/disclosures/recent?limit=10&since_hours=168"))
+                .andExpect(jsonPath("$.filings", org.hamcrest.Matchers.not(org.hamcrest.Matchers.empty())))
                 .andReturn().getResponse().getHeader("ETag");
-        String b = mockMvc.perform(get("/v1/disclosures/recent?limit=1&since_hours=168"))
+        String b = mockMvc.perform(get("/v1/disclosures/recent?limit=10&since_hours=168&ticker=999999"))
+                .andExpect(jsonPath("$.filings", org.hamcrest.Matchers.empty()))
                 .andReturn().getResponse().getHeader("ETag");
 
-        assertThat(a).isNotEqualTo(b);
+        assertThat(a).isNotNull().isNotEqualTo(b);
     }
 
     @Test
