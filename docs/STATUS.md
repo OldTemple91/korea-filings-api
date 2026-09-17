@@ -27,8 +27,13 @@ live, what's next, and the minimum setup to keep moving.
   filings for any client with an HTTP cache layer. Paid paths stay
   outside the filter (402 challenges are per-request). The audit
   filter is pinned one step outside the ETag filter so `request_audit`
-  records the 304 the client received. Documented in the OpenAPI
-  description, `llms.txt` and README.
+  records a 304 whenever the origin serves one. Note that Cloudflare
+  sits in front and handles conditional requests at the edge itself
+  (both on cache hits and on misses, where it fetches the full page
+  and answers the client's validator locally), so most 304s a poller
+  receives never reach the origin and are not in `request_audit` —
+  edge analytics are the place to measure that effect. Documented in
+  the OpenAPI description, `llms.txt` and README.
 - **Round-21 — free feed clamps `limit` instead of rejecting; structured
   400 for non-numeric query values (2026-09-11).** The first day after
   the Bazaar listing, a pair of unattended pollers hit
