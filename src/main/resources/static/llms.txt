@@ -63,6 +63,7 @@ What you pay for is the *explanation* — a paraphrased English summary of what 
 - `rcptNo` must match `^\d{14}$` — exactly 14 digits, no separators.
 - `ticker` must match `^[0-9A-Z]{6,7}$` — 6 alphanumeric for standard KRX listings, 7 for SPAC tickers ending in `K`.
 - `limit` query parameter is clamped to the documented range server-side (1–50 for `by-ticker`, 1–100 for `recent`).
+- `/v1/disclosures/recent` supports conditional GET: every 200 carries an `ETag`; send it back as `If-None-Match` and an unchanged feed answers `304 Not Modified` with an empty body. Poll as often as you like — a 304 costs nothing.
 - A malformed `rcptNo` or `ticker` produces HTTP 400 with `{ "error": "validation_failed" }` — no payment is ever charged for a rejected input.
 
 ## SDKs and clients

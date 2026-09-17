@@ -94,6 +94,11 @@ public class DisclosuresController {
                     behind `/v1/disclosures/summary` (0.005 USDC) and
                     `/v1/disclosures/by-ticker` (0.005 × limit). Use this feed
                     to decide which filings are worth that.
+
+                    Polling-friendly: every 200 carries an `ETag`. Send it
+                    back as `If-None-Match` and an unchanged feed answers
+                    `304 Not Modified` with an empty body, so a 30-second
+                    poll loop costs nothing between filings.
                     """
     )
     public ResponseEntity<RecentFilingsResponse> getRecent(

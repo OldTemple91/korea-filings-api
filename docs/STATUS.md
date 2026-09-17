@@ -1,4 +1,4 @@
-# STATUS — where we left off (2026-09-11, post-round-21)
+# STATUS — where we left off (2026-09-17, post-round-22)
 
 Read this first when picking up on a different machine. Summarises what is
 live, what's next, and the minimum setup to keep moving.
@@ -18,6 +18,17 @@ live, what's next, and the minimum setup to keep moving.
 - **Weeks 1–5 complete.** Ingestion, summarisation, x402 paywall, public
   deployment, landing page, Python SDK, MCP server, OpenAPI docs — all
   live in production at `api.koreafilings.com`.
+- **Round-22 — conditional GET on the free feed (2026-09-17).** The
+  free feed is polled every 30–60 s by unattended scripts and between
+  DART filings the page is byte-identical. `/v1/disclosures/recent`
+  now carries an `ETag` (Spring's `ShallowEtagHeaderFilter`, scoped to
+  that path only) and answers `304 Not Modified` with an empty body to
+  a matching `If-None-Match`, so a poll loop costs ~0 bytes between
+  filings for any client with an HTTP cache layer. Paid paths stay
+  outside the filter (402 challenges are per-request). The audit
+  filter is pinned one step outside the ETag filter so `request_audit`
+  records the 304 the client received. Documented in the OpenAPI
+  description, `llms.txt` and README.
 - **Round-21 — free feed clamps `limit` instead of rejecting; structured
   400 for non-numeric query values (2026-09-11).** The first day after
   the Bazaar listing, a pair of unattended pollers hit

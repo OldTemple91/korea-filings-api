@@ -123,6 +123,11 @@ events AS (
 SELECT * FROM events ORDER BY event;
 ```
 
+Note on the free feed: since round-22 `/v1/disclosures/recent` answers
+`304 Not Modified` to conditional GETs, so "successful" free-feed
+traffic is `status IN (200, 304)`; a 304 is a poller whose client
+sends `If-None-Match` and whose previous page was still current.
+
 The biggest leak is usually **step 3 → step 4** (got 402 challenge, never signed). That's where v1's rcpt_no mistake hid for a while — agents knew the endpoint shape but couldn't construct the payment payload. Same diagnostic still applies.
 
 ## Cohort comparison (post-release retrospective)

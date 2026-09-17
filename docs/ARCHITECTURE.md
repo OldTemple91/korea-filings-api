@@ -152,6 +152,7 @@ com.dartintel.api
 │
 └── config/
     ├── OpenApiConfig.java           — springdoc with x402 security scheme
+    ├── HttpCachingConfig.java       — ETag / 304 filter on /v1/disclosures/recent (inside the audit filter)
     └── WebConfig.java               — interceptor + advice registration
 ```
 

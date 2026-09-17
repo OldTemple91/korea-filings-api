@@ -41,8 +41,10 @@ import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlMatching;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -441,6 +443,43 @@ class DisclosuresControllerIT {
                         .isEmpty())
                 // Summary text stays paid even on a ticker-filtered feed.
                 .andExpect(jsonPath("$.filings[0].summaryEn").doesNotExist());
+    }
+
+    @Test
+    void recentFeedCarriesEtagAndAnswers304OnMatch() throws Exception {
+        // Round-22: the free feed is polled every 30-60 s by unattended
+        // scripts and the answer is usually unchanged. A conditional GET
+        // with the previous ETag now costs 0 bytes of body.
+        var first = mockMvc.perform(get("/v1/disclosures/recent?limit=10&since_hours=168"))
+                .andExpect(status().isOk())
+                .andExpect(header().exists("ETag"))
+                .andReturn();
+        String etag = first.getResponse().getHeader("ETag");
+
+        mockMvc.perform(get("/v1/disclosures/recent?limit=10&since_hours=168")
+                        .header("If-None-Match", etag))
+                .andExpect(status().isNotModified())
+                .andExpect(header().string("ETag", etag))
+                .andExpect(content().string(""));
+    }
+
+    @Test
+    void recentFeedEtagChangesWhenTheQueryChanges() throws Exception {
+        String a = mockMvc.perform(get("/v1/disclosures/recent?limit=10&since_hours=168"))
+                .andReturn().getResponse().getHeader("ETag");
+        String b = mockMvc.perform(get("/v1/disclosures/recent?limit=1&since_hours=168"))
+                .andReturn().getResponse().getHeader("ETag");
+
+        assertThat(a).isNotEqualTo(b);
+    }
+
+    @Test
+    void paidChallengeCarriesNoEtag() throws Exception {
+        // 402 challenges are per-request (nonce-free but amount/error
+        // vary); they must stay outside the ETag filter's scope.
+        mockMvc.perform(get("/v1/disclosures/by-ticker?ticker=005930&limit=3"))
+                .andExpect(status().isPaymentRequired())
+                .andExpect(header().doesNotExist("ETag"));
     }
 
     @Test

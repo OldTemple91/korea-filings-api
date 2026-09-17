@@ -218,7 +218,9 @@ still there for callers that already have a 14-digit receipt number
 
 Per call, in USDC on Base. Free endpoints (`/v1/companies`,
 `/v1/companies/{ticker}`, `/v1/disclosures/recent`) carry no payment
-challenge so an agent can browse before paying.
+challenge so an agent can browse before paying. The feed also answers
+conditional GETs (`ETag` / `If-None-Match` → `304`), so polling it in
+a loop is cheap for both sides.
 
 | Endpoint | Method | Price (USDC) |
 |---|---|---|

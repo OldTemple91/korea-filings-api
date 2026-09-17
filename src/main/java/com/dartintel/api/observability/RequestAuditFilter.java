@@ -8,7 +8,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
+import org.springframework.core.annotation.Order;
 import org.springframework.web.filter.OncePerRequestFilter;
+import com.dartintel.api.config.HttpCachingConfig;
 
 import java.io.IOException;
 import java.time.Instant;
@@ -57,6 +59,7 @@ import java.util.TreeSet;
  */
 @Slf4j
 @Component
+@Order(HttpCachingConfig.AUDIT_FILTER_ORDER)
 @ConditionalOnProperty(name = "audit.requests.enabled", havingValue = "true")
 public class RequestAuditFilter extends OncePerRequestFilter {
 
