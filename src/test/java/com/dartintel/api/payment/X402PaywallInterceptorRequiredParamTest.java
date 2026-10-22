@@ -51,7 +51,12 @@ class X402PaywallInterceptorRequiredParamTest {
         assertThat(response.getStatus()).isEqualTo(402);
         JsonNode body = objectMapper.readTree(response.getContentAsString());
         assertThat(body.at("/resource/url").asText()).isEqualTo("http://localhost/v1/disclosures/summary");
-        assertThat(body.at("/extensions/bazaar/info/input/queryParams/rcptNo/required").asBoolean()).isTrue();
+        // info carries a sendable example value; the schema carries the rule.
+        assertThat(body.at("/extensions/bazaar/info/input/queryParams/rcptNo").asText()).isEqualTo("20260424900874");
+        assertThat(body.at("/extensions/bazaar/schema/properties/input/properties/queryParams/required").toString())
+                .isEqualTo("[\"rcptNo\"]");
+        assertThat(body.at("/extensions/bazaar/schema/properties/input/properties/queryParams/properties/rcptNo/pattern").asText())
+                .isEqualTo("^\\d{14}$");
         assertThat(response.getHeader("PAYMENT-REQUIRED")).isNotBlank();
         verify(paymentStore, never()).registerIfAbsent(anyString());
     }
@@ -84,7 +89,10 @@ class X402PaywallInterceptorRequiredParamTest {
         assertThat(body.at("/resource/url").asText()).isEqualTo("http://localhost/v1/disclosures/by-ticker");
         // defaultCount 5 × 0.005 USDC = 0.025 USDC = 25000 atomic
         assertThat(body.at("/accepts/0/amount").asText()).isEqualTo("25000");
-        assertThat(body.at("/extensions/bazaar/info/input/queryParams/ticker/required").asBoolean()).isTrue();
+        assertThat(body.at("/extensions/bazaar/info/input/queryParams/ticker").asText()).isEqualTo("005930");
+        assertThat(body.at("/extensions/bazaar/info/input/queryParams/limit").asInt()).isEqualTo(1);
+        assertThat(body.at("/extensions/bazaar/schema/properties/input/properties/queryParams/required").toString())
+                .isEqualTo("[\"ticker\"]");
     }
 
     @Test

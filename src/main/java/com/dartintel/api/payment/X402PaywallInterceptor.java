@@ -77,6 +77,13 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
     static final String PAYMENT_REQUIRED_HEADER = "PAYMENT-REQUIRED";
     static final String REQUEST_ATTR_VERIFIED = "x402.verifiedPayment";
     /**
+     * Example inputs advertised in the bazaar {@code info} block. Paid
+     * test-purchase bots send these verbatim, so they must be real and
+     * already cached (the heartbeat uses the same receipt number).
+     */
+    static final String BAZAAR_EXAMPLE_RCPT_NO = "20260424900874";
+    static final String BAZAAR_EXAMPLE_TICKER = "005930";
+    /**
      * Marker attribute set by {@link X402SettlementAdvice#failClosed}
      * after it has explicitly released the Redis signature lock.
      * {@link #afterCompletion} reads this and skips the redundant
@@ -592,21 +599,35 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
      * on URL substring heuristics.
      */
     private Map<String, Object> buildBazaarExtension(X402Paywall paywall) {
-        Map<String, Object> queryParams;
+        // Per the bazaar spec, info.input.queryParams carries example
+        // VALUES a client can send as-is (paid test-purchase bots do
+        // exactly that), while schema.properties.input.properties.queryParams
+        // carries the JSON Schema (types, descriptions, required).
+        // Putting schema objects in info made such clients send the
+        // object itself as the parameter value → 400 after verify.
+        Map<String, Object> queryParamExample;
+        Map<String, Object> queryParamProperties;
+        List<String> requiredQueryParams;
         if (paywall.pricingMode() == X402Paywall.Mode.PER_RESULT) {
             // PER_RESULT — by-ticker shape. Selector is `ticker`,
             // multiplier is `paywall.countQueryParam()` (default `limit`).
-            queryParams = Map.of(
+            // Example limit=1 keeps a test purchase at the unit price.
+            queryParamExample = Map.of(
+                    "ticker", BAZAAR_EXAMPLE_TICKER,
+                    paywall.countQueryParam(), 1);
+            requiredQueryParams = List.of("ticker");
+            queryParamProperties = Map.of(
                     "ticker", Map.of(
                             "type", "string",
-                            "required", true,
+                            "pattern", "^\\d{6}$",
                             "description",
                                     "Six-digit KRX ticker (e.g. 005930 for Samsung Electronics). " +
                                     "Resolve from a company name first via the free " +
                                     "/v1/companies?q={name} endpoint."),
                     paywall.countQueryParam(), Map.of(
                             "type", "integer",
-                            "required", false,
+                            "minimum", 1,
+                            "maximum", paywall.maxCount(),
                             "description",
                                     "Max filings to return (1–" + paywall.maxCount()
                                     + ", default " + paywall.defaultCount() + "). "
@@ -623,12 +644,14 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
                                     + "the price multiplier."));
         } else {
             // FIXED — summary shape. Selector is `rcptNo`.
-            queryParams = Map.of(
+            queryParamExample = Map.of("rcptNo", BAZAAR_EXAMPLE_RCPT_NO);
+            requiredQueryParams = List.of("rcptNo");
+            queryParamProperties = Map.of(
                     "rcptNo", Map.of(
                             "type", "string",
-                            "required", true,
+                            "pattern", "^\\d{14}$",
                             "description",
-                                    "14-digit DART receipt number (e.g. 20260424900874). " +
+                                    "14-digit DART receipt number (e.g. " + BAZAAR_EXAMPLE_RCPT_NO + "). " +
                                     "Obtain from the free /v1/disclosures/recent feed or " +
                                     "from the by-ticker response. Receipt numbers are " +
                                     "not LLM-knowable and must always be looked up first."));
@@ -636,7 +659,7 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
         Map<String, Object> input = Map.of(
                 "type", "http",
                 "method", "GET",
-                "queryParams", queryParams
+                "queryParams", queryParamExample
         );
         // The 200-response example must match the actual body shape.
         // PER_RESULT (by-ticker) wraps the summaries in a batch
@@ -646,7 +669,7 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
         // structure as what arrives in the 200, otherwise they read
         // top-level `summaryEn` and miss the wrapper.
         Map<String, Object> singleSummary = Map.of(
-                "rcptNo", "20260424900874",
+                "rcptNo", BAZAAR_EXAMPLE_RCPT_NO,
                 "summaryEn", "AI-generated English summary of the disclosure.",
                 "importanceScore", 7,
                 "eventType", "OTHER",
@@ -657,7 +680,7 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
         );
         Map<String, Object> outputExample = paywall.pricingMode() == X402Paywall.Mode.PER_RESULT
                 ? Map.of(
-                        "ticker", "005930",
+                        "ticker", BAZAAR_EXAMPLE_TICKER,
                         "chargedFor", paywall.defaultCount(),
                         "delivered", 1,
                         "count", 1,
@@ -680,9 +703,13 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
                                 "properties", Map.of(
                                         "type", Map.of("type", "string", "const", "http"),
                                         "method", Map.of("type", "string", "enum", List.of("GET", "HEAD", "DELETE")),
-                                        "queryParams", Map.of("type", "object")
+                                        "queryParams", Map.of(
+                                                "type", "object",
+                                                "properties", queryParamProperties,
+                                                "required", requiredQueryParams
+                                        )
                                 ),
-                                "required", List.of("type", "method")
+                                "required", List.of("type", "method", "queryParams")
                         ),
                         "output", Map.of(
                                 "type", "object",

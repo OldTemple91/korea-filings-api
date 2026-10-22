@@ -281,7 +281,8 @@ class DisclosuresControllerIT {
                 .andExpect(status().isPaymentRequired())
                 .andExpect(jsonPath("$.resource.url").value("http://localhost/v1/disclosures/by-ticker"))
                 .andExpect(jsonPath("$.accepts[0].amount").value("25000"))
-                .andExpect(jsonPath("$.extensions.bazaar.info.input.queryParams.ticker.required").value(true));
+                .andExpect(jsonPath("$.extensions.bazaar.info.input.queryParams.ticker").value("005930"))
+                .andExpect(jsonPath("$.extensions.bazaar.info.input.queryParams.limit").value(1));
     }
 
     @Test
@@ -291,7 +292,7 @@ class DisclosuresControllerIT {
                 .andExpect(jsonPath("$.resource.url").value("http://localhost/v1/disclosures/summary"))
                 .andExpect(jsonPath("$.resource.serviceName").value("Korea Filings"))
                 .andExpect(jsonPath("$.resource.tags[0]").value("korea"))
-                .andExpect(jsonPath("$.extensions.bazaar.info.input.queryParams.rcptNo.required").value(true));
+                .andExpect(jsonPath("$.extensions.bazaar.info.input.queryParams.rcptNo").value("20260424900874"));
     }
 
     @Test
