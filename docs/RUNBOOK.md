@@ -356,6 +356,16 @@ Three known causes, check all:
    extension fails the required `returns_402` preflight and the
    resource is eventually dropped.
 
+Related (listed, but paid test purchases fail): the bazaar `info`
+block must carry **example values** (`info.input.queryParams` =
+`{"rcptNo":"20260424900874"}`), with types, patterns and `required`
+under `schema.properties.input.properties.queryParams`. Test-purchase
+bots send the listed example verbatim; if `info` holds schema objects
+instead, they pass facilitator verify and then get a 400 from the
+parameter format check (payment released, no settlement). Symptom in
+the logs: `facilitator verify: bazaar …` followed by
+`x402 release: status=400` for the same request.
+
 Diagnose:
 ```bash
 # Preflight the canonical path (expect valid=true, simulation accepted)

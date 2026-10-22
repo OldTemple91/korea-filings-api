@@ -1,4 +1,4 @@
-# STATUS — where we left off (2026-09-17, post-round-22)
+# STATUS — where we left off (2026-10-22, post-round-23)
 
 Read this first when picking up on a different machine. Summarises what is
 live, what's next, and the minimum setup to keep moving.
@@ -18,6 +18,17 @@ live, what's next, and the minimum setup to keep moving.
 - **Weeks 1–5 complete.** Ingestion, summarisation, x402 paywall, public
   deployment, landing page, Python SDK, MCP server, OpenAPI docs — all
   live in production at `api.koreafilings.com`.
+- **Round-23 — bazaar example inputs (2026-10-22).** The bazaar
+  `info.input.queryParams` block held schema objects
+  (`{type, required, description}`) where the spec expects example
+  values. A paid test-purchase bot that sends the listing's example
+  verbatim passed facilitator verify and then hit the `rcptNo` format
+  check (400, payment released, no settlement). `info` now advertises
+  `rcptNo=20260424900874` for `/summary` and `ticker=005930, limit=1`
+  for `/by-ticker` (both cached, so a test purchase costs no LLM
+  spend); the schema carries the patterns, `limit` bounds and
+  `required` lists. CDP validate passes on both paths. The catalog
+  copy refreshes on the next settlement per resource.
 - **Round-22 — conditional GET on the free feed (2026-09-17).** The
   free feed is polled every 30–60 s by unattended scripts and between
   DART filings the page is byte-identical. `/v1/disclosures/recent`
