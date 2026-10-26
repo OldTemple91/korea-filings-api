@@ -365,6 +365,12 @@ instead, they pass facilitator verify and then get a 400 from the
 parameter format check (payment released, no settlement). Symptom in
 the logs: `facilitator verify: bazaar …` followed by
 `x402 release: status=400` for the same request.
+A `x402 resource URL mismatch: signed=<bare URL> actual=<URL?query>`
+WARN means a client signed the bare listed URL; since round-24 that
+is accepted. `x402 amount mismatch` means the signed value differs
+from the request's price (e.g. a bare by-ticker challenge signed at
+the default count, then sent with another `limit`); the client gets
+the correct challenge and must re-sign.
 
 Diagnose:
 ```bash

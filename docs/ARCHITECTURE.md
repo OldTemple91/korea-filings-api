@@ -290,13 +290,18 @@ beyond ~a week of busy traffic.
    - Already registered → 402 "signature reused".
    - Non-base64 / non-JSON header → **400** "Malformed payment
      payload" per x402 v2 transport-spec error table (release lock).
-5. **Resource URL binding** — compare
-   `paymentPayload.resource.url` to the actual request URL (path +
-   query). On mismatch, release the Redis signature and return 402
-   "Resource URL mismatch". This is the server-side enforcement
-   that prevents a signature for the cheap fixed-price endpoint
-   from being replayed against the per-result endpoint — the
-   EIP-3009 signature itself binds amount/nonce/validity, not URL.
+5. **Resource URL binding** — `paymentPayload.resource.url` must be
+   the actual request URL (path + query) or its query-less canonical
+   form (the URL the Bazaar lists; catalog-driven clients sign the
+   challenge from there and then send the listed example query).
+   Anything else releases the Redis signature and returns 402
+   "Resource URL mismatch", so a signature for the fixed-price
+   endpoint cannot be replayed against the per-result endpoint.
+5b. **Amount binding** — the signed EIP-3009 `value` must equal this
+   request's price (`limit`-scaled for by-ticker), checked before
+   verify; otherwise release and return 402 "Amount mismatch" with
+   the correct challenge. Price is therefore bound by the amount,
+   not by the query string.
 6. `facilitatorClient.verify(payload, requirements)` against the
    CDP facilitator (Ed25519 JWT auth).
    - Invalid → release the Redis signature, 402 with reason.

@@ -1,4 +1,4 @@
-# STATUS — where we left off (2026-10-22, post-round-23)
+# STATUS — where we left off (2026-10-26, post-round-24)
 
 Read this first when picking up on a different machine. Summarises what is
 live, what's next, and the minimum setup to keep moving.
@@ -18,6 +18,16 @@ live, what's next, and the minimum setup to keep moving.
 - **Weeks 1–5 complete.** Ingestion, summarisation, x402 paywall, public
   deployment, landing page, Python SDK, MCP server, OpenAPI docs — all
   live in production at `api.koreafilings.com`.
+- **Round-24 — bare-URL signatures and local amount binding
+  (2026-10-26).** Round-23's example inputs worked: the first
+  external settlements arrived from paid test-purchase services, and
+  one published a delivered / as-advertised record. A third buyer
+  fetched the challenge at the listed query-less URL, signed that
+  resource, then called with the example query, and the exact-string
+  URL check rejected it. The signed URL may now be the request URL
+  or its query-less form; the signed amount must equal the request's
+  price (checked before verify). The by-ticker example drops `limit`
+  so the example call is priced at the bare challenge's default count.
 - **Round-23 — bazaar example inputs (2026-10-22).** The bazaar
   `info.input.queryParams` block held schema objects
   (`{type, required, description}`) where the spec expects example
