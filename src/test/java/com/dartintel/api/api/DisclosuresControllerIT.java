@@ -247,7 +247,7 @@ class DisclosuresControllerIT {
         String byTickerUrl = "http://localhost/v1/disclosures/by-ticker?ticker=005930&limit=3";
         mockMvc.perform(get("/v1/disclosures/by-ticker?ticker=005930&limit=3")
                         .header("PAYMENT-SIGNATURE",
-                                validPaymentPayloadBase64("sig-bt", byTickerUrl)))
+                                validPaymentPayloadBase64("sig-bt", byTickerUrl, "15000")))
                 .andExpect(status().isOk())
                 .andExpect(header().exists("PAYMENT-RESPONSE"))
                 .andExpect(jsonPath("$.ticker").value("005930"))
@@ -282,7 +282,8 @@ class DisclosuresControllerIT {
                 .andExpect(jsonPath("$.resource.url").value("http://localhost/v1/disclosures/by-ticker"))
                 .andExpect(jsonPath("$.accepts[0].amount").value("25000"))
                 .andExpect(jsonPath("$.extensions.bazaar.info.input.queryParams.ticker").value("005930"))
-                .andExpect(jsonPath("$.extensions.bazaar.info.input.queryParams.limit").value(1));
+                // No count in the example: its price equals this bare challenge's amount.
+                .andExpect(jsonPath("$.extensions.bazaar.info.input.queryParams.limit").doesNotExist());
     }
 
     @Test
@@ -670,7 +671,7 @@ class DisclosuresControllerIT {
         String byTickerUrl = "http://localhost/v1/disclosures/by-ticker?ticker=005930&limit=10";
         mockMvc.perform(get("/v1/disclosures/by-ticker?ticker=005930&limit=10")
                         .header("PAYMENT-SIGNATURE",
-                                validPaymentPayloadBase64("sig-fewer", byTickerUrl)))
+                                validPaymentPayloadBase64("sig-fewer", byTickerUrl, "50000")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.ticker").value("005930"))
                 .andExpect(jsonPath("$.chargedFor").value(10))
@@ -960,7 +961,73 @@ class DisclosuresControllerIT {
                 .andExpect(header().string("X-RateLimit-Window-Seconds", "60"));
     }
 
+    // ----- round-24 resource / amount binding -----
+
+    private void stubVerifyAndSettleOk() {
+        wireMock.stubFor(post(urlPathEqualTo("/verify"))
+                .willReturn(aResponse().withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"isValid\":true,\"payer\":\"0x857b06519E91e3A54538791bDbb0E22373e36b66\"}")));
+        wireMock.stubFor(post(urlPathEqualTo("/settle"))
+                .willReturn(aResponse().withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("""
+                                {"success":true,"transaction":"0xB","network":"eip155:84532","payer":"0x857b06519E91e3A54538791bDbb0E22373e36b66"}
+                                """)));
+    }
+
+    @Test
+    void signatureForBareCanonicalUrlIsAcceptedWithExampleQuery() throws Exception {
+        // Catalog-driven clients fetch the challenge at the listed
+        // query-less URL, sign that resource, then call with the
+        // listed example query.
+        stubVerifyAndSettleOk();
+        mockMvc.perform(get("/v1/disclosures/summary?rcptNo=20260423000001")
+                        .header("PAYMENT-SIGNATURE",
+                                validPaymentPayloadBase64("sig-bare", "http://localhost/v1/disclosures/summary")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.rcptNo").value("20260423000001"));
+        wireMock.verify(postRequestedFor(urlPathEqualTo("/settle")));
+    }
+
+    @Test
+    void signatureForAnotherQueryIsStillRejected() throws Exception {
+        mockMvc.perform(get("/v1/disclosures/summary?rcptNo=20260423000001")
+                        .header("PAYMENT-SIGNATURE", validPaymentPayloadBase64("sig-other",
+                                "http://localhost/v1/disclosures/summary?rcptNo=20260423000002")))
+                .andExpect(status().isPaymentRequired())
+                .andExpect(jsonPath("$.error").value(containsString("Resource URL mismatch")));
+        wireMock.verify(0, postRequestedFor(urlPathEqualTo("/verify")));
+    }
+
+    @Test
+    void signedAmountDifferentFromRequestPriceIsRejectedBeforeVerify() throws Exception {
+        // Bare by-ticker challenge is priced at the default count (25000);
+        // that signature must not settle a limit=1 request (5000).
+        mockMvc.perform(get("/v1/disclosures/by-ticker?ticker=005930&limit=1")
+                        .header("PAYMENT-SIGNATURE", validPaymentPayloadBase64("sig-amt",
+                                "http://localhost/v1/disclosures/by-ticker", "25000")))
+                .andExpect(status().isPaymentRequired())
+                .andExpect(jsonPath("$.error").value(containsString("Amount mismatch")))
+                .andExpect(jsonPath("$.accepts[0].amount").value("5000"));
+        wireMock.verify(0, postRequestedFor(urlPathEqualTo("/verify")));
+    }
+
+    @Test
+    void bareSignedDefaultCountByTickerSettles() throws Exception {
+        stubVerifyAndSettleOk();
+        mockMvc.perform(get("/v1/disclosures/by-ticker?ticker=005930")
+                        .header("PAYMENT-SIGNATURE", validPaymentPayloadBase64("sig-def",
+                                "http://localhost/v1/disclosures/by-ticker", "25000")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ticker").value("005930"));
+    }
+
     private String validPaymentPayloadBase64(String nonce, String resourceUrl) throws Exception {
+        return validPaymentPayloadBase64(nonce, resourceUrl, "5000");
+    }
+
+    private String validPaymentPayloadBase64(String nonce, String resourceUrl, String value) throws Exception {
         PaymentPayload payload = new PaymentPayload(
                 2,
                 new ResourceInfo(
@@ -969,7 +1036,7 @@ class DisclosuresControllerIT {
                         "application/json"
                 ),
                 new PaymentRequirement(
-                        "exact", "eip155:84532", "5000",
+                        "exact", "eip155:84532", value,
                         "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
                         "0x209693Bc6afc0C5328bA36FaF03C514EF312287C",
                         300,
@@ -980,7 +1047,7 @@ class DisclosuresControllerIT {
                         new EvmExactPayload.Eip3009Authorization(
                                 "0x857b06519E91e3A54538791bDbb0E22373e36b66",
                                 "0x209693Bc6afc0C5328bA36FaF03C514EF312287C",
-                                "5000",
+                                value,
                                 "1740672089",
                                 "1740672154",
                                 "0x" + nonce + "0".repeat(62 - nonce.length())

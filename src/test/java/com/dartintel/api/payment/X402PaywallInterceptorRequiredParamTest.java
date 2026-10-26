@@ -90,7 +90,7 @@ class X402PaywallInterceptorRequiredParamTest {
         // defaultCount 5 × 0.005 USDC = 0.025 USDC = 25000 atomic
         assertThat(body.at("/accepts/0/amount").asText()).isEqualTo("25000");
         assertThat(body.at("/extensions/bazaar/info/input/queryParams/ticker").asText()).isEqualTo("005930");
-        assertThat(body.at("/extensions/bazaar/info/input/queryParams/limit").asInt()).isEqualTo(1);
+        assertThat(body.at("/extensions/bazaar/info/input/queryParams/limit").isMissingNode()).isTrue();
         assertThat(body.at("/extensions/bazaar/schema/properties/input/properties/queryParams/required").toString())
                 .isEqualTo("[\"ticker\"]");
     }

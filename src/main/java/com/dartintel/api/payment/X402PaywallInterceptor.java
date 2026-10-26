@@ -22,6 +22,7 @@ import org.springframework.web.servlet.HandlerInterceptor;
 
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -312,17 +313,33 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
         // replayed against the more expensive per-result endpoint
         // (/v1/disclosures/by-ticker?ticker=…&limit=50, up to 0.25 USDC)
         // — the EIP-3009 signature itself binds amount/nonce/validity,
-        // not URL, so URL binding is purely server policy. Comparison
-        // is exact (including query string) because the signature was
-        // computed over exactly that string.
+        // not URL, so URL binding is purely server policy. The signed
+        // URL must be the exact request URL or its query-less canonical
+        // form: the Bazaar lists the bare URL, so a catalog-driven
+        // client fetches the challenge there, signs that resource, and
+        // then calls with the listed example query. Price stays bound
+        // by the amount check below, not by the query string.
         ResourceInfo signedResource = paymentPayload.resource();
         if (signedResource == null || signedResource.url() == null
-                || !signedResource.url().equals(resourceUrl)) {
+                || !isSignedForThisResource(signedResource.url(), resourceUrl)) {
             paymentStore.release(sigHash);
             String signedUrl = signedResource != null ? signedResource.url() : "(missing)";
             log.warn("x402 resource URL mismatch: signed={} actual={}", signedUrl, resourceUrl);
             writePaymentRequired(response, resourceUrl, requirement, paywall,
                     "Resource URL mismatch — signature scoped to a different endpoint");
+            return false;
+        }
+
+        // Amount binding. The signed EIP-3009 value must equal this
+        // request's price, checked locally rather than left to the
+        // facilitator: a signature taken from the bare URL's challenge
+        // (default count) must not settle a request priced differently.
+        String signedValue = signedAuthorizationValue(paymentPayload);
+        if (!isSameAtomicAmount(signedValue, requirement.amount())) {
+            paymentStore.release(sigHash);
+            log.warn("x402 amount mismatch: signed={} required={}", sanitiseLogValue(signedValue), requirement.amount());
+            writePaymentRequired(response, resourceUrl, requirement, paywall,
+                    "Amount mismatch — sign the amount in this challenge");
             return false;
         }
 
@@ -430,6 +447,32 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
      * {@code ?ticker=B}, breaking the per-resource binding x402
      * relies on.
      */
+    static boolean isSignedForThisResource(String signedUrl, String resourceUrl) {
+        if (signedUrl.equals(resourceUrl)) {
+            return true;
+        }
+        int q = resourceUrl.indexOf('?');
+        return q >= 0 && signedUrl.equals(resourceUrl.substring(0, q));
+    }
+
+    private static String signedAuthorizationValue(PaymentPayload payload) {
+        if (payload.payload() == null || payload.payload().authorization() == null) {
+            return null;
+        }
+        return payload.payload().authorization().value();
+    }
+
+    static boolean isSameAtomicAmount(String signedValue, String requiredAmount) {
+        if (signedValue == null || signedValue.isBlank()) {
+            return false;
+        }
+        try {
+            return new BigInteger(signedValue.trim()).equals(new BigInteger(requiredAmount));
+        } catch (NumberFormatException e) {
+            return false;
+        }
+    }
+
     private static String buildResourceUrl(HttpServletRequest request) {
         StringBuilder url = new StringBuilder(request.getRequestURL());
         String query = request.getQueryString();
@@ -611,10 +654,11 @@ public class X402PaywallInterceptor implements HandlerInterceptor {
         if (paywall.pricingMode() == X402Paywall.Mode.PER_RESULT) {
             // PER_RESULT — by-ticker shape. Selector is `ticker`,
             // multiplier is `paywall.countQueryParam()` (default `limit`).
-            // Example limit=1 keeps a test purchase at the unit price.
-            queryParamExample = Map.of(
-                    "ticker", BAZAAR_EXAMPLE_TICKER,
-                    paywall.countQueryParam(), 1);
+            // The count param is left out of the example so the price
+            // of the example call equals the bare URL's challenge
+            // (default count); a client that signs that challenge and
+            // then sends the example passes the amount check.
+            queryParamExample = Map.of("ticker", BAZAAR_EXAMPLE_TICKER);
             requiredQueryParams = List.of("ticker");
             queryParamProperties = Map.of(
                     "ticker", Map.of(
